@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/locations", "description": "List Square locations"},
+    {"method": "GET", "path": "/payments", "description": "List Square payments"}
+  ],
+  "env": ["SQUARE_ACCESS_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

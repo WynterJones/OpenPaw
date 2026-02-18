@@ -1,0 +1,106 @@
+[
+  {
+    "slug": "skill-creator",
+    "name": "Skill Creator",
+    "description": "Design and author new agent skills with proper frontmatter, structure, and best practices.",
+    "version": "1.0.0",
+    "category": "Meta",
+    "icon": "wand-sparkles",
+    "tags": ["meta", "authoring", "skills"],
+    "uses_tools": false
+  },
+  {
+    "slug": "code-review",
+    "name": "Code Review",
+    "description": "Perform thorough code reviews covering correctness, security, performance, and maintainability.",
+    "version": "1.0.0",
+    "category": "Coding",
+    "icon": "scan-search",
+    "tags": ["code", "review", "security"],
+    "uses_tools": false
+  },
+  {
+    "slug": "technical-writing",
+    "name": "Technical Writing",
+    "description": "Write clear technical documentation, READMEs, API guides, and developer-facing content.",
+    "version": "1.0.0",
+    "category": "Writing",
+    "icon": "file-pen-line",
+    "tags": ["docs", "readme", "technical"],
+    "uses_tools": false
+  },
+  {
+    "slug": "data-analyst",
+    "name": "Data Analyst",
+    "description": "Analyze datasets, compute statistics, identify trends, and present data-driven insights.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "bar-chart-3",
+    "tags": ["data", "analysis", "statistics"],
+    "uses_tools": false
+  },
+  {
+    "slug": "research-assistant",
+    "name": "Research Assistant",
+    "description": "Research topics in depth, synthesize findings, and produce structured summaries with citations.",
+    "version": "1.0.0",
+    "category": "Productivity",
+    "icon": "book-open-check",
+    "tags": ["research", "summary", "analysis"],
+    "uses_tools": false
+  },
+  {
+    "slug": "test-writer",
+    "name": "Test Writer",
+    "description": "Generate comprehensive unit, integration, and end-to-end tests for any codebase.",
+    "version": "1.0.0",
+    "category": "Coding",
+    "icon": "test-tubes",
+    "tags": ["testing", "unit", "integration"],
+    "uses_tools": false
+  },
+  {
+    "slug": "image-processing",
+    "name": "Image Processing",
+    "description": "Convert, resize, crop, and transform images using ImageMagick commands.",
+    "version": "1.0.0",
+    "category": "Media",
+    "icon": "image",
+    "tags": ["image", "convert", "resize"],
+    "uses_tools": true,
+    "required_tools": ["imagemagick"]
+  },
+  {
+    "slug": "video-processing",
+    "name": "Video Processing",
+    "description": "Transcode, trim, merge, and manipulate video files using FFmpeg.",
+    "version": "1.0.0",
+    "category": "Media",
+    "icon": "film",
+    "tags": ["video", "ffmpeg", "transcode"],
+    "uses_tools": true,
+    "required_tools": ["ffmpeg"]
+  },
+  {
+    "slug": "pdf-tools",
+    "name": "PDF Tools",
+    "description": "Extract text, merge, split, and manipulate PDF documents using command-line utilities.",
+    "version": "1.0.0",
+    "category": "Media",
+    "icon": "file-text",
+    "tags": ["pdf", "extract", "merge"],
+    "uses_tools": true,
+    "required_tools": ["poppler-utils", "ghostscript"]
+  },
+  {
+    "slug": "api-integration",
+    "name": "API Integration",
+    "description": "Build and test REST API integrations with authentication, pagination, and error handling.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "plug",
+    "tags": ["api", "rest", "http"],
+    "uses_tools": true,
+    "required_tools": ["curl"]
+  }
+]

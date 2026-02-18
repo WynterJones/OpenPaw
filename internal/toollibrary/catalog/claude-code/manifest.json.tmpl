@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/plan",
+      "description": "Read-only analysis of a codebase (uses Read, Grep, Glob only)",
+      "body": {"directory": "Absolute path to project directory", "prompt": "Analysis prompt", "model": "Optional model name (e.g. sonnet)"},
+      "response": {"success": "boolean", "result": "Claude analysis result", "mode": "plan"}
+    },
+    {
+      "method": "POST",
+      "path": "/implement",
+      "description": "Full implementation with all tools available",
+      "body": {"directory": "Absolute path to project directory", "prompt": "Implementation prompt", "model": "Optional model name"},
+      "response": {"success": "boolean", "result": "Claude implementation result", "mode": "implement"}
+    },
+    {
+      "method": "POST",
+      "path": "/ask",
+      "description": "Quick single-turn question",
+      "body": {"directory": "Absolute path to project directory", "prompt": "Question to ask", "model": "Optional model name"},
+      "response": {"success": "boolean", "result": "Claude response", "mode": "ask"}
+    },
+    {
+      "method": "GET",
+      "path": "/status",
+      "description": "Check if Claude CLI is available",
+      "response": {"available": "boolean", "path": "Path to claude binary"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

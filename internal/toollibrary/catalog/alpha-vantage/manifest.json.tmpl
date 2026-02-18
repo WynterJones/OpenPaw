@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/quote", "description": "Get stock quote by symbol"},
+    {"method": "GET", "path": "/fx", "description": "Get FX exchange rate by currency pair"}
+  ],
+  "env": ["ALPHA_VANTAGE_API_KEY"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

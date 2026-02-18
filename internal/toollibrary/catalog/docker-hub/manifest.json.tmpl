@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/search/repositories", "description": "Search Docker Hub repositories"},
+    {"method": "GET", "path": "/repositories/{namespace}/{repo}/tags", "description": "List tags for a repository"}
+  ],
+  "env": [],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

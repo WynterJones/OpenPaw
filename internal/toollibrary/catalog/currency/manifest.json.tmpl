@@ -1,0 +1,34 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/convert",
+      "description": "Convert an amount between currencies",
+      "query_params": [
+        {"name": "from", "type": "string", "required": true, "description": "Source currency code (e.g. USD)"},
+        {"name": "to", "type": "string", "required": true, "description": "Target currency code (e.g. EUR)"},
+        {"name": "amount", "type": "number", "required": false, "description": "Amount to convert (default 1)"}
+      ],
+      "response": {"from": "Source currency", "to": "Target currency", "amount": "Input amount", "rate": "Exchange rate", "result": "Converted amount"}
+    },
+    {
+      "method": "GET",
+      "path": "/rates",
+      "description": "Get all exchange rates for a base currency",
+      "query_params": [
+        {"name": "base", "type": "string", "required": false, "description": "Base currency code (default USD)"}
+      ],
+      "response": {"base": "Base currency", "rates": "Object of currency codes to exchange rates"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

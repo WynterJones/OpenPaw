@@ -1,0 +1,27 @@
+{
+  "version": "1.5.0",
+  "projectName": "OpenPaw",
+  "commands": {
+    "test": "npm run test",
+    "build": "npm run build",
+    "lint": "npm run lint"
+  },
+  "features": {
+    "i18n": false,
+    "knip": true
+  },
+  "audits": [
+    "FARMHOUSE",
+    "SECURITY",
+    "PERFORMANCE",
+    "ACCESSIBILITY",
+    "CODE_QUALITY",
+    "TESTS",
+    "GARDEN",
+    "COMPOST",
+    "RESEARCH",
+    "GREENFIELD",
+    "BROWNFIELD",
+    "KNIP"
+  ]
+}

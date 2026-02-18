@@ -1,0 +1,46 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/guilds",
+      "description": "List bot's guilds/servers",
+      "response": {"guilds": "Array of guilds with id, name, icon, owner"}
+    },
+    {
+      "method": "GET",
+      "path": "/channels",
+      "description": "List channels in a guild",
+      "query_params": [
+        {"name": "guild_id", "type": "string", "required": true, "description": "Discord guild/server ID"}
+      ],
+      "response": {"channels": "Array of channels with id, name, type, topic, position"}
+    },
+    {
+      "method": "POST",
+      "path": "/message",
+      "description": "Send a message to a channel",
+      "body": {"channel_id": "Channel ID", "content": "Message content"},
+      "response": {"id": "Message ID", "channel_id": "Channel ID", "content": "Message content", "timestamp": "ISO timestamp"}
+    },
+    {
+      "method": "GET",
+      "path": "/messages",
+      "description": "Read messages from a channel",
+      "query_params": [
+        {"name": "channel_id", "type": "string", "required": true, "description": "Channel ID"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of messages (1-100, default 20)"}
+      ],
+      "response": {"messages": "Array of messages with id, author, content, timestamp"}
+    }
+  ],
+  "env": ["DISCORD_BOT_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/read",
+      "description": "Read cells from a spreadsheet",
+      "query_params": [
+        {"name": "spreadsheet_id", "type": "string", "required": true, "description": "Google Sheets spreadsheet ID"},
+        {"name": "range", "type": "string", "required": true, "description": "Cell range (e.g. Sheet1!A1:B10)"}
+      ],
+      "response": {"values": "2D array of cell values"}
+    },
+    {
+      "method": "POST",
+      "path": "/write",
+      "description": "Write values to spreadsheet cells",
+      "body": {"spreadsheet_id": "Spreadsheet ID", "range": "Cell range", "values": "2D array of values"},
+      "response": {"updated_cells": "Number of cells updated"}
+    },
+    {
+      "method": "GET",
+      "path": "/info",
+      "description": "Get spreadsheet metadata",
+      "query_params": [
+        {"name": "spreadsheet_id", "type": "string", "required": true, "description": "Google Sheets spreadsheet ID"}
+      ],
+      "response": {"title": "Spreadsheet title", "sheets": "List of sheet names"}
+    }
+  ],
+  "env": [
+    {"name": "GOOGLE_API_KEY", "required": true, "description": "Google API key for Sheets access"}
+  ],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

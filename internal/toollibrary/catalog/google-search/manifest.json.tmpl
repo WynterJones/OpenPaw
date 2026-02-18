@@ -1,0 +1,44 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Web search via Google",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "num", "type": "integer", "required": false, "description": "Number of results (default 10)"}
+      ],
+      "response": {"results": "Array of results with title, link, snippet, position"}
+    },
+    {
+      "method": "GET",
+      "path": "/news",
+      "description": "Search Google News",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "num", "type": "integer", "required": false, "description": "Number of results (default 10)"}
+      ],
+      "response": {"results": "Array of news results with title, link, snippet, source, date"}
+    },
+    {
+      "method": "GET",
+      "path": "/images",
+      "description": "Search Google Images",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "num", "type": "integer", "required": false, "description": "Number of results (default 10)"}
+      ],
+      "response": {"results": "Array of image results with title, original, thumbnail, source"}
+    }
+  ],
+  "env": ["SERPAPI_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

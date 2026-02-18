@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "POST", "path": "/files/search", "description": "Search files by query"},
+    {"method": "POST", "path": "/files/list-folder", "description": "List folder contents"}
+  ],
+  "env": ["DROPBOX_ACCESS_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

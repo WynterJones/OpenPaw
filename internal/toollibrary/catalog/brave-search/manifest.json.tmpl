@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Web search via Brave Search",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "count", "type": "integer", "required": false, "description": "Results count (1-20, default 10)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/news",
+      "description": "News search via Brave Search",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "count", "type": "integer", "required": false, "description": "Results count (1-20, default 10)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/images",
+      "description": "Image search via Brave Search",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "count", "type": "integer", "required": false, "description": "Results count (1-20, default 10)"}
+      ]
+    }
+  ],
+  "env": ["BRAVE_SEARCH_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

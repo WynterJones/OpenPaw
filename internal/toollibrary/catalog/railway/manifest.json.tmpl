@@ -1,0 +1,55 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/projects",
+      "description": "List all Railway projects",
+      "response": {"projects": "Array of projects with id, name, description, created_at, updated_at"}
+    },
+    {
+      "method": "GET",
+      "path": "/project/{id}",
+      "description": "Get project details including environments and services",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Project ID"}
+      ],
+      "response": {"project": "Project with id, name, description, environments, services"}
+    },
+    {
+      "method": "GET",
+      "path": "/deployments",
+      "description": "List deployments for a project",
+      "query_params": [
+        {"name": "project_id", "type": "string", "required": true, "description": "Project ID"},
+        {"name": "service_id", "type": "string", "required": false, "description": "Service ID to filter by"}
+      ],
+      "response": {"deployments": "Array of deployments with id, status, created_at, static_url"}
+    },
+    {
+      "method": "GET",
+      "path": "/services",
+      "description": "List services in a project",
+      "query_params": [
+        {"name": "project_id", "type": "string", "required": true, "description": "Project ID"}
+      ],
+      "response": {"services": "Array of services with id, name, icon"}
+    },
+    {
+      "method": "POST",
+      "path": "/redeploy",
+      "description": "Trigger a redeployment of a service",
+      "body": {"service_id": "Service ID (required)", "environment_id": "Environment ID (required)"},
+      "response": {"success": "boolean", "service_id": "Service ID"}
+    }
+  ],
+  "env": ["RAILWAY_API_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

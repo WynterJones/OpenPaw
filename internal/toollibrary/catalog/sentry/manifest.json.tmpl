@@ -1,0 +1,53 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/projects",
+      "description": "List organization projects",
+      "response": {"projects": "Array of projects with id, slug, name, platform, dateCreated"}
+    },
+    {
+      "method": "GET",
+      "path": "/issues",
+      "description": "List project issues",
+      "query_params": [
+        {"name": "project", "type": "string", "required": true, "description": "Project slug"},
+        {"name": "query", "type": "string", "required": false, "description": "Search query"},
+        {"name": "sort", "type": "string", "required": false, "description": "Sort by: date, new, priority, freq (default: date)"}
+      ],
+      "response": {"issues": "Array of issues with id, title, culprit, status, level, count, firstSeen, lastSeen, shortId"}
+    },
+    {
+      "method": "GET",
+      "path": "/issue/{id}",
+      "description": "Get issue details",
+      "response": {"issue": "Full issue details including metadata, tags, and stats"}
+    },
+    {
+      "method": "PUT",
+      "path": "/issue/{id}",
+      "description": "Update issue status",
+      "body": {"status": "New status: resolved, unresolved, or ignored"},
+      "response": {"issue": "Updated issue details"}
+    },
+    {
+      "method": "GET",
+      "path": "/events",
+      "description": "List issue events",
+      "query_params": [
+        {"name": "issue_id", "type": "string", "required": true, "description": "Issue ID"}
+      ],
+      "response": {"events": "Array of events with id, eventID, dateCreated, message, tags"}
+    }
+  ],
+  "env": ["SENTRY_AUTH_TOKEN", "SENTRY_ORG"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

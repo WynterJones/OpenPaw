@@ -1,0 +1,34 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/current",
+      "description": "Get current weather for a city",
+      "query_params": [
+        {"name": "city", "type": "string", "required": true, "description": "City name"}
+      ],
+      "response": {"temperature": "Current temperature in Celsius", "conditions": "Weather conditions", "humidity": "Relative humidity %", "wind_speed": "Wind speed"}
+    },
+    {
+      "method": "GET",
+      "path": "/forecast",
+      "description": "Get weather forecast by coordinates",
+      "query_params": [
+        {"name": "lat", "type": "number", "required": true, "description": "Latitude"},
+        {"name": "lon", "type": "number", "required": true, "description": "Longitude"},
+        {"name": "days", "type": "integer", "required": false, "description": "Number of forecast days (1-16, default 7)"}
+      ],
+      "response": {"forecast": "Array of daily forecasts with temp_max, temp_min, conditions"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

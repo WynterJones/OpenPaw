@@ -1,0 +1,14 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/sites", "description": "List Netlify sites"},
+    {"method": "GET", "path": "/sites/{site_id}/deploys", "description": "List deploys for a site"},
+    {"method": "GET", "path": "/deploys/{deploy_id}", "description": "Get a deploy by id"}
+  ],
+  "env": ["NETLIFY_ACCESS_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

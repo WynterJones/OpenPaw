@@ -1,0 +1,49 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/repos",
+      "description": "List repositories for an organization or user",
+      "query_params": [
+        {"name": "org", "type": "string", "required": true, "description": "GitHub organization or username"}
+      ],
+      "response": {"repos": "Array of repositories with name, description, language, stars"}
+    },
+    {
+      "method": "GET",
+      "path": "/issues",
+      "description": "List issues for a repository",
+      "query_params": [
+        {"name": "repo", "type": "string", "required": true, "description": "Repository in owner/repo format"},
+        {"name": "state", "type": "string", "required": false, "description": "Issue state: open or closed (default: open)"}
+      ],
+      "response": {"issues": "Array of issues with number, title, state, user"}
+    },
+    {
+      "method": "POST",
+      "path": "/issues",
+      "description": "Create a new issue",
+      "body": {"repo": "Repository in owner/repo format", "title": "Issue title", "body": "Issue body (optional)"},
+      "response": {"number": "Issue number", "html_url": "URL to the issue"}
+    },
+    {
+      "method": "GET",
+      "path": "/pulls",
+      "description": "List pull requests for a repository",
+      "query_params": [
+        {"name": "repo", "type": "string", "required": true, "description": "Repository in owner/repo format"}
+      ],
+      "response": {"pull_requests": "Array of PRs with number, title, state, user"}
+    }
+  ],
+  "env": ["GITHUB_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

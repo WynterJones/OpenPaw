@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search Wikipedia pages",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-50, default 10)"}
+      ],
+      "response": {"results": "Array of matching pages with title, snippet, and URL"}
+    },
+    {
+      "method": "GET",
+      "path": "/summary/{title}",
+      "description": "Get page summary by title",
+      "path_params": [
+        {"name": "title", "type": "string", "required": true, "description": "Wikipedia page title"}
+      ],
+      "response": {"title": "Page title", "extract": "Summary text", "url": "Canonical page URL"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

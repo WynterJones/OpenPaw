@@ -1,0 +1,53 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for videos, channels, or playlists",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "max_results", "type": "integer", "required": false, "description": "Number of results (1-50, default 10)"},
+        {"name": "type", "type": "string", "required": false, "description": "Result type: video, channel, or playlist (default: video)"},
+        {"name": "order", "type": "string", "required": false, "description": "Sort order: relevance, date, viewCount, or rating (default: relevance)"}
+      ],
+      "response": {"total_results": "Total results available", "results": "Array of results with video_id, title, description, channel_title, published_at, thumbnail"}
+    },
+    {
+      "method": "GET",
+      "path": "/video/{id}",
+      "description": "Get video details including statistics",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Video ID"}
+      ],
+      "response": {"video": "Video with id, title, description, channel_title, published_at, duration, view_count, like_count, comment_count, tags, thumbnail"}
+    },
+    {
+      "method": "GET",
+      "path": "/channel/{id}",
+      "description": "Get channel information and statistics",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Channel ID"}
+      ],
+      "response": {"channel": "Channel with id, title, description, subscriber_count, video_count, view_count, thumbnail"}
+    },
+    {
+      "method": "GET",
+      "path": "/captions/{video_id}",
+      "description": "List available captions/subtitles for a video",
+      "path_params": [
+        {"name": "video_id", "type": "string", "required": true, "description": "Video ID"}
+      ],
+      "response": {"captions": "Array of captions with id, language, name, track_kind"}
+    }
+  ],
+  "env": ["YOUTUBE_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/tables", "description": "List tables in a base"},
+    {"method": "GET", "path": "/records/{table}", "description": "List records from a table"}
+  ],
+  "env": ["AIRTABLE_API_KEY", "AIRTABLE_BASE_ID"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

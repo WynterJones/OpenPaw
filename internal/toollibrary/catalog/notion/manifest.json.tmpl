@@ -1,0 +1,49 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/search",
+      "description": "Search pages and databases",
+      "body": {"query": "Search query", "page_size": "Number of results (optional, default 10)"},
+      "response": {"results": "Array of results with id, object_type, title, url, created_time, last_edited_time"}
+    },
+    {
+      "method": "GET",
+      "path": "/page/{id}",
+      "description": "Get a page's properties",
+      "response": {"id": "Page ID", "properties": "Key-value pairs of page properties"}
+    },
+    {
+      "method": "POST",
+      "path": "/page",
+      "description": "Create a new page",
+      "body": {"parent_id": "Parent database or page ID", "parent_type": "database_id or page_id", "title": "Page title", "content": "Plain text content (optional)"},
+      "response": {"id": "Page ID", "url": "Page URL"}
+    },
+    {
+      "method": "GET",
+      "path": "/database/{id}",
+      "description": "Query a database",
+      "query_params": [
+        {"name": "page_size", "type": "integer", "required": false, "description": "Number of results (default 25)"}
+      ],
+      "response": {"results": "Array of database entries with simplified properties"}
+    },
+    {
+      "method": "GET",
+      "path": "/databases",
+      "description": "List all databases shared with integration",
+      "response": {"databases": "Array of databases with id, title, url"}
+    }
+  ],
+  "env": ["NOTION_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

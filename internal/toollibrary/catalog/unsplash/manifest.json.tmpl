@@ -1,0 +1,55 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for photos",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"},
+        {"name": "page", "type": "integer", "required": false, "description": "Page number (default 1)"},
+        {"name": "per_page", "type": "integer", "required": false, "description": "Results per page (1-30, default 10)"},
+        {"name": "orientation", "type": "string", "required": false, "description": "Photo orientation: landscape, portrait, or squarish"}
+      ],
+      "response": {"total": "Total results", "total_pages": "Total pages", "results": "Array of photos with id, description, urls, user, width, height, likes"}
+    },
+    {
+      "method": "GET",
+      "path": "/photo/{id}",
+      "description": "Get photo details by ID",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Photo ID"}
+      ],
+      "response": {"photo": "Photo with id, description, urls, user, width, height, downloads, likes, exif, location"}
+    },
+    {
+      "method": "GET",
+      "path": "/random",
+      "description": "Get random photo(s)",
+      "query_params": [
+        {"name": "query", "type": "string", "required": false, "description": "Topic filter"},
+        {"name": "count", "type": "integer", "required": false, "description": "Number of photos (1-30, default 1)"},
+        {"name": "orientation", "type": "string", "required": false, "description": "Photo orientation: landscape, portrait, or squarish"}
+      ],
+      "response": {"photos": "Array of random photos with id, description, urls, user, width, height"}
+    },
+    {
+      "method": "GET",
+      "path": "/download/{id}",
+      "description": "Trigger download tracking for a photo (required by Unsplash API guidelines)",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Photo ID"}
+      ],
+      "response": {"url": "Download URL"}
+    }
+  ],
+  "env": ["UNSPLASH_ACCESS_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

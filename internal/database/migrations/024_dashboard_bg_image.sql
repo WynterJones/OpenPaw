@@ -1,0 +1,1 @@
+ALTER TABLE dashboards ADD COLUMN bg_image TEXT NOT NULL DEFAULT '';

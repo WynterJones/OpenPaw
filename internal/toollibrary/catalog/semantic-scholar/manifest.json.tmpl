@@ -1,0 +1,32 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/papers/search",
+      "description": "Search papers in Semantic Scholar",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Results count (1-100, default 10)"},
+        {"name": "offset", "type": "integer", "required": false, "description": "Pagination offset (default 0)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/paper/{paper_id}",
+      "description": "Get paper details by Semantic Scholar paper ID",
+      "path_params": [
+        {"name": "paper_id", "type": "string", "required": true, "description": "Semantic Scholar paper identifier"}
+      ]
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/channels",
+      "description": "List all Slack channels",
+      "response": {"channels": "Array of channels with id, name, topic, num_members"}
+    },
+    {
+      "method": "POST",
+      "path": "/message",
+      "description": "Send a message to a channel",
+      "body": {"channel": "Channel ID or name", "text": "Message text"},
+      "response": {"success": "boolean", "ts": "Message timestamp"}
+    },
+    {
+      "method": "GET",
+      "path": "/messages",
+      "description": "Read messages from a channel",
+      "query_params": [
+        {"name": "channel", "type": "string", "required": true, "description": "Channel ID"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of messages (1-100, default 20)"}
+      ],
+      "response": {"messages": "Array of messages with user, text, timestamp"}
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "description": "List workspace users",
+      "response": {"users": "Array of users with id, name, real_name, display_name"}
+    }
+  ],
+  "env": ["SLACK_BOT_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

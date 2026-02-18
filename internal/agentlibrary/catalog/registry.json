@@ -1,0 +1,112 @@
+[
+  {
+    "slug": "researcher",
+    "name": "Whiskers",
+    "description": "Tireless research companion — digs through documentation, compares options, and delivers structured findings",
+    "version": "1.0.0",
+    "category": "Productivity",
+    "icon": "search",
+    "tags": ["research", "analysis", "documentation", "comparison"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/analyst.webp"
+  },
+  {
+    "slug": "code-reviewer",
+    "name": "Mittens",
+    "description": "Meticulous code reviewer — catches bugs, suggests improvements, and enforces best practices",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "code-2",
+    "tags": ["code-review", "bugs", "best-practices", "refactoring"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/developer.webp"
+  },
+  {
+    "slug": "writer",
+    "name": "Calico",
+    "description": "Versatile writing partner — drafts, edits, and polishes prose for any audience",
+    "version": "1.0.0",
+    "category": "Content",
+    "icon": "pen-line",
+    "tags": ["writing", "editing", "copywriting", "prose"],
+    "model": "haiku",
+    "avatar_path": "/avatars/creative.webp"
+  },
+  {
+    "slug": "data-analyst",
+    "name": "Tabby",
+    "description": "Data-driven analyst — interprets datasets, builds visualizations, and surfaces insights",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "bar-chart-2",
+    "tags": ["data", "analytics", "visualization", "insights"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/analyst.webp"
+  },
+  {
+    "slug": "debugger",
+    "name": "Patches",
+    "description": "Patient debugger — traces issues to root cause and explains fixes step by step",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "bug",
+    "tags": ["debugging", "troubleshooting", "root-cause", "fixes"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/engineer.webp"
+  },
+  {
+    "slug": "project-manager",
+    "name": "Cleo",
+    "description": "Organized project manager — tracks milestones, assigns priorities, and keeps teams on schedule",
+    "version": "1.0.0",
+    "category": "Productivity",
+    "icon": "kanban",
+    "tags": ["project-management", "planning", "milestones", "coordination"],
+    "model": "haiku",
+    "avatar_path": "/avatars/marketer.webp"
+  },
+  {
+    "slug": "ops-engineer",
+    "name": "Socks",
+    "description": "Infrastructure specialist — monitors systems, automates deploys, and resolves incidents",
+    "version": "1.0.0",
+    "category": "Ops",
+    "icon": "server",
+    "tags": ["infrastructure", "devops", "monitoring", "deployment"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/engineer.webp"
+  },
+  {
+    "slug": "learning-coach",
+    "name": "Marble",
+    "description": "Encouraging tutor — explains concepts clearly, adapts to learning style, and quizzes for retention",
+    "version": "1.0.0",
+    "category": "Personal",
+    "icon": "graduation-cap",
+    "tags": ["learning", "tutoring", "education", "coaching"],
+    "model": "haiku",
+    "avatar_path": "/avatars/social.webp"
+  },
+  {
+    "slug": "security-auditor",
+    "name": "Shadow",
+    "description": "Vigilant security auditor — scans for vulnerabilities, reviews permissions, and hardens defenses",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "shield-check",
+    "tags": ["security", "vulnerabilities", "audit", "hardening"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/developer.webp"
+  },
+  {
+    "slug": "summarizer",
+    "name": "Neko",
+    "description": "Lightning-fast summarizer — distills long documents into concise, actionable briefs",
+    "version": "1.0.0",
+    "category": "Content",
+    "icon": "zap",
+    "tags": ["summarization", "briefs", "distillation", "highlights"],
+    "model": "haiku",
+    "avatar_path": "/avatars/creative.webp"
+  }
+]

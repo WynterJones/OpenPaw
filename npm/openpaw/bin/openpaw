@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+
+const PLATFORM_MAP = {
+  darwin: { arm64: "darwin-arm64", x64: "darwin-x64" },
+  linux: { arm64: "linux-arm64", x64: "linux-x64" },
+  win32: { x64: "win32-x64" },
+};
+
+function getBinaryPath() {
+  const platformPkgs = PLATFORM_MAP[process.platform];
+  if (!platformPkgs) {
+    console.error(`Unsupported platform: ${process.platform}`);
+    process.exit(1);
+  }
+
+  const archPkg = platformPkgs[process.arch];
+  if (!archPkg) {
+    console.error(
+      `Unsupported architecture: ${process.arch} on ${process.platform}`
+    );
+    process.exit(1);
+  }
+
+  const pkgName = `@openpaw-ai/${archPkg}`;
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const binaryName = `openpaw${ext}`;
+
+  // Try to find the platform package
+  try {
+    const pkgDir = path.dirname(require.resolve(`${pkgName}/package.json`));
+    const binPath = path.join(pkgDir, binaryName);
+    if (fs.existsSync(binPath)) {
+      return binPath;
+    }
+  } catch {
+    // Package not installed
+  }
+
+  console.error(
+    `Could not find the OpenPaw binary for ${process.platform}-${process.arch}.`
+  );
+  console.error(`Expected package: ${pkgName}`);
+  console.error(`Try reinstalling: npm install -g openpaw`);
+  process.exit(1);
+}
+
+const binary = getBinaryPath();
+
+try {
+  execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
+} catch (err) {
+  if (err.status !== null) {
+    process.exit(err.status);
+  }
+  throw err;
+}

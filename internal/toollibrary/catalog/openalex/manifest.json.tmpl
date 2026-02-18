@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/works",
+      "description": "Search OpenAlex works",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "per_page", "type": "integer", "required": false, "description": "Results count (1-100, default 10)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/authors",
+      "description": "Search OpenAlex authors",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "per_page", "type": "integer", "required": false, "description": "Results count (1-100, default 10)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/institutions",
+      "description": "Search OpenAlex institutions",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "per_page", "type": "integer", "required": false, "description": "Results count (1-100, default 10)"}
+      ]
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

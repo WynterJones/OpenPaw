@@ -1,0 +1,67 @@
+# Binaries
+/openpaw
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+
+# Node / Frontend build artifacts
+web/frontend/node_modules/
+web/frontend/dist/
+
+# Data & runtime
+data/
+logs/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Tools workspace (created at runtime by agents)
+/tools/
+/dashboards/
+/agents/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# PRD (internal planning docs)
+PRD*.md
+DEPLOY.md
+
+# Test coverage
+coverage.out
+*.cover
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+tests/.auth/
+
+# Desktop (Tauri)
+desktop/src-tauri/binaries/
+desktop/src-tauri/target/
+desktop/node_modules/
