@@ -31,7 +31,7 @@ The fastest way to get started — no build tools required:
 
 ```bash
 mkdir openpaw && cd openpaw
-npx openpaw
+npx @openpaw-ai/openpaw
 ```
 
 Open **http://localhost:41295** in your browser. Requires **Node.js 18+** and an **OpenRouter API key** ([openrouter.ai](https://openrouter.ai/)).
