@@ -48,7 +48,15 @@ function getBinaryPath() {
 }
 
 const binary = getBinaryPath();
-const child = spawn(binary, process.argv.slice(2), { stdio: "inherit" });
+const env = { ...process.env };
+if (!env.OPENPAW_DATA_DIR) {
+  env.OPENPAW_DATA_DIR = path.join(process.cwd(), "data");
+}
+const child = spawn(binary, process.argv.slice(2), {
+  stdio: "inherit",
+  cwd: process.cwd(),
+  env,
+});
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => child.kill(signal));
