@@ -25,15 +25,24 @@ The app and everything it builds runs locally. AI chat is handled through [OpenR
 
 ---
 
-## Prerequisites
-
-- **Go 1.25+** — [install](https://go.dev/dl/)
-- **Node.js 18+** — [install](https://nodejs.org/)
-- **just** — command runner — [install](https://github.com/casey/just#installation)
-- **CGO enabled** — needed for SQLite (enabled by default on macOS/Linux)
-- **OpenRouter API key** — required for AI agent features ([openrouter.ai](https://openrouter.ai/))
-
 ## Installation
+
+The fastest way to get started — no build tools required:
+
+```bash
+mkdir openpaw && cd openpaw
+npx openpaw
+```
+
+Open **http://localhost:41295** in your browser. Requires **Node.js 18+** and an **OpenRouter API key** ([openrouter.ai](https://openrouter.ai/)).
+
+### Desktop App
+
+Download the native desktop app for macOS, Windows, or Linux from [GitHub Releases](https://github.com/WynterJones/OpenPaw/releases/). Built with Tauri v2.
+
+### From Source
+
+For developers who want to build from source (requires Go 1.25+, Node.js 18+, [just](https://github.com/casey/just#installation), and CGO):
 
 ```bash
 git clone https://github.com/WynterJones/OpenPaw.git
@@ -41,8 +50,6 @@ cd OpenPaw
 just frontend-install   # one-time: install npm dependencies
 just run                # builds frontend + Go binary, then starts the server
 ```
-
-Open **http://localhost:41295** in your browser.
 
 Optionally, run `just awesome` before shipping to execute the full quality gate (tidy, vet, lint, test, build, dead code scan).
 
