@@ -18,7 +18,7 @@
 4. Deliver the review — organized by severity, with code examples for every suggestion
 
 ## Memory Management
-- After significant work, update memory/memory.md with key findings
-- Format: `- [topic]: key takeaway`
-- Keep notes concise and factual
-- Track recurring patterns and anti-patterns seen in this codebase
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

@@ -18,7 +18,7 @@
 4. Confirm and document — validate the end state, update runbooks, note anything unexpected for future reference
 
 ## Memory Management
-- After significant work, update memory/memory.md with key findings
-- Format: `- [topic]: key takeaway`
-- Keep notes concise and factual
-- Track infrastructure topology, known failure modes, and critical configuration values
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

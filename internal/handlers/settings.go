@@ -27,10 +27,11 @@ type SettingsHandler struct {
 	secretsMgr *secrets.Manager
 	client     *llm.Client
 	dataDir    string
+	port       int
 }
 
-func NewSettingsHandler(db *database.DB, agentMgr *agents.Manager, secretsMgr *secrets.Manager, client *llm.Client, dataDir string) *SettingsHandler {
-	return &SettingsHandler{db: db, agentMgr: agentMgr, secretsMgr: secretsMgr, client: client, dataDir: dataDir}
+func NewSettingsHandler(db *database.DB, agentMgr *agents.Manager, secretsMgr *secrets.Manager, client *llm.Client, dataDir string, port int) *SettingsHandler {
+	return &SettingsHandler{db: db, agentMgr: agentMgr, secretsMgr: secretsMgr, client: client, dataDir: dataDir, port: port}
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -327,6 +328,49 @@ func (h *SettingsHandler) ServeBackground(w http.ResponseWriter, r *http.Request
 	http.ServeFile(w, r, bgPath)
 }
 
+func (h *SettingsHandler) GetGeneral(w http.ResponseWriter, r *http.Request) {
+	var bindAddress string
+	h.db.QueryRow("SELECT value FROM settings WHERE key = 'bind_address'").Scan(&bindAddress)
+	if bindAddress == "" {
+		bindAddress = "127.0.0.1"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"bind_address": bindAddress,
+		"port":         h.port,
+		"data_dir":     h.dataDir,
+	})
+}
+
+func (h *SettingsHandler) UpdateGeneral(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BindAddress string `json:"bind_address"`
+		Port        int    `json:"port"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.BindAddress != "" {
+		allowed := map[string]bool{"0.0.0.0": true, "127.0.0.1": true, "localhost": true}
+		if !allowed[req.BindAddress] {
+			writeError(w, http.StatusBadRequest, "bind_address must be 0.0.0.0, 127.0.0.1, or localhost")
+			return
+		}
+		h.upsertSetting("bind_address", req.BindAddress)
+	}
+
+	if req.Port > 0 && req.Port < 65536 {
+		h.upsertSetting("port", fmt.Sprintf("%d", req.Port))
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "general_settings_updated", "settings", "settings", "", "Restart required for changes to take effect")
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "saved — restart required for changes to take effect"})
+}
+
 func (h *SettingsHandler) upsertSetting(key, value string) {
 	if _, err := h.db.Exec(
 		"INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -344,7 +388,7 @@ func resolveAPIKeySource(client *llm.Client) string {
 	if client == nil || !client.IsConfigured() {
 		return "none"
 	}
-	if os.Getenv("OPENROUTER_API_KEY") != "" || os.Getenv("ANTHROPIC_API_KEY") != "" {
+	if os.Getenv("OPENROUTER_API_KEY") != "" {
 		return "env"
 	}
 	return "database"

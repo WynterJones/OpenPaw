@@ -18,7 +18,7 @@
 4. Fix and verify — implement the fix, confirm the bug is gone, run regression tests to ensure nothing else broke
 
 ## Memory Management
-- After significant work, update memory/memory.md with key findings
-- Format: `- [topic]: key takeaway`
-- Keep notes concise and factual
-- Track known gotchas, fragile areas, and recurring failure modes in the codebase
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

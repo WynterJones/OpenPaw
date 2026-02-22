@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Save, Upload, BookOpen, Shield } from 'lucide-react';
+import { ArrowLeft, Save, Upload, BookOpen, Shield, Search } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { Input } from '../components/Input';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { api, gatewayFiles, type AgentRole, type MemoryFile } from '../lib/api';
@@ -26,9 +27,16 @@ export function GatewayEdit() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [gatewayRole, setGatewayRole] = useState<AgentRole | null>(null);
   const [avatarPath, setAvatarPath] = useState('/gateway-avatar.png');
   const [uploading, setUploading] = useState(false);
+
+  const [name, setName] = useState('');
+  const [model, setModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState('soul');
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -63,9 +71,14 @@ export function GatewayEdit() {
         const builder = roles?.find(r => r.slug === 'builder');
         if (builder) {
           setGatewayRole(builder);
+          setName(builder.name);
+          setModel(builder.model);
           setAvatarPath(builder.avatar_path || '/gateway-avatar.png');
         }
       }),
+      api.get<{ id: string; name: string }[]>('/settings/available-models')
+        .then(setAvailableModels)
+        .catch(() => {}),
       loadFiles(),
       loadMemory(),
     ]).finally(() => setLoading(false));
@@ -103,6 +116,27 @@ export function GatewayEdit() {
       toast('error', 'Failed to upload avatar');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      toast('error', 'Name is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.put<AgentRole>('/agent-roles/builder', {
+        name: name.trim(),
+        model,
+        avatar_path: avatarPath,
+      });
+      setGatewayRole(updated);
+      toast('success', 'Gateway saved');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -162,7 +196,12 @@ export function GatewayEdit() {
     );
   }
 
-  const gatewayName = files['SOUL.md']?.match(/^#\s+(.+)/m)?.[1]?.replace('Soul', '').trim() || 'Pounce';
+  const gatewayName = name || gatewayRole?.name || 'Pounce';
+  const hasChanges = gatewayRole && (
+    name !== gatewayRole.name ||
+    model !== gatewayRole.model ||
+    avatarPath !== gatewayRole.avatar_path
+  );
   const currentTab = FILE_TABS.find(t => t.key === activeTab);
   const currentFileContent = currentTab ? (files[currentTab.filename] || '') : '';
   const currentLineCount = currentFileContent.split('\n').length;
@@ -186,13 +225,28 @@ export function GatewayEdit() {
               </div>
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm md:text-base font-semibold text-text-0 truncate">{gatewayName || 'Gateway'}</h1>
+              <h1 className="text-sm md:text-base font-semibold text-text-0 truncate">{gatewayName}</h1>
               <p className="text-[11px] text-text-3 truncate">Edit Gateway</p>
             </div>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary flex-shrink-0">
             Gateway
           </span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/agents')}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            loading={saving}
+            disabled={!hasChanges || !name.trim()}
+            icon={<Save className="w-3.5 h-3.5" />}
+            aria-label={hasChanges ? 'Save (unsaved changes)' : 'Save'}
+          >
+            Save
+          </Button>
         </div>
       </div>
 
@@ -219,22 +273,75 @@ export function GatewayEdit() {
               </Card>
 
               <Card>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-4">About</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-text-3">Role</span>
-                    <span className="text-text-2">Gateway / Router</span>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-text-3">Status</span>
-                    <span className="text-emerald-400">Always active</span>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-text-3">Model</span>
-                    <span className="text-text-2">Configured in Settings</span>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-4">Details</h3>
+                <div className="space-y-4">
+                  <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="Gateway name" />
+                  <div>
+                    <label className="block text-xs font-medium text-text-2 mb-1.5">Model</label>
+                    <div className="relative">
+                      <button
+                        onClick={() => setModelPickerOpen(!modelPickerOpen)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border-1 bg-surface-0 text-sm text-text-1 hover:border-border-0 transition-colors cursor-pointer"
+                      >
+                        <span className="truncate">{availableModels.find(m => m.id === model)?.name || model || 'Select a model'}</span>
+                        <span className="text-text-3 ml-2 text-xs">{modelPickerOpen ? '\u25B2' : '\u25BC'}</span>
+                      </button>
+                      {modelPickerOpen && (
+                        <div className="absolute z-20 mt-1 w-full rounded-lg border border-border-1 bg-surface-1 shadow-xl max-h-64 overflow-hidden flex flex-col">
+                          <div className="p-2 border-b border-border-0">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-3" />
+                              <input
+                                type="text"
+                                value={modelSearch}
+                                onChange={e => setModelSearch(e.target.value)}
+                                placeholder="Search models..."
+                                className="w-full pl-7 pr-2 py-1.5 rounded-md bg-surface-2 border border-border-1 text-sm text-text-1 placeholder:text-text-3 outline-none focus:border-accent-primary"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="overflow-y-auto flex-1">
+                            {availableModels
+                              .filter(m => m.id.toLowerCase().includes(modelSearch.toLowerCase()) || m.name.toLowerCase().includes(modelSearch.toLowerCase()))
+                              .slice(0, 30)
+                              .map(m => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => { setModel(m.id); setModelPickerOpen(false); setModelSearch(''); }}
+                                  className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer hover:bg-surface-2 ${
+                                    m.id === model ? 'bg-accent-muted text-accent-text' : 'text-text-1'
+                                  }`}
+                                >
+                                  <span className="block truncate font-medium">{m.name}</span>
+                                  <span className="block truncate text-xs text-text-3">{m.id}</span>
+                                </button>
+                              ))}
+                            {availableModels.filter(m => m.id.toLowerCase().includes(modelSearch.toLowerCase()) || m.name.toLowerCase().includes(modelSearch.toLowerCase())).length === 0 && (
+                              <p className="p-3 text-xs text-text-3 text-center">No models found</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </Card>
+
+              <div className="px-1 space-y-1.5">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-text-3">Role</span>
+                  <span className="text-text-2">Gateway / Router</span>
+                </div>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-text-3">Status</span>
+                  <span className="text-emerald-400">Always active</span>
+                </div>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-text-3">Slug</span>
+                  <span className="text-text-2 font-mono">builder</span>
+                </div>
+              </div>
 
               <Card>
                 <p className="text-xs text-text-3 leading-relaxed">

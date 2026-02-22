@@ -98,7 +98,7 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Model == "" {
-		req.Model = "sonnet"
+		req.Model = "anthropic/claude-haiku-4-5"
 	}
 
 	// Check for duplicate slug

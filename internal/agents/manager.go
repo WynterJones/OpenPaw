@@ -77,6 +77,7 @@ type Manager struct {
 	NotifyFn        func(title, body, priority, sourceAgentSlug, sourceType, link string)
 	manifestCache   sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState
+	activeSubAgents int32    // atomic counter for concurrent sub-agents
 }
 
 type runningAgent struct {
@@ -116,6 +117,15 @@ func (m *Manager) Broadcast(msgType string, payload interface{}) {
 
 func (m *Manager) Client() *llm.Client {
 	return m.client
+}
+
+// GatewayName returns the configured gateway name from the builder role, falling back to "Pounce".
+func (m *Manager) GatewayName() string {
+	var name string
+	if err := m.db.QueryRow("SELECT name FROM agent_roles WHERE slug = 'builder'").Scan(&name); err == nil && name != "" {
+		return name
+	}
+	return "Pounce"
 }
 
 func (m *Manager) buildAgentList() string {

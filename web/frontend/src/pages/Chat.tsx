@@ -1,16 +1,17 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2, Trash2, Pencil, Check, X,
   DollarSign, Zap, Minimize2, Square, Users,
-  Paperclip, FileText,
+  Paperclip, FileText, FolderOpen,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { SearchBar } from '../components/SearchBar';
 import { PagePanel } from '../components/PagePanel';
 import { Modal } from '../components/Modal';
-import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, contextApi, type ContextFile, threadMembers } from '../lib/api';
+import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, threadMembers } from '../lib/api';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
@@ -22,7 +23,38 @@ import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
 
+type ContextItem =
+  | { kind: 'file'; file: ContextFile }
+  | { kind: 'folder'; folder: ContextTreeNode; files: ContextFile[] };
+
+function collectFolderFiles(node: ContextTreeNode): ContextFile[] {
+  const files = [...node.files];
+  for (const child of node.children) {
+    files.push(...collectFolderFiles(child));
+  }
+  return files;
+}
+
+function buildContextItems(tree: ContextTree): ContextItem[] {
+  const items: ContextItem[] = [];
+  for (const folder of tree.folders) {
+    const files = collectFolderFiles(folder);
+    if (files.length > 0) {
+      items.push({ kind: 'folder', folder, files });
+      for (const file of files) {
+        items.push({ kind: 'file', file });
+      }
+    }
+  }
+  for (const file of tree.files) {
+    items.push({ kind: 'file', file });
+  }
+  return items;
+}
+
 export function Chat() {
+  const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
+  const chatNavigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const {
@@ -35,7 +67,7 @@ export function Chat() {
     editInputRef,
   } = useThreadList();
   const {
-    streamingText, setStreamingText,
+    streamingText, setStreamingText, appendStreamingText,
     streamingTools, setStreamingTools,
     streamingWidgets, setStreamingWidgets,
     costInfo, setCostInfo,
@@ -66,7 +98,7 @@ export function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const THREADS_PER_PAGE = 10;
 
-  const [contextFiles, setContextFiles] = useState<ContextFile[]>([]);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [attachedContextFiles, setAttachedContextFiles] = useState<ContextFile[]>([]);
 
   // File attachment state
@@ -85,9 +117,10 @@ export function Chat() {
     r.slug.toLowerCase().includes(mentionFilter.toLowerCase())
   ), [userRoles, mentionFilter]);
 
-  const filteredContextFiles = useMemo(() => contextFiles.filter(f =>
-    f.name.toLowerCase().includes(contextFilter.toLowerCase())
-  ), [contextFiles, contextFilter]);
+  const filteredContextItems = useMemo(() => contextItems.filter(item => {
+    const name = item.kind === 'file' ? item.file.name : item.folder.name;
+    return name.toLowerCase().includes(contextFilter.toLowerCase());
+  }), [contextItems, contextFilter]);
 
   const insertMention = (role: AgentRole) => {
     const ta = textareaRef.current;
@@ -108,35 +141,55 @@ export function Chat() {
     }, 0);
   };
 
-  const insertContextFile = (file: ContextFile) => {
+  const insertContextItem = (item: ContextItem) => {
     const ta = textareaRef.current;
     if (!ta || contextAnchorRef.current === null) return;
     const before = input.slice(0, contextAnchorRef.current);
     const after = input.slice(ta.selectionStart);
-    const tag = `[[${file.name}]]`;
-    const newValue = `${before}${tag} ${after}`;
-    setInput(newValue);
+
+    if (item.kind === 'file') {
+      const tag = `[[${item.file.name}]]`;
+      const newValue = `${before}${tag} ${after}`;
+      setInput(newValue);
+      if (!attachedContextFiles.some(f => f.id === item.file.id)) {
+        setAttachedContextFiles(prev => [...prev, item.file]);
+      }
+      setTimeout(() => {
+        const pos = before.length + tag.length + 1;
+        ta.selectionStart = pos;
+        ta.selectionEnd = pos;
+        ta.focus();
+        autoResize(ta);
+      }, 0);
+    } else {
+      const tag = `[[${item.folder.name}/]]`;
+      const newValue = `${before}${tag} ${after}`;
+      setInput(newValue);
+      setAttachedContextFiles(prev => {
+        const existingIds = new Set(prev.map(f => f.id));
+        const newFiles = item.files.filter(f => !existingIds.has(f.id));
+        return [...prev, ...newFiles];
+      });
+      setTimeout(() => {
+        const pos = before.length + tag.length + 1;
+        ta.selectionStart = pos;
+        ta.selectionEnd = pos;
+        ta.focus();
+        autoResize(ta);
+      }, 0);
+    }
+
     setContextOpen(false);
     setContextFilter('');
     contextAnchorRef.current = null;
-    if (!attachedContextFiles.some(f => f.id === file.id)) {
-      setAttachedContextFiles(prev => [...prev, file]);
-    }
-    setTimeout(() => {
-      const pos = before.length + tag.length + 1;
-      ta.selectionStart = pos;
-      ta.selectionEnd = pos;
-      ta.focus();
-      autoResize(ta);
-    }, 0);
   };
 
-  // Load context files for !! autocomplete
-  const loadContextFiles = async () => {
+  // Load context tree for !! autocomplete (files + folders)
+  const loadContextItems = async () => {
     try {
-      const files = await contextApi.listFiles();
-      setContextFiles(files || []);
-    } catch (e) { console.warn('loadContextFiles failed:', e); }
+      const tree = await contextApi.tree();
+      if (tree) setContextItems(buildContextItems(tree));
+    } catch (e) { console.warn('loadContextItems failed:', e); }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -167,7 +220,7 @@ export function Chat() {
       setContextFilter(bangMatch[1]);
       setContextOpen(true);
       setContextIndex(0);
-      if (contextFiles.length === 0) loadContextFiles();
+      if (contextItems.length === 0) loadContextItems();
     } else if (!bangMatch) {
       setContextOpen(false);
       setContextFilter('');
@@ -176,21 +229,21 @@ export function Chat() {
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Context file autocomplete
-    if (contextOpen && filteredContextFiles.length > 0) {
+    // Context file/folder autocomplete
+    if (contextOpen && filteredContextItems.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setContextIndex(i => (i + 1) % filteredContextFiles.length);
+        setContextIndex(i => (i + 1) % filteredContextItems.length);
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setContextIndex(i => (i - 1 + filteredContextFiles.length) % filteredContextFiles.length);
+        setContextIndex(i => (i - 1 + filteredContextItems.length) % filteredContextItems.length);
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertContextFile(filteredContextFiles[contextIndex]);
+        insertContextItem(filteredContextItems[contextIndex]);
         return;
       }
       if (e.key === 'Escape') {
@@ -237,9 +290,11 @@ export function Chat() {
   const [showMembers, setShowMembers] = useState(true);
   const [routingIndicator, setRoutingIndicator] = useState<string | null>(null);
   const [activeAgentSlug, setActiveAgentSlug] = useState<string | null>(null);
+  const [subAgentTasks, setSubAgentTasks] = useState<SubAgentTask[]>([]);
   const activeThreadRef = useRef(activeThread);
   activeThreadRef.current = activeThread;
   const hadToolSinceLastTextRef = useRef(false);
+  const toolInputMapRef = useRef<Map<string, { endpoint?: string }>>(new Map());
   const loadThreadsRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // WebSocket handler
@@ -337,18 +392,18 @@ export function Chat() {
           if (event.text) {
             const needsSep = hadToolSinceLastTextRef.current;
             hadToolSinceLastTextRef.current = false;
-            setStreamingText(prev => {
-              if (needsSep && prev.length > 0) {
-                return prev + '\n\n' + event.text;
-              }
-              return prev + event.text;
-            });
+            appendStreamingText(event.text, needsSep);
           }
           break;
         case 'tool_start':
           if (event.tool_name) {
             const detail = event.tool_input ? getToolDetail(event.tool_name!, event.tool_input) : '';
             const toolId = event.tool_id || `tool-${Date.now()}`;
+            if (event.tool_name === 'call_tool' && event.tool_input) {
+              toolInputMapRef.current.set(toolId, {
+                endpoint: (event.tool_input.endpoint as string) || undefined,
+              });
+            }
             setStreamingTools(prev => {
               const existing = prev.findIndex(t => t.id === toolId);
               if (existing >= 0) {
@@ -373,6 +428,9 @@ export function Chat() {
                 const { __tool_uuid: _, ...withoutUuid } = parsed;
                 void _;
 
+                const storedInput = toolInputMapRef.current.get(event.tool_id || '');
+                const endpoint = storedInput?.endpoint;
+
                 if (withoutUuid.__widget) {
                   const { __widget, ...rest } = withoutUuid;
                   setStreamingWidgets(prev => [...prev, {
@@ -380,6 +438,7 @@ export function Chat() {
                     title: __widget.title,
                     tool_id: toolUuid,
                     tool_name: event.tool_name,
+                    endpoint,
                     data: rest,
                   }]);
                 } else if (event.tool_name === 'call_tool') {
@@ -388,6 +447,7 @@ export function Chat() {
                     type: detected,
                     tool_id: toolUuid,
                     tool_name: event.tool_name,
+                    endpoint,
                     data: withoutUuid,
                   }]);
                 }
@@ -407,8 +467,48 @@ export function Chat() {
       }
     }
 
+    // Sub-agent delegation events
+    if (msg.type === 'subagent_status') {
+      const status = payload?.status as string;
+      const subagentId = payload?.subagent_id as string;
+
+      if (status === 'started' && subagentId) {
+        setSubAgentTasks(prev => [...prev, {
+          subagent_id: subagentId,
+          agent_slug: payload?.agent_slug as string || '',
+          agent_name: payload?.agent_name as string || '',
+          task_summary: payload?.task_summary as string || '',
+          status: 'started',
+        }]);
+      } else if ((status === 'completed' || status === 'failed') && subagentId) {
+        setSubAgentTasks(prev => prev.map(t =>
+          t.subagent_id === subagentId
+            ? {
+                ...t,
+                status: status as 'completed' | 'failed',
+                result_preview: (payload?.result_preview as string) || t.streaming_text || '',
+                cost_usd: (payload?.cost_usd as number) || 0,
+              }
+            : t
+        ));
+      }
+    }
+
+    if (msg.type === 'subagent_stream') {
+      const subagentId = payload?.subagent_id as string;
+      const text = payload?.text as string;
+      if (subagentId && text) {
+        setSubAgentTasks(prev => prev.map(t =>
+          t.subagent_id === subagentId
+            ? { ...t, streaming_text: (t.streaming_text || '') + text }
+            : t
+        ));
+      }
+    }
+
     if (msg.type === 'agent_completed') {
       resetStreaming();
+      setSubAgentTasks([]);
       setThinking(false);
       setWorkStatus(null);
       setRoutingIndicator(null);
@@ -420,7 +520,7 @@ export function Chat() {
       }
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
-  }, [resetStreaming, setCostInfo, setStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads]);
+  }, [resetStreaming, setCostInfo, setStreamingText, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads]);
 
   const { connected: wsConnected } = useWebSocket({
     onMessage: handleWSMessage,
@@ -441,23 +541,40 @@ export function Chat() {
         initActiveThreadIds();
       } catch (e) { console.warn('loadThreads init failed:', e); setThreads([]); setActiveThread(null); }
       loadRoles();
-      loadContextFiles();
+      loadContextItems();
     };
     init();
   }, [setThreads]);
+
+  // Open thread from URL param (e.g. /chat/:threadId from notification click)
+  useEffect(() => {
+    if (urlThreadId && urlThreadId !== activeThread) {
+      setActiveThread(urlThreadId);
+      chatNavigate('/chat', { replace: true });
+    }
+  }, [urlThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     // Clear all transient streaming/thinking state when switching threads
     resetStreaming();
+    setSubAgentTasks([]);
     setThinkingExpanded(false);
     setThinking(false);
     setWorkStatus(null);
     hadToolSinceLastTextRef.current = false;
+    toolInputMapRef.current.clear();
     stopPolling();
 
     setRoutingIndicator(null);
     setActiveAgentSlug(null);
 
     if (activeThread) {
+      // Immediately clear stale sidebar indicator; status check / WebSocket will restore if truly active
+      setActiveThreadIds(prev => {
+        if (!prev.has(activeThread)) return prev;
+        const next = new Set(prev); next.delete(activeThread); return next;
+      });
+
       localStorage.setItem('openpaw_active_thread', activeThread);
       loadMessages(activeThread);
       loadStats(activeThread);
@@ -474,15 +591,11 @@ export function Chat() {
           }
           setThinking(false);
           setWorkStatus(null);
+          setActiveThreadIds(prev => { const next = new Set(prev); next.add(activeThread!); return next; });
         } else if (status.active) {
           setThinking(true);
           setWorkStatus('Working...');
-        } else {
-          // Thread is not active — clear stale sidebar indicator
-          setActiveThreadIds(prev => {
-            if (!prev.has(activeThread!)) return prev;
-            const next = new Set(prev); next.delete(activeThread!); return next;
-          });
+          setActiveThreadIds(prev => { const next = new Set(prev); next.add(activeThread!); return next; });
         }
       }).catch((e) => { console.warn('recoverStreamState failed:', e); });
 
@@ -494,7 +607,23 @@ export function Chat() {
       setMembers([]);
     }
   }, [activeThread, resetStreaming, setStreamingText, setStreamingTools]);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingText]);
+
+  const scrollTimeoutRef = useRef<number>(0);
+  useEffect(() => {
+    if (!scrollTimeoutRef.current) {
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        scrollTimeoutRef.current = 0;
+      }, 150);
+    }
+  }, [messages, streamingText]);
+
+  const initActiveThreadIds = async () => {
+    try {
+      const data = await api.get<{ active_thread_ids: string[] }>('/chat/threads/active');
+      setActiveThreadIds(new Set(data.active_thread_ids || []));
+    } catch (e) { console.warn('initActiveThreadIds failed:', e); }
+  };
 
   const loadThreads = async () => {
     try {
@@ -504,16 +633,10 @@ export function Chat() {
       if (activeThread && !list.some(t => t.id === activeThread)) {
         setActiveThread(null);
       }
+      initActiveThreadIds();
     } catch (e) { console.warn('loadThreads failed:', e); setThreads([]); }
   };
   loadThreadsRef.current = loadThreads;
-
-  const initActiveThreadIds = async () => {
-    try {
-      const data = await api.get<{ active_thread_ids: string[] }>('/chat/threads/active');
-      setActiveThreadIds(new Set(data.active_thread_ids || []));
-    } catch (e) { console.warn('initActiveThreadIds failed:', e); }
-  };
   const loadMessages = async (threadId: string) => { try { const data = await api.get<ChatMessage[]>(`/chat/threads/${threadId}/messages`); setMessages(data || []); } catch (e) { console.warn('loadMessages failed:', e); setMessages([]); } };
   const loadStats = async (threadId: string) => { try { const data = await api.get<ThreadStats>(`/chat/threads/${threadId}/stats`); setThreadStats(data); } catch (e) { console.warn('loadStats failed:', e); setThreadStats(null); } };
   const loadRoles = async () => { try { const data = await api.get<AgentRole[]>('/agent-roles?enabled=true'); setRoles(data || []); } catch (e) { console.warn('loadRoles failed:', e); setRoles([]); } };
@@ -587,13 +710,8 @@ export function Chat() {
             ? `Building ${status.work_order_title || ''}...`
             : 'Processing...';
           setWorkStatus(label);
+          setActiveThreadIds(prev => { const next = new Set(prev); next.add(activeThread); return next; });
           startPolling(activeThread, '');
-        } else {
-          // Not active — clear stale sidebar indicator if present
-          setActiveThreadIds(prev => {
-            if (!prev.has(activeThread)) return prev;
-            const next = new Set(prev); next.delete(activeThread); return next;
-          });
         }
       } catch (e) { console.warn('checkOngoing failed:', e); }
     };
@@ -645,8 +763,10 @@ export function Chat() {
 
     // Reset streaming state
     resetStreaming();
+    setSubAgentTasks([]);
     setRoutingIndicator(null);
     hadToolSinceLastTextRef.current = false;
+    toolInputMapRef.current.clear();
 
     setInput('');
     setAttachedContextFiles([]);
@@ -727,7 +847,7 @@ export function Chat() {
   const pagedThreads = filteredThreads.slice((clampedPage - 1) * THREADS_PER_PAGE, clampedPage * THREADS_PER_PAGE);
   const activeRole = roles.find(r => r.slug === agent);
   const thinkingRole = activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : activeRole;
-  const isStreaming = streamingText.length > 0 || streamingTools.length > 0;
+  const isStreaming = streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -743,27 +863,6 @@ export function Chat() {
           <div className="p-3 space-y-2">
             <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
-            <div className="flex items-center justify-between px-1 py-2 border-t border-b border-border-0">
-              <button
-                onClick={() => setThreadPage(p => Math.max(1, p - 1))}
-                disabled={clampedPage <= 1}
-                className="p-1 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-              </button>
-              <span className="text-[11px] text-text-3 tabular-nums">
-                {clampedPage} / {totalPages}
-              </span>
-              <button
-                onClick={() => setThreadPage(p => Math.min(totalPages, p + 1))}
-                disabled={clampedPage >= totalPages}
-                className="p-1 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Next page"
-              >
-                <ChevronRight className="w-4 h-4" aria-hidden="true" />
-              </button>
-            </div>
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
             {pagedThreads.length === 0 ? (
@@ -822,6 +921,27 @@ export function Chat() {
                 )}
               </div>
             ))}
+          </div>
+          <div className="flex items-center justify-between px-4 py-2 border-t border-border-0">
+            <button
+              onClick={() => setThreadPage(p => Math.max(1, p - 1))}
+              disabled={clampedPage <= 1}
+              className="p-1 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            </button>
+            <span className="text-[11px] text-text-3 tabular-nums">
+              {clampedPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setThreadPage(p => Math.min(totalPages, p + 1))}
+              disabled={clampedPage >= totalPages}
+              className="p-1 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
         {showThreads && <div className="md:hidden fixed inset-0 bg-black/40 z-20" onClick={() => setShowThreads(false)} />}
@@ -887,7 +1007,7 @@ export function Chat() {
                     </div>
                     <h2 className="text-xl font-bold text-text-0 mb-1.5">Start a conversation</h2>
                     <p className="text-sm text-text-3 max-w-sm mb-8">
-                      Ask anything, mention agents with <span className="text-text-1 font-medium">@</span> to bring them into the chat, or attach context with <span className="text-text-1 font-medium">!!</span>
+                      Ask anything, mention agents with <span className="text-text-1 font-medium">@</span> to bring them into the chat, or attach files & folders with <span className="text-text-1 font-medium">!!</span>
                     </p>
                     {userRoles.length > 0 ? (
                       <div className="grid grid-cols-3 gap-2 max-w-xs w-full">
@@ -938,6 +1058,7 @@ export function Chat() {
                     role={thinkingRole || null}
                     roles={roles}
                     widgets={streamingWidgets}
+                    subAgentTasks={subAgentTasks}
                   />
                 )}
                 {routingIndicator && !thinking && !isStreaming && (
@@ -981,29 +1102,38 @@ export function Chat() {
               </div>
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
-                  {/* Context file !! autocomplete dropdown */}
-                  {contextOpen && filteredContextFiles.length > 0 && (
+                  {/* Context file/folder !! autocomplete dropdown */}
+                  {contextOpen && filteredContextItems.length > 0 && (
                     <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Context files">
                       <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0">
-                        Context Files
+                        Context
                       </div>
-                      {filteredContextFiles.map((file, i) => (
-                        <button
-                          key={file.id}
-                          role="option"
-                          aria-selected={i === contextIndex}
-                          onClick={() => insertContextFile(file)}
-                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors cursor-pointer ${
-                            i === contextIndex ? 'bg-accent-muted' : 'hover:bg-surface-2'
-                          }`}
-                        >
-                          <FileText className="w-4 h-4 text-text-3 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-text-0 truncate">{file.name}</p>
-                            <p className="text-xs text-text-3 truncate">{file.mime_type}</p>
-                          </div>
-                        </button>
-                      ))}
+                      {filteredContextItems.map((item, i) => {
+                        const key = item.kind === 'file' ? `f-${item.file.id}` : `d-${item.folder.id}`;
+                        const name = item.kind === 'file' ? item.file.name : item.folder.name;
+                        const sub = item.kind === 'file' ? item.file.mime_type : `${item.files.length} file${item.files.length !== 1 ? 's' : ''}`;
+                        const isNested = item.kind === 'file' && item.file.folder_id;
+                        return (
+                          <button
+                            key={key}
+                            role="option"
+                            aria-selected={i === contextIndex}
+                            onClick={() => insertContextItem(item)}
+                            className={`w-full flex items-center justify-between gap-3 px-4 py-2 text-left transition-colors cursor-pointer ${
+                              i === contextIndex ? 'bg-accent-muted' : 'hover:bg-surface-2'
+                            } ${isNested ? 'pl-8' : ''}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {item.kind === 'folder'
+                                ? <FolderOpen className="w-4 h-4 text-accent-primary flex-shrink-0" />
+                                : <FileText className="w-4 h-4 text-text-3 flex-shrink-0" />
+                              }
+                              <span className="text-sm font-medium text-text-0 truncate">{name}{item.kind === 'folder' ? '/' : ''}</span>
+                            </div>
+                            <span className="text-xs text-text-3 flex-shrink-0">{sub}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                   {/* Mention @ autocomplete dropdown */}
@@ -1074,7 +1204,7 @@ export function Chat() {
                     value={input}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
-                    placeholder="Ask anything... (@ agents, !! context files)"
+                    placeholder="Ask anything... (@ agents, !! context)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
                     disabled={sending}

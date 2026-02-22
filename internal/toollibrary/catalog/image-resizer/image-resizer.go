@@ -2,24 +2,67 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+var (
+	imageStore = &imageFileStore{files: make(map[string]string)}
+	dataDir    string
+)
+
+type imageFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *imageFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *imageFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
+
+func initDataDir() {
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		dataDir = filepath.Join(dir, "image-resizer")
+	} else {
+		dataDir = filepath.Join(os.TempDir(), "image-resizer")
+	}
+	os.MkdirAll(dataDir, 0755)
+
+	entries, _ := os.ReadDir(dataDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "resized-") {
+			imageStore.Add(e.Name(), filepath.Join(dataDir, e.Name()))
+		}
+	}
+}
 
 const maxUploadSize = 32 << 20 // 32MB
 
 func registerRoutes(r chi.Router) {
 	r.Post("/resize", handleResize)
 	r.Post("/info", handleInfo)
+	r.Get("/files/{filename}", handleServeFile)
 }
 
 // nearestNeighborResize performs a nearest-neighbor resize of the source image
@@ -199,8 +242,17 @@ func handleResize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Base64 encode
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	ext := ".png"
+	if outputFormat == "jpeg" {
+		ext = ".jpeg"
+	}
+	filename := fmt.Sprintf("resized-%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf.Bytes(), 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save resized image: "+err.Error())
+		return
+	}
+	imageStore.Add(filename, filePath)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"original_width":  origWidth,
@@ -209,8 +261,37 @@ func handleResize(w http.ResponseWriter, r *http.Request) {
 		"height":          targetHeight,
 		"format":          outputFormat,
 		"size_bytes":      buf.Len(),
-		"image_base64":    encoded,
+		"file_path":       filename,
+		"__widget": map[string]string{
+			"type":  "image",
+			"title": "Resized Image",
+		},
 	})
+}
+
+func handleServeFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "resized-") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	fullPath, ok := imageStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	ext := filepath.Ext(fullPath)
+	contentTypes := map[string]string{
+		".png":  "image/png",
+		".jpeg": "image/jpeg",
+	}
+	if ct, ok := contentTypes[ext]; ok {
+		w.Header().Set("Content-Type", ct)
+	}
+	http.ServeFile(w, r, fullPath)
 }
 
 func handleInfo(w http.ResponseWriter, r *http.Request) {

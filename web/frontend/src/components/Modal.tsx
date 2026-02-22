@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -23,29 +23,33 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   const previousFocus = useRef<HTMLElement | null>(null);
   const titleId = `modal-title-${title.toLowerCase().replace(/\s+/g, '-')}`;
 
-  const trapFocus = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') { onClose(); return; }
-    if (e.key !== 'Tab') return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }, [onClose]);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (open) {
       previousFocus.current = document.activeElement as HTMLElement;
       document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', trapFocus);
+
+      const handler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') { onCloseRef.current(); return; }
+        if (e.key !== 'Tab') return;
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+
+      window.addEventListener('keydown', handler);
       requestAnimationFrame(() => {
         const dialog = dialogRef.current;
         if (dialog) {
@@ -56,11 +60,11 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
       });
       return () => {
         document.body.style.overflow = '';
-        window.removeEventListener('keydown', trapFocus);
+        window.removeEventListener('keydown', handler);
         previousFocus.current?.focus();
       };
     }
-  }, [open, trapFocus]);
+  }, [open]);
 
   if (!open) return null;
 

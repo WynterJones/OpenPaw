@@ -689,17 +689,17 @@ export function Context() {
         <aside className={`${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}>
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
             {/* About You button — always visible at top */}
-            <button
-              onClick={openAboutYou}
-              className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer mb-1 ${
-                aboutYouMode
-                  ? 'bg-accent-muted text-accent-text'
-                  : 'text-text-1 hover:bg-surface-2'
-              }`}
-            >
-              <UserPen className="w-4 h-4 flex-shrink-0" />
-              About You
-            </button>
+            <div className="mb-1">
+              <Button
+                variant={aboutYouMode ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={openAboutYou}
+                icon={<UserPen className="w-4 h-4" />}
+                className="w-full"
+              >
+                About You
+              </Button>
+            </div>
 
             <div className="mx-2 mb-1 border-b border-border-0" />
 
@@ -846,16 +846,18 @@ export function Context() {
                     Loading...
                   </div>
                 ) : (
-                  <textarea
-                    className="flex-1 w-full resize-none bg-surface-0 text-text-1 text-sm font-mono p-3 md:p-5 outline-none leading-relaxed"
-                    value={aboutYouContent}
-                    onChange={(e) => {
-                      setAboutYouContent(e.target.value);
-                      setAboutYouDirty(e.target.value !== aboutYouSaved);
-                    }}
-                    placeholder="Tell your agents about yourself..."
-                    spellCheck={false}
-                  />
+                  <div className="flex-1 px-3 md:px-5 pb-3 md:pb-5">
+                    <textarea
+                      className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
+                      value={aboutYouContent}
+                      onChange={(e) => {
+                        setAboutYouContent(e.target.value);
+                        setAboutYouDirty(e.target.value !== aboutYouSaved);
+                      }}
+                      placeholder="Tell your agents about yourself..."
+                      spellCheck={false}
+                    />
+                  </div>
                 )}
               </div>
             </>
@@ -961,16 +963,18 @@ export function Context() {
                     Loading content...
                   </div>
                 ) : isTextMime(selectedFile.mime_type) ? (
-                  <textarea
-                    className="flex-1 w-full resize-none bg-surface-0 text-text-1 text-sm font-mono p-3 md:p-5 outline-none leading-relaxed"
-                    value={editedContent}
-                    onChange={(e) => {
-                      setEditedContent(e.target.value);
-                      setIsDirty(e.target.value !== fileContent);
-                    }}
-                    placeholder="File is empty..."
-                    spellCheck={false}
-                  />
+                  <div className="flex-1 px-3 md:px-5 pb-3 md:pb-5 pt-3">
+                    <textarea
+                      className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
+                      value={editedContent}
+                      onChange={(e) => {
+                        setEditedContent(e.target.value);
+                        setIsDirty(e.target.value !== fileContent);
+                      }}
+                      placeholder="File is empty..."
+                      spellCheck={false}
+                    />
+                  </div>
                 ) : isImageMime(selectedFile.mime_type) ? (
                   <div className="flex-1 flex items-center justify-center p-4 md:p-8 bg-surface-0 overflow-auto">
                     <img

@@ -26,6 +26,7 @@ logs/
 /tools/
 /dashboards/
 /agents/
+/tool_data/
 
 # OS files
 .DS_Store

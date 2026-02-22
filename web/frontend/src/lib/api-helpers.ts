@@ -5,6 +5,7 @@ import type {
   ContextFolder,
   ChatAttachment,
   MemoryFile,
+  MemoryItem,
   Skill,
   LibrarySkill,
   SkillsShSkill,
@@ -129,6 +130,16 @@ export const agentFiles = {
   update: (slug: string, filename: string, content: string) => api.put<{ filename: string; status: string }>(`/agent-roles/${slug}/files/${filename}`, { content }),
   init: (slug: string) => api.post<{ status: string }>(`/agent-roles/${slug}/files/init`),
   listMemory: (slug: string) => api.get<MemoryFile[]>(`/agent-roles/${slug}/memory`),
+};
+
+// Agent SQLite memory helpers
+export const agentMemories = {
+  list: (slug: string, category?: string) => {
+    const params = category ? `?category=${encodeURIComponent(category)}` : '';
+    return api.get<MemoryItem[]>(`/agent-roles/${slug}/memories${params}`);
+  },
+  stats: (slug: string) => api.get<{ total_active: number; total_archived: number; categories: Record<string, number> }>(`/agent-roles/${slug}/memories/stats`),
+  delete: (slug: string, memoryId: string) => api.delete(`/agent-roles/${slug}/memories/${memoryId}`),
 };
 
 // Global skills helpers

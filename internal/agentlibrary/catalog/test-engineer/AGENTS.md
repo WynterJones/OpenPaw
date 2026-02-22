@@ -16,3 +16,9 @@
 2. Design test plan — scenarios, priorities, coverage targets
 3. Write tests — unit, integration, and end-to-end as appropriate
 4. Review coverage — identify gaps, add regression tests for known bugs
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

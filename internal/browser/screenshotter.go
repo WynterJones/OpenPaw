@@ -38,10 +38,19 @@ func (m *Manager) captureAndBroadcast(s *Session) {
 	s.mu.Unlock()
 
 	// Take the screenshot outside the lock to avoid blocking other operations.
+	// Use Clip with Scale:1 to ensure the output image matches the viewport
+	// dimensions exactly, regardless of the host's device pixel ratio (e.g. 2x on Retina).
 	quality := 60
-	screenshot, err := page.Screenshot(true, &proto.PageCaptureScreenshot{
+	screenshot, err := page.Screenshot(false, &proto.PageCaptureScreenshot{
 		Format:  proto.PageCaptureScreenshotFormatJpeg,
 		Quality: &quality,
+		Clip: &proto.PageViewport{
+			X:      0,
+			Y:      0,
+			Width:  1280,
+			Height: 900,
+			Scale:  1,
+		},
 	})
 	if err != nil {
 		return

@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,15 +19,52 @@ var (
 	openaiTTSKey    string
 	openaiTTSClient = &http.Client{Timeout: 60 * time.Second}
 	openaiTTSBase   = "https://api.openai.com/v1"
+	audioStore      = &audioFileStore{files: make(map[string]string)}
+	audioDir        string
 )
+
+type audioFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *audioFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *audioFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
 
 func initOpenAITTS(key string) {
 	openaiTTSKey = key
+
+	// Set up persistent audio directory
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		audioDir = filepath.Join(dir, "openai-tts")
+	} else {
+		audioDir = filepath.Join(os.TempDir(), "openai-tts")
+	}
+	os.MkdirAll(audioDir, 0755)
+
+	// Scan for existing audio files to restore the in-memory store
+	entries, _ := os.ReadDir(audioDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "openai-tts-") {
+			audioStore.Add(e.Name(), filepath.Join(audioDir, e.Name()))
+		}
+	}
 }
 
 func registerRoutes(r chi.Router) {
 	r.Post("/tts", handleTTS)
 	r.Get("/voices", handleListVoices)
+	r.Get("/audio/{filename}", handleServeAudio)
 }
 
 type openaiTTSRequest struct {
@@ -60,7 +100,6 @@ func handleTTS(w http.ResponseWriter, r *http.Request) {
 		req.ResponseFormat = "mp3"
 	}
 
-	// Validate voice
 	validVoices := map[string]bool{
 		"alloy": true, "echo": true, "fable": true,
 		"onyx": true, "nova": true, "shimmer": true,
@@ -70,19 +109,16 @@ func handleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate model
 	if req.Model != "tts-1" && req.Model != "tts-1-hd" {
 		writeError(w, http.StatusBadRequest, "invalid model: must be tts-1 or tts-1-hd")
 		return
 	}
 
-	// Validate speed
 	if req.Speed < 0.25 || req.Speed > 4.0 {
 		writeError(w, http.StatusBadRequest, "speed must be between 0.25 and 4.0")
 		return
 	}
 
-	// Validate response format
 	validFormats := map[string]bool{
 		"mp3": true, "opus": true, "aac": true, "flac": true,
 	}
@@ -126,42 +162,74 @@ func handleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine file extension and content type
 	extMap := map[string]string{
-		"mp3":  ".mp3",
-		"opus": ".opus",
-		"aac":  ".aac",
-		"flac": ".flac",
+		"mp3": ".mp3", "opus": ".opus", "aac": ".aac", "flac": ".flac",
 	}
 	contentTypeMap := map[string]string{
-		"mp3":  "audio/mpeg",
-		"opus": "audio/opus",
-		"aac":  "audio/aac",
-		"flac": "audio/flac",
+		"mp3": "audio/mpeg", "opus": "audio/opus", "aac": "audio/aac", "flac": "audio/flac",
 	}
 
 	ext := extMap[req.ResponseFormat]
 	contentType := contentTypeMap[req.ResponseFormat]
 
-	tmpFile, err := os.CreateTemp("", "openai-tts-*"+ext)
+	filename := fmt.Sprintf("openai-tts-%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(audioDir, filename)
+	outFile, err := os.Create(filePath)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp file")
+		writeError(w, http.StatusInternalServerError, "failed to create audio file")
 		return
 	}
-	defer tmpFile.Close()
+	defer outFile.Close()
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		os.Remove(tmpFile.Name())
+	if _, err := io.Copy(outFile, resp.Body); err != nil {
+		os.Remove(filePath)
 		writeError(w, http.StatusInternalServerError, "failed to save audio data")
 		return
 	}
 
+	audioStore.Add(filename, filePath)
+
+	displayText := req.Text
+	if len(displayText) > 80 {
+		displayText = displayText[:77] + "..."
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"file_path":    tmpFile.Name(),
+		"audio_file":   filename,
 		"voice":        req.Voice,
 		"model":        req.Model,
 		"content_type": contentType,
+		"text":         displayText,
+		"__widget": map[string]string{
+			"type":  "audio-player",
+			"title": "OpenAI TTS",
+		},
 	})
+}
+
+func handleServeAudio(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "openai-tts-") {
+		writeError(w, http.StatusBadRequest, "invalid audio filename")
+		return
+	}
+
+	fullPath, ok := audioStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "audio file not found")
+		return
+	}
+
+	ext := filepath.Ext(fullPath)
+	contentTypes := map[string]string{
+		".mp3": "audio/mpeg", ".opus": "audio/opus", ".aac": "audio/aac", ".flac": "audio/flac",
+	}
+	if ct, ok := contentTypes[ext]; ok {
+		w.Header().Set("Content-Type", ct)
+	}
+	http.ServeFile(w, r, fullPath)
 }
 
 func handleListVoices(w http.ResponseWriter, r *http.Request) {

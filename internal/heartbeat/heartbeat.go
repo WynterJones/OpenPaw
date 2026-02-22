@@ -139,9 +139,18 @@ func (m *Manager) UpdateConfig(cfg map[string]string) error {
 
 	m.LoadConfig()
 
-	// Restart the tick loop if running
+	m.mu.RLock()
+	enabled := m.config.Enabled
+	m.mu.RUnlock()
+
 	if m.started {
+		// Restart the tick loop to pick up new settings
 		m.Stop()
+		if enabled {
+			m.Start()
+		}
+	} else if enabled {
+		// Heartbeat was disabled at boot but just got enabled — start it
 		m.Start()
 	}
 
@@ -309,6 +318,22 @@ func parseTime(s string) (int, int) {
 	return h, m
 }
 
+// findRecentThread looks up the most recent active thread for this agent.
+func (m *Manager) findRecentThread(slug string, maxAge time.Duration) (threadID, threadTitle string) {
+	cutoff := time.Now().UTC().Add(-maxAge).Format("2006-01-02 15:04:05")
+	err := m.db.QueryRow(
+		`SELECT ct.id, ct.title FROM chat_threads ct
+		 JOIN thread_members tm ON ct.id = tm.thread_id
+		 WHERE tm.agent_role_slug = ? AND ct.updated_at > ?
+		 ORDER BY ct.updated_at DESC LIMIT 1`,
+		slug, cutoff,
+	).Scan(&threadID, &threadTitle)
+	if err != nil {
+		return "", ""
+	}
+	return threadID, threadTitle
+}
+
 func (m *Manager) executeForAgent(slug, model string) {
 	// Read HEARTBEAT.md
 	hbPath := filepath.Join(agents.AgentDir(m.dataDir, slug), agents.FileHeartbeat)
@@ -352,6 +377,20 @@ func (m *Manager) executeForAgent(slug, model string) {
 		}
 	}
 
+	// Look up existing thread server-side (no reliance on agent memory_search)
+	existingThreadID, existingThreadTitle := m.findRecentThread(slug, 7*24*time.Hour)
+
+	// Build thread continuation instructions
+	var threadInstructions string
+	if existingThreadID != "" {
+		threadInstructions = fmt.Sprintf(
+			"You have an active thread: ID=%s title=%q. You MUST use send_message with this thread_id. DO NOT call create_chat.",
+			existingThreadID, existingThreadTitle,
+		)
+	} else {
+		threadInstructions = "You have no active thread. Use create_chat if you need to communicate with the user."
+	}
+
 	// Add heartbeat-mode instructions
 	systemPrompt += fmt.Sprintf(`
 
@@ -371,14 +410,12 @@ Current time: %s
 - **no_action**: Signal that you have nothing to do right now. Parameters: reason (required)
 - **Memory tools**: memory_save, memory_search, memory_list, memory_update, memory_forget, memory_stats
 
-### Chat Continuation Strategy
+### Thread Status
 
-1. **First**, use memory_search to look for an existing thread ID (search for "thread" or the topic).
-2. **If found**, use send_message with that thread_id to continue the conversation.
-3. **If not found** (or send_message returns an error), use create_chat to start a new thread, then use memory_save to store the thread ID for next time. Include the topic in the memory content so you can find it later.
+%s
 
 Read your heartbeat instructions below and decide what actions to take. If there's nothing to do, use no_action.
-Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"))
+Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions)
 
 	// Run agent loop with heartbeat tools
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -476,6 +513,13 @@ Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now()
 			notif, nErr := m.createNotification(params.Title, params.Message, "normal", slug, "heartbeat", "/chat/"+threadID)
 			if nErr == nil {
 				m.broadcast("notification_created", notif)
+			}
+
+			// Auto-save thread ID to memory for future heartbeat lookups
+			if m.agentMgr.MemoryMgr != nil {
+				m.agentMgr.MemoryMgr.SaveNote(slug,
+					fmt.Sprintf("Heartbeat thread: ID=%s title=%q", threadID, params.Title),
+					"heartbeat")
 			}
 
 			actionsTaken = append(actionsTaken, "create_chat: "+params.Title)

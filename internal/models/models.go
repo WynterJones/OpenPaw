@@ -63,6 +63,7 @@ type Schedule struct {
 	Type                string     `json:"type"`
 	AgentRoleSlug       string     `json:"agent_role_slug"`
 	PromptContent       string     `json:"prompt_content"`
+	ThreadID            string     `json:"thread_id"`
 	DashboardID         string     `json:"dashboard_id"`
 	WidgetID            string     `json:"widget_id"`
 	BrowserSessionID    string     `json:"browser_session_id"`

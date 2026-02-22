@@ -13,16 +13,14 @@ import (
 )
 
 func (h *ChatHandler) saveConfirmationMessage(threadID, userID string, resp *agents.GatewayResponse) {
-	// Determine work order type
+	// Determine work order type — all dashboards are custom
 	var woType agents.WorkOrderType
 	switch resp.Action {
 	case "build_tool":
 		woType = agents.WorkOrderToolBuild
 	case "update_tool":
 		woType = agents.WorkOrderToolUpdate
-	case "build_dashboard":
-		woType = agents.WorkOrderDashboardBuild
-	case "build_custom_dashboard":
+	case "build_dashboard", "build_custom_dashboard":
 		woType = agents.WorkOrderDashboardCustomBuild
 	default:
 		return
@@ -44,17 +42,20 @@ func (h *ChatHandler) saveConfirmationMessage(threadID, userID string, resp *age
 		return
 	}
 
-	// Build action label
+	// Build action label — distinguish new vs update
+	isUpdate := resp.WorkOrder.DashboardID != "" || resp.Action == "update_tool"
 	actionLabel := resp.Action
 	switch resp.Action {
 	case "build_tool":
-		actionLabel = "Build Tool"
+		actionLabel = "New Tool"
 	case "update_tool":
 		actionLabel = "Update Tool"
-	case "build_dashboard":
-		actionLabel = "Build Dashboard"
-	case "build_custom_dashboard":
-		actionLabel = "Build Custom Dashboard"
+	case "build_dashboard", "build_custom_dashboard":
+		if isUpdate {
+			actionLabel = "Update Dashboard"
+		} else {
+			actionLabel = "New Dashboard"
+		}
 	}
 
 	// Build confirmation card using json.Marshal for safe encoding
@@ -156,22 +157,20 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 				DashboardID:  wo.ToolID,
 			},
 		}
+		gwName := h.agentManager.GatewayName()
+		buildingMsg := gwName + " is building..."
 		switch wo.Type {
 		case string(agents.WorkOrderToolBuild):
 			resp.Action = "build_tool"
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleBuildTool(confirmCtx, threadID, userID, resp)
 		case string(agents.WorkOrderToolUpdate):
 			resp.Action = "update_tool"
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleUpdateTool(confirmCtx, threadID, userID, resp)
-		case string(agents.WorkOrderDashboardBuild):
-			resp.Action = "build_dashboard"
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
-			h.handleBuildDashboard(confirmCtx, threadID, userID, resp)
-		case string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
+		case string(agents.WorkOrderDashboardBuild), string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
 			resp.Action = "build_custom_dashboard"
-			h.broadcastStatus(threadID, "spawning", "Pounce is building a custom dashboard...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleBuildCustomDashboard(confirmCtx, threadID, userID, resp)
 		}
 	}()

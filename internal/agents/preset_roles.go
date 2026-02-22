@@ -34,7 +34,7 @@ Guidelines:
 - Suggest improvements and edge cases the user might not have considered
 - Keep tools simple, focused, and easy to maintain`,
 		Model:      "sonnet",
-		AvatarPath: "/gateway-avatar.png",
+		AvatarPath: "/avatars/avatar-4.webp",
 		SortOrder:  1,
 	},
 }

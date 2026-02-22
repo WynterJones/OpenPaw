@@ -53,7 +53,6 @@ export interface Tool {
   created_at: string;
   updated_at: string;
   manifest?: ToolManifest;
-  actions: ToolAction[];
 }
 
 export interface LibraryTool {
@@ -74,13 +73,6 @@ export interface ToolIntegrityInfo {
   binary_hash: string;
   verified: boolean;
   files: { filename: string; hash: string; size: number }[];
-}
-
-export interface ToolAction {
-  id: string;
-  name: string;
-  description: string;
-  endpoint: string;
 }
 
 export interface Secret {
@@ -195,6 +187,20 @@ export interface MemoryFile {
   updated_at: string;
 }
 
+export interface MemoryItem {
+  id: string;
+  content: string;
+  summary: string;
+  category: string;
+  importance: number;
+  source: string;
+  tags: string;
+  access_count: number;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ToolCallResult {
   tool_name: string;
   input: Record<string, unknown>;
@@ -205,21 +211,16 @@ export interface ToolCallResult {
 export interface Schedule {
   id: string;
   name: string;
-  cron: string;
+  description: string;
   cron_expr: string;
-  cron_label: string;
-  type: 'tool_action' | 'prompt';
-  tool_id: string;
-  tool_name: string;
-  action: string;
   agent_role_slug: string;
   prompt_content: string;
+  thread_id: string;
   enabled: boolean;
-  next_run: string | null;
-  last_run: string | null;
   last_run_at: string | null;
-  last_status: string | null;
+  next_run_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ScheduleExecution {
@@ -331,6 +332,7 @@ export interface SystemInfo {
   tailscale_ip: string;
   port: number;
   tailscale_enabled: boolean;
+  bind_address: string;
 }
 
 export interface DesignConfig {
@@ -383,6 +385,7 @@ export interface WidgetPayload {
   title?: string;
   tool_id?: string;
   tool_name?: string;
+  endpoint?: string;
   data: Record<string, unknown>;
   config?: Record<string, unknown>;
 }
@@ -535,4 +538,15 @@ export interface HeartbeatConfig {
 export interface HeartbeatExecutionPage {
   items: HeartbeatExecution[];
   total: number;
+}
+
+export interface SubAgentTask {
+  subagent_id: string;
+  agent_slug: string;
+  agent_name: string;
+  task_summary: string;
+  status: 'started' | 'completed' | 'failed';
+  result_preview?: string;
+  cost_usd?: number;
+  streaming_text?: string;
 }

@@ -16,3 +16,9 @@
 2. Map the landscape — existing systems, data flows, integration points
 3. Design — component responsibilities, communication patterns, data ownership
 4. Validate — failure scenarios, scaling analysis, security boundaries
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

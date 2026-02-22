@@ -134,10 +134,10 @@ When entering Plan Mode:
 ## Project Configuration
 
 - **Lint:** `cd web/frontend && npm run lint`
-- **Vet:** `go vet ./...`
-- **Test:** `go test ./...`
+- **Vet:** `go vet -tags fts5 ./...`
+- **Test:** `go test -tags fts5 ./...`
 - **Frontend Build:** `cd web/frontend && npm run build`
-- **Go Build:** `CGO_ENABLED=1 go build -o openpaw ./cmd/openpaw`
+- **Go Build:** `CGO_ENABLED=1 go build -tags fts5 -o openpaw ./cmd/openpaw`
 - **Full Build:** `just build` (frontend → Go)
 - **Dead Code:** `cd web/frontend && npx knip`
 - **Quality Gate:** `just quality` (lint + vet + test + build)

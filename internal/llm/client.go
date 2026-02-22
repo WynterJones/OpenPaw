@@ -25,9 +25,6 @@ func NewClient(apiKey string) *Client {
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENROUTER_API_KEY")
 	}
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
 
 	c := &Client{
 		httpClient:         &http.Client{},

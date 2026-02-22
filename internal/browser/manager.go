@@ -189,6 +189,9 @@ func (m *Manager) StartSession(id string) error {
 		return fmt.Errorf("create page: %w", err)
 	}
 
+	// Set a fixed viewport to prevent resize jitter from screenshots.
+	page.MustSetViewport(1280, 900, 1, false)
+
 	s.browser = browser
 	s.page = page
 	s.Status = StatusActive

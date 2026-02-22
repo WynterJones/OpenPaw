@@ -3,20 +3,32 @@ import { Download, X, ZoomIn } from 'lucide-react';
 import type { WidgetProps } from './WidgetRegistry';
 import { findBase64Field, guessImageMime, base64ToDataUri } from './imageUtils';
 
+function extractFilename(path: string): string {
+  return path.split('/').pop() || path;
+}
+
 export function ImageWidget({ data }: WidgetProps) {
   const [expanded, setExpanded] = useState(false);
 
+  const filePath = (data.file_path || data.filename) as string | undefined;
+  const toolId = data.__resolved_tool_id as string | undefined;
+  const proxyFilename = filePath ? extractFilename(filePath) : null;
+  const proxyUrl = toolId && proxyFilename
+    ? `/api/v1/tools/${toolId}/proxy/files/${proxyFilename}`
+    : null;
+
   const imageInfo = useMemo(() => {
+    if (proxyUrl) return { src: proxyUrl, mime: '', key: 'file_path' };
     const field = findBase64Field(data);
     if (!field) return null;
     const mime = guessImageMime(data, field.value);
     const src = base64ToDataUri(field.value, mime);
     return { src, mime, key: field.key };
-  }, [data]);
+  }, [data, proxyUrl]);
 
   if (!imageInfo) return null;
 
-  const format = typeof data.format === 'string' ? data.format.toUpperCase() : imageInfo.mime.split('/')[1]?.toUpperCase();
+  const format = typeof data.format === 'string' ? data.format.toUpperCase() : (imageInfo.mime ? imageInfo.mime.split('/')[1]?.toUpperCase() : 'PNG');
   const width = typeof data.width === 'number' ? data.width : null;
   const height = typeof data.height === 'number' ? data.height : null;
 
@@ -24,7 +36,7 @@ export function ImageWidget({ data }: WidgetProps) {
     if (!imageInfo) return;
     const a = document.createElement('a');
     a.href = imageInfo.src;
-    a.download = `image.${format?.toLowerCase() || 'png'}`;
+    a.download = proxyFilename || `image.${format?.toLowerCase() || 'png'}`;
     a.click();
   }
 

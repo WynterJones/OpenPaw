@@ -289,9 +289,9 @@ export function Dashboards() {
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
               aria-label="Select dashboard"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-2 border border-border-0 text-sm text-text-1 hover:border-border-1 transition-colors cursor-pointer min-w-[140px]"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-2 border border-border-0 text-sm text-text-1 hover:border-border-1 transition-colors cursor-pointer min-w-[140px] max-w-[220px]"
             >
-              <span className="truncate">{selected?.name || 'Select dashboard'}</span>
+              <span className="truncate flex-1 text-left">{selected?.name || 'Select dashboard'}</span>
               <ChevronDown className={`w-4 h-4 text-text-3 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
             </button>
             {dropdownOpen && (
@@ -304,25 +304,13 @@ export function Dashboards() {
                       role="option"
                       aria-selected={d.id === selectedId}
                       onClick={() => selectDashboard(d.id)}
-                      className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
+                      className={`w-full text-left px-3 py-2 text-sm truncate transition-colors cursor-pointer ${
                         d.id === selectedId
-                          ? 'bg-accent-primary/10 text-accent-primary'
+                          ? 'bg-accent-primary/10 text-accent-primary font-medium'
                           : 'text-text-1 hover:bg-surface-2'
                       }`}
                     >
-                      <span className="flex items-center gap-2">
-                        <span className="truncate font-medium">{d.name}</span>
-                        <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${
-                          d.dashboard_type === 'custom'
-                            ? 'bg-accent-primary/15 text-accent-text'
-                            : 'bg-surface-3 text-text-3'
-                        }`}>
-                          {d.dashboard_type === 'custom' ? 'Custom' : 'Block'}
-                        </span>
-                      </span>
-                      {d.description && (
-                        <span className="block truncate text-xs text-text-3 mt-0.5">{d.description}</span>
-                      )}
+                      {d.name}
                     </button>
                   ))}
                 </div>

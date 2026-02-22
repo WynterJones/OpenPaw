@@ -139,9 +139,16 @@ func (m *Manager) executeOnPage(page *rod.Page, req ActionRequest, timeout time.
 
 	case "screenshot":
 		quality := 60
-		screenshot, err := page.Screenshot(true, &proto.PageCaptureScreenshot{
+		screenshot, err := page.Screenshot(false, &proto.PageCaptureScreenshot{
 			Format:  proto.PageCaptureScreenshotFormatJpeg,
 			Quality: &quality,
+			Clip: &proto.PageViewport{
+				X:      0,
+				Y:      0,
+				Width:  1280,
+				Height: 900,
+				Scale:  1,
+			},
 		})
 		if err != nil {
 			return ActionResult{Error: fmt.Sprintf("screenshot failed: %v", err)}
@@ -188,6 +195,14 @@ func (m *Manager) executeOnPage(page *rod.Page, req ActionRequest, timeout time.
 			return ActionResult{Error: fmt.Sprintf("scroll failed: %v", err)}
 		}
 		return ActionResult{Success: true, Data: fmt.Sprintf("Scrolled by (%.0f, %.0f)", x, y)}
+
+	case "refresh":
+		err := page.Reload()
+		if err != nil {
+			return ActionResult{Error: fmt.Sprintf("refresh failed: %v", err)}
+		}
+		page.Timeout(timeout).WaitLoad()
+		return ActionResult{Success: true, Data: "Page refreshed"}
 
 	case "back":
 		err := page.NavigateBack()

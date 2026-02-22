@@ -241,7 +241,7 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		}
 	}
 
-	// If a work order is needed, spawn the appropriate agent (attributed to Pounce/builder).
+	// If a work order is needed, spawn the appropriate agent (attributed to gateway/builder).
 	if resp.WorkOrder != nil {
 		h.addThreadMember(threadID, "builder")
 		majorActions := map[string]bool{"build_tool": true, "update_tool": true, "build_dashboard": true, "build_custom_dashboard": true}
@@ -250,22 +250,20 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 			h.broadcastStatus(threadID, "done", "")
 			return
 		}
+		gwName := h.agentManager.GatewayName()
+		buildingMsg := gwName + " is building..."
 		switch resp.Action {
 		case "build_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleBuildTool(parentCtx, threadID, userID, resp)
 		case "update_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleUpdateTool(parentCtx, threadID, userID, resp)
-		case "build_dashboard":
+		case "build_dashboard", "build_custom_dashboard":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
-			h.handleBuildDashboard(parentCtx, threadID, userID, resp)
-		case "build_custom_dashboard":
-			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", "Pounce is building a custom dashboard...")
+			h.broadcastStatus(threadID, "spawning", buildingMsg)
 			h.handleBuildCustomDashboard(parentCtx, threadID, userID, resp)
 		case "create_agent":
 			h.handleCreateAgent(threadID, userID, resp)
@@ -338,6 +336,14 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		systemPrompt += "\n\n" + memberContext
 	}
 
+	// Inject SQLite memory into system prompt (mirrors heartbeat.go behavior)
+	if h.agentManager.MemoryMgr != nil {
+		h.agentManager.MemoryMgr.EnsureMigrated(agentRoleSlug)
+		if memSection := h.agentManager.MemoryMgr.BuildMemoryPromptSection(agentRoleSlug); memSection != "" {
+			systemPrompt += "\n\n---\n\n" + memSection
+		}
+	}
+
 	// Fetch thread history for multi-turn context (excludes current message)
 	history := h.fetchThreadHistory(threadID)
 	// Remove the last message (it's the current user message we're about to send separately)
@@ -395,6 +401,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Failed to create work order: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 		return
 	}
 
@@ -404,6 +411,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Build failed: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 	}
 }
 
@@ -419,7 +427,15 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 		).Scan(&toolID)
 	}
 	if toolID == "" {
+		// Try case-insensitive partial match as fallback
+		h.db.QueryRow(
+			"SELECT id FROM tools WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' AND deleted_at IS NULL LIMIT 1",
+			resp.WorkOrder.Title,
+		).Scan(&toolID)
+	}
+	if toolID == "" {
 		h.saveAssistantMessage(threadID, "", "Could not find an existing tool named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
+		h.endAgentWork(threadID)
 		return
 	}
 
@@ -431,6 +447,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 	)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Failed to create work order: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 		return
 	}
 
@@ -440,6 +457,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Update failed: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 	}
 }
 
@@ -447,17 +465,18 @@ func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID
 	// Check for existing dashboard to enable updates — prefer explicit ID from gateway
 	var existingConfig string
 	var existingName string
+	var existingID string
 	if resp.WorkOrder.DashboardID != "" {
 		h.db.QueryRow(
-			"SELECT name, widgets FROM dashboards WHERE id = ?",
+			"SELECT id, name, widgets FROM dashboards WHERE id = ?",
 			resp.WorkOrder.DashboardID,
-		).Scan(&existingName, &existingConfig)
+		).Scan(&existingID, &existingName, &existingConfig)
 	}
 	if existingConfig == "" {
 		h.db.QueryRow(
-			"SELECT name, widgets FROM dashboards WHERE name LIKE ? ESCAPE '\\' LIMIT 1",
+			"SELECT id, name, widgets FROM dashboards WHERE name LIKE ? ESCAPE '\\' LIMIT 1",
 			"%"+escapeLike(resp.WorkOrder.Title)+"%",
-		).Scan(&existingName, &existingConfig)
+		).Scan(&existingID, &existingName, &existingConfig)
 	}
 
 	requirements := resp.WorkOrder.Requirements
@@ -465,12 +484,14 @@ func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID
 		requirements += "\n\nEXISTING DASHBOARD CONFIG (modify this, do not start from scratch):\nName: " + existingName + "\nWidgets: " + existingConfig
 	}
 
+	// Pass existingID as toolID so postBuildDashboard can match by ID
 	wo, err := agents.CreateWorkOrder(h.db, agents.WorkOrderDashboardBuild,
 		resp.WorkOrder.Title, resp.WorkOrder.Description, requirements,
-		"", "", threadID, userID,
+		"", existingID, threadID, userID,
 	)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Failed to create work order: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 		return
 	}
 
@@ -480,6 +501,7 @@ func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID
 	_, err = h.agentManager.SpawnDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Dashboard build failed: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 	}
 }
 
@@ -519,6 +541,7 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Failed to create work order: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 		return
 	}
 
@@ -528,6 +551,7 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	_, err = h.agentManager.SpawnCustomDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Custom dashboard build failed: "+err.Error(), 0, 0, 0)
+		h.endAgentWork(threadID)
 	}
 }
 
@@ -710,7 +734,7 @@ func (h *ChatHandler) handleBootstrapComplete(threadID string, resp *agents.Gate
 	agents.DeleteGatewayBootstrap(h.dataDir)
 
 	// Optionally update the gateway name in the builder agent_role
-	if reqs.Name != "" && reqs.Name != "Pounce" {
+	if reqs.Name != "" {
 		if _, err := h.db.Exec("UPDATE agent_roles SET name = ? WHERE slug = 'builder'", reqs.Name); err != nil {
 			logger.Error("Failed to update builder name: %v", err)
 		}
@@ -721,7 +745,7 @@ func (h *ChatHandler) handleBootstrapComplete(threadID string, resp *agents.Gate
 	if confirmMsg == "" {
 		name := reqs.Name
 		if name == "" {
-			name = "Pounce"
+			name = h.agentManager.GatewayName()
 		}
 		confirmMsg = fmt.Sprintf("All set! I'm **%s**, your gateway to OpenPaw. How can I help?", name)
 	}

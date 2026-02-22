@@ -14,7 +14,7 @@ export function ViewToggle({ view, onViewChange }: ViewToggleProps) {
         onClick={() => onViewChange('grid')}
         aria-label="Grid view"
         aria-pressed={view === 'grid'}
-        className={`p-2 transition-colors cursor-pointer ${view === 'grid' ? 'bg-surface-2 text-text-1' : 'text-text-3'}`}
+        className={`px-2.5 py-2.5 transition-colors cursor-pointer ${view === 'grid' ? 'bg-surface-2 text-text-1' : 'text-text-3'}`}
       >
         <LayoutGrid className="w-4 h-4" aria-hidden="true" />
       </button>
@@ -22,7 +22,7 @@ export function ViewToggle({ view, onViewChange }: ViewToggleProps) {
         onClick={() => onViewChange('list')}
         aria-label="List view"
         aria-pressed={view === 'list'}
-        className={`p-2 transition-colors cursor-pointer ${view === 'list' ? 'bg-surface-2 text-text-1' : 'text-text-3'}`}
+        className={`px-2.5 py-2.5 transition-colors cursor-pointer ${view === 'list' ? 'bg-surface-2 text-text-1' : 'text-text-3'}`}
       >
         <List className="w-4 h-4" aria-hidden="true" />
       </button>

@@ -2,20 +2,63 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
+	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/go-chi/chi/v5"
 )
 
+var (
+	fileStore = &screenshotFileStore{files: make(map[string]string)}
+	dataDir   string
+)
+
+type screenshotFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *screenshotFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *screenshotFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
+
+func initDataDir() {
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		dataDir = filepath.Join(dir, "screenshot")
+	} else {
+		dataDir = filepath.Join(os.TempDir(), "screenshot")
+	}
+	os.MkdirAll(dataDir, 0755)
+
+	entries, _ := os.ReadDir(dataDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "screenshot-") {
+			fileStore.Add(e.Name(), filepath.Join(dataDir, e.Name()))
+		}
+	}
+}
+
 func registerRoutes(r chi.Router) {
 	r.Get("/capture", handleCapture)
 	r.Get("/status", handleStatus)
+	r.Get("/files/{filename}", handleServeFile)
 }
 
 func handleCapture(w http.ResponseWriter, r *http.Request) {
@@ -102,16 +145,55 @@ func handleCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(buf)
+	ext := ".png"
+	if format == "jpeg" {
+		ext = ".jpeg"
+	}
+	filename := fmt.Sprintf("screenshot-%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save screenshot: "+err.Error())
+		return
+	}
+	fileStore.Add(filename, filePath)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"url":          targetURL,
-		"width":        width,
-		"height":       height,
-		"format":       format,
-		"size_bytes":   len(buf),
-		"image_base64": encoded,
+		"url":       targetURL,
+		"width":     width,
+		"height":    height,
+		"format":    format,
+		"size_bytes": len(buf),
+		"file_path": filename,
+		"__widget": map[string]string{
+			"type":  "image",
+			"title": "Screenshot",
+		},
 	})
+}
+
+func handleServeFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "screenshot-") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	fullPath, ok := fileStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	ext := filepath.Ext(fullPath)
+	contentTypes := map[string]string{
+		".png":  "image/png",
+		".jpeg": "image/jpeg",
+	}
+	if ct, ok := contentTypes[ext]; ok {
+		w.Header().Set("Content-Type", ct)
+	}
+	http.ServeFile(w, r, fullPath)
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {

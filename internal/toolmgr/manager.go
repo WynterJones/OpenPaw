@@ -20,6 +20,11 @@ import (
 
 type BroadcastFunc func(msgType string, payload interface{})
 
+// SecretDecryptor decrypts secret values. Satisfied by secrets.Manager.
+type SecretDecryptor interface {
+	Decrypt(encrypted string) (string, error)
+}
+
 type RunningTool struct {
 	ToolID    string
 	Port      int
@@ -35,23 +40,26 @@ type RunningTool struct {
 }
 
 type Manager struct {
-	db          *database.DB
-	toolsDir    string
-	tools       map[string]*RunningTool
-	mu          sync.RWMutex
-	nextPort    int
-	broadcast   BroadcastFunc
-	ctx         context.Context
-	cancel      context.CancelFunc
-	httpClient  *http.Client
+	db           *database.DB
+	toolsDir     string
+	toolDataDir  string
+	tools        map[string]*RunningTool
+	mu           sync.RWMutex
+	nextPort     int
+	broadcast    BroadcastFunc
+	ctx          context.Context
+	cancel       context.CancelFunc
+	httpClient   *http.Client
 	healthClient *http.Client
+	secrets      SecretDecryptor
 }
 
-func New(db *database.DB, toolsDir string, broadcast BroadcastFunc) *Manager {
+func New(db *database.DB, toolsDir, toolDataDir string, broadcast BroadcastFunc, secrets SecretDecryptor) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		db:           db,
 		toolsDir:     toolsDir,
+		toolDataDir:  toolDataDir,
 		tools:        make(map[string]*RunningTool),
 		nextPort:     9100,
 		broadcast:    broadcast,
@@ -59,6 +67,7 @@ func New(db *database.DB, toolsDir string, broadcast BroadcastFunc) *Manager {
 		cancel:       cancel,
 		httpClient:   &http.Client{Timeout: 30 * time.Second},
 		healthClient: &http.Client{Timeout: 2 * time.Second},
+		secrets:      secrets,
 	}
 }
 
@@ -128,12 +137,25 @@ func (m *Manager) Shutdown() {
 	m.mu.Unlock()
 }
 
+func (m *Manager) ensureToolDataDir(toolID string) {
+	if m.toolDataDir == "" {
+		return
+	}
+	os.MkdirAll(m.toolDataDir, 0755)
+	// Also create a per-tool subdirectory using the library slug if available
+	var slug string
+	if err := m.db.QueryRow("SELECT COALESCE(library_slug, '') FROM tools WHERE id = ?", toolID).Scan(&slug); err == nil && slug != "" {
+		os.MkdirAll(filepath.Join(m.toolDataDir, slug), 0755)
+	}
+}
+
 func (m *Manager) CompileTool(toolID string) error {
 	toolDir := filepath.Join(m.toolsDir, toolID)
 	if _, err := os.Stat(filepath.Join(toolDir, "main.go")); os.IsNotExist(err) {
 		return fmt.Errorf("no main.go found in tool directory")
 	}
 
+	m.ensureToolDataDir(toolID)
 	m.updateToolStatus(toolID, "compiling")
 
 	// Ensure go.sum is up to date before building
@@ -191,12 +213,24 @@ func (m *Manager) StartTool(toolID string) error {
 		return fmt.Errorf("tool binary not found, compile first")
 	}
 
+	m.ensureToolDataDir(toolID)
+
 	port := m.allocatePort()
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	cmd := exec.CommandContext(ctx, binaryPath)
 	cmd.Dir = toolDir
-	cmd.Env = append(filterEnv(os.Environ()), fmt.Sprintf("PORT=%d", port))
+	cmd.Env = append(filterEnv(os.Environ()), fmt.Sprintf("PORT=%d", port), fmt.Sprintf("TOOL_DATA_DIR=%s", m.toolDataDir))
+
+	// Inject secrets required by this tool; refuse to start if any are missing
+	secretEnvs, missingSecrets := m.getToolSecrets(toolID)
+	if len(missingSecrets) > 0 {
+		cancel()
+		errMsg := fmt.Sprintf("missing secrets: %s — configure them in Settings → Secrets before starting", strings.Join(missingSecrets, ", "))
+		m.setToolError(toolID, errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+	cmd.Env = append(cmd.Env, secretEnvs...)
 
 	logFile, err := os.OpenFile(
 		filepath.Join(toolDir, "tool.log"),
@@ -375,6 +409,42 @@ func (m *Manager) CallTool(toolID, endpoint string, payload []byte) ([]byte, err
 	return respBody, nil
 }
 
+type ProxyResponse struct {
+	Body        []byte
+	ContentType string
+	StatusCode  int
+}
+
+func (m *Manager) ProxyRequest(toolID, path string) (*ProxyResponse, error) {
+	m.mu.RLock()
+	rt, exists := m.tools[toolID]
+	m.mu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("tool %s not running", toolID)
+	}
+	if rt.Status != "running" {
+		return nil, fmt.Errorf("tool %s status is %s, not running", toolID, rt.Status)
+	}
+
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", rt.Port, path)
+	resp, err := m.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("proxy request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read proxy response: %w", err)
+	}
+
+	return &ProxyResponse{
+		Body:        body,
+		ContentType: resp.Header.Get("Content-Type"),
+		StatusCode:  resp.StatusCode,
+	}, nil
+}
+
 func (m *Manager) GetStatus(toolID string) map[string]interface{} {
 	m.mu.RLock()
 	rt, exists := m.tools[toolID]
@@ -508,7 +578,6 @@ var sensitiveEnvPrefixes = []string{
 	"GCLOUD_",
 	"AZURE_",
 	"OPENAI_API",
-	"ANTHROPIC_API",
 	"OPENROUTER_API",
 	"OPENPAW_JWT",
 	"OPENPAW_ENCRYPTION",
@@ -555,6 +624,52 @@ func filterEnv(env []string) []string {
 		}
 	}
 	return filtered
+}
+
+// getToolSecrets looks up the tool's required env vars (from its catalog entry)
+// and returns decrypted secrets as "KEY=VALUE" strings for injection into the environment.
+// missing contains the names of any secrets that are absent or still placeholder.
+func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []string) {
+	if m.secrets == nil {
+		return nil, nil
+	}
+
+	// Get the tool's library_slug to find its catalog env requirements
+	var librarySlug string
+	err := m.db.QueryRow("SELECT COALESCE(library_slug, '') FROM tools WHERE id = ?", toolID).Scan(&librarySlug)
+	if err != nil || librarySlug == "" {
+		return nil, nil
+	}
+
+	cat, err := toollibrary.GetCatalogTool(librarySlug)
+	if err != nil || len(cat.Env) == 0 {
+		return nil, nil
+	}
+
+	for _, envName := range cat.Env {
+		var encrypted string
+		err := m.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", envName).Scan(&encrypted)
+		if err != nil {
+			missing = append(missing, envName)
+			continue
+		}
+		plaintext, err := m.secrets.Decrypt(encrypted)
+		if err != nil {
+			logger.Warn("Failed to decrypt secret %s for tool %s: %v", envName, toolID, err)
+			missing = append(missing, envName)
+			continue
+		}
+		if plaintext == "REPLACE_ME" {
+			missing = append(missing, envName)
+			continue
+		}
+		envVars = append(envVars, fmt.Sprintf("%s=%s", envName, plaintext))
+	}
+
+	if len(envVars) > 0 {
+		logger.Info("Injected %d secrets for tool %s", len(envVars), toolID)
+	}
+	return envVars, missing
 }
 
 func (m *Manager) setToolError(toolID, errMsg string) {

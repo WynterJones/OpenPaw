@@ -36,6 +36,36 @@ func BuildCallToolDef() ToolDef {
 	}
 }
 
+func BuildDelegateTaskDef() ToolDef {
+	params, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"tasks": map[string]interface{}{
+				"type":        "array",
+				"description": "Array of tasks to delegate to specialist agents. Each task runs in parallel.",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"agent_slug": map[string]interface{}{"type": "string", "description": "The slug of the agent to delegate to (from the DELEGATION section)"},
+						"task":       map[string]interface{}{"type": "string", "description": "A clear, specific description of the task for the sub-agent to complete"},
+					},
+					"required": []string{"agent_slug", "task"},
+				},
+				"maxItems": 5,
+			},
+		},
+		"required": []string{"tasks"},
+	})
+	return ToolDef{
+		Type: "function",
+		Function: FunctionDef{
+			Name:        "delegate_task",
+			Description: "Delegate tasks to specialist agents who work in parallel. Use when multiple independent subtasks would benefit from specialist expertise or parallel execution. Each agent receives only the task description (no conversation history) and returns its findings.",
+			Parameters:  params,
+		},
+	}
+}
+
 func BuildToolDefs(names []string) []ToolDef {
 	allowed := make(map[string]bool, len(names))
 	for _, n := range names {

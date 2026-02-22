@@ -7,8 +7,8 @@
     "category": "Productivity",
     "icon": "search",
     "tags": ["research", "analysis", "documentation", "comparison"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/analyst.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-8.webp"
   },
   {
     "slug": "code-reviewer",
@@ -18,8 +18,8 @@
     "category": "Engineering",
     "icon": "code-2",
     "tags": ["code-review", "bugs", "best-practices", "refactoring"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/developer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-14.webp"
   },
   {
     "slug": "writer",
@@ -30,7 +30,7 @@
     "icon": "pen-line",
     "tags": ["writing", "editing", "copywriting", "prose"],
     "model": "haiku",
-    "avatar_path": "/avatars/creative.webp"
+    "avatar_path": "/avatars/avatar-20.webp"
   },
   {
     "slug": "data-analyst",
@@ -40,8 +40,8 @@
     "category": "Data",
     "icon": "bar-chart-2",
     "tags": ["data", "analytics", "visualization", "insights"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/analyst.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-26.webp"
   },
   {
     "slug": "debugger",
@@ -51,8 +51,8 @@
     "category": "Engineering",
     "icon": "bug",
     "tags": ["debugging", "troubleshooting", "root-cause", "fixes"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/engineer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-1.webp"
   },
   {
     "slug": "project-manager",
@@ -63,7 +63,7 @@
     "icon": "kanban",
     "tags": ["project-management", "planning", "milestones", "coordination"],
     "model": "haiku",
-    "avatar_path": "/avatars/marketer.webp"
+    "avatar_path": "/avatars/avatar-2.webp"
   },
   {
     "slug": "ops-engineer",
@@ -73,8 +73,8 @@
     "category": "Ops",
     "icon": "server",
     "tags": ["infrastructure", "devops", "monitoring", "deployment"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/engineer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-5.webp"
   },
   {
     "slug": "learning-coach",
@@ -85,7 +85,7 @@
     "icon": "graduation-cap",
     "tags": ["learning", "tutoring", "education", "coaching"],
     "model": "haiku",
-    "avatar_path": "/avatars/social.webp"
+    "avatar_path": "/avatars/avatar-37.webp"
   },
   {
     "slug": "security-auditor",
@@ -95,8 +95,8 @@
     "category": "Engineering",
     "icon": "shield-check",
     "tags": ["security", "vulnerabilities", "audit", "hardening"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/developer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-23.webp"
   },
   {
     "slug": "summarizer",
@@ -107,7 +107,7 @@
     "icon": "zap",
     "tags": ["summarization", "briefs", "distillation", "highlights"],
     "model": "haiku",
-    "avatar_path": "/avatars/creative.webp"
+    "avatar_path": "/avatars/avatar-3.webp"
   },
   {
     "slug": "api-designer",
@@ -117,8 +117,8 @@
     "category": "Engineering",
     "icon": "route",
     "tags": ["api", "rest", "openapi", "endpoints", "contracts"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/developer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-10.webp"
   },
   {
     "slug": "database-architect",
@@ -128,8 +128,8 @@
     "category": "Data",
     "icon": "database",
     "tags": ["database", "schema", "sql", "migrations", "optimization"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/analyst.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-35.webp"
   },
   {
     "slug": "ux-designer",
@@ -139,8 +139,8 @@
     "category": "Design",
     "icon": "palette",
     "tags": ["ux", "ui", "design", "accessibility", "wireframes"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/creative.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-12.webp"
   },
   {
     "slug": "compliance-advisor",
@@ -151,7 +151,7 @@
     "icon": "scale",
     "tags": ["compliance", "gdpr", "privacy", "legal", "regulation"],
     "model": "haiku",
-    "avatar_path": "/avatars/analyst.webp"
+    "avatar_path": "/avatars/avatar-38.webp"
   },
   {
     "slug": "marketing-strategist",
@@ -162,7 +162,7 @@
     "icon": "megaphone",
     "tags": ["marketing", "seo", "campaigns", "growth", "strategy"],
     "model": "haiku",
-    "avatar_path": "/avatars/marketer.webp"
+    "avatar_path": "/avatars/avatar-18.webp"
   },
   {
     "slug": "customer-support",
@@ -173,7 +173,7 @@
     "icon": "headphones",
     "tags": ["support", "customer-service", "faq", "helpdesk", "responses"],
     "model": "haiku",
-    "avatar_path": "/avatars/social.webp"
+    "avatar_path": "/avatars/avatar-45.webp"
   },
   {
     "slug": "translator",
@@ -184,7 +184,7 @@
     "icon": "languages",
     "tags": ["translation", "localization", "i18n", "multilingual", "languages"],
     "model": "haiku",
-    "avatar_path": "/avatars/social.webp"
+    "avatar_path": "/avatars/avatar-17.webp"
   },
   {
     "slug": "brainstormer",
@@ -194,8 +194,8 @@
     "category": "Creative",
     "icon": "lightbulb",
     "tags": ["ideation", "brainstorming", "creativity", "innovation", "ideas"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/creative.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-33.webp"
   },
   {
     "slug": "system-architect",
@@ -205,8 +205,8 @@
     "category": "Engineering",
     "icon": "network",
     "tags": ["architecture", "system-design", "scalability", "integration", "patterns"],
-    "model": "opus",
-    "avatar_path": "/avatars/engineer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-6.webp"
   },
   {
     "slug": "test-engineer",
@@ -216,7 +216,172 @@
     "category": "Engineering",
     "icon": "test-tubes",
     "tags": ["testing", "qa", "test-plans", "edge-cases", "quality"],
-    "model": "sonnet",
-    "avatar_path": "/avatars/developer.webp"
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-7.webp"
+  },
+  {
+    "slug": "philosopher",
+    "name": "Sphinx",
+    "description": "Contemplative thinker — examines questions from first principles, challenges assumptions, and makes philosophy practical",
+    "version": "1.0.0",
+    "category": "Knowledge",
+    "icon": "brain",
+    "tags": ["philosophy", "critical-thinking", "ethics", "meaning", "first-principles"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-4.webp"
+  },
+  {
+    "slug": "life-coach",
+    "name": "Luna",
+    "description": "Warm but direct life coach — turns aspirations into action plans, builds habits, and bridges the gap between knowing and doing",
+    "version": "1.0.0",
+    "category": "Personal",
+    "icon": "compass",
+    "tags": ["goals", "habits", "motivation", "accountability", "personal-growth"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-9.webp"
+  },
+  {
+    "slug": "storyteller",
+    "name": "Kindle",
+    "description": "Narrative architect — weaves compelling stories, builds worlds, and finds the story hiding in everything",
+    "version": "1.0.0",
+    "category": "Creative",
+    "icon": "book-open",
+    "tags": ["narrative", "worldbuilding", "fiction", "storytelling", "creative-writing"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-11.webp"
+  },
+  {
+    "slug": "debate-partner",
+    "name": "Bristle",
+    "description": "Sharp-witted devil's advocate — stress-tests ideas, argues both sides, and strengthens thinking through rigorous opposition",
+    "version": "1.0.0",
+    "category": "Knowledge",
+    "icon": "swords",
+    "tags": ["debate", "critical-thinking", "argumentation", "logic", "persuasion"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-13.webp"
+  },
+  {
+    "slug": "wellness-guide",
+    "name": "Willow",
+    "description": "Holistic wellness companion — guides mindfulness, manages stress, and weaves sustainable self-care into real life",
+    "version": "1.0.0",
+    "category": "Lifestyle",
+    "icon": "leaf",
+    "tags": ["mindfulness", "stress", "wellness", "balance", "self-care"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-15.webp"
+  },
+  {
+    "slug": "historian",
+    "name": "Jasper",
+    "description": "Living archive — draws lessons from history, finds patterns across centuries, and illuminates the present through the past",
+    "version": "1.0.0",
+    "category": "Knowledge",
+    "icon": "scroll",
+    "tags": ["history", "context", "patterns", "lessons", "civilization"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-16.webp"
+  },
+  {
+    "slug": "chef",
+    "name": "Saffron",
+    "description": "Culinary creative — designs recipes, plans meals, and makes delicious food accessible to any skill level",
+    "version": "1.0.0",
+    "category": "Lifestyle",
+    "icon": "chef-hat",
+    "tags": ["cooking", "recipes", "meal-planning", "nutrition", "food"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-19.webp"
+  },
+  {
+    "slug": "fitness-coach",
+    "name": "Puma",
+    "description": "No-nonsense fitness coach — builds sustainable training plans, prioritizes form, and values consistency over intensity",
+    "version": "1.0.0",
+    "category": "Lifestyle",
+    "icon": "dumbbell",
+    "tags": ["fitness", "exercise", "training", "health", "habits"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-21.webp"
+  },
+  {
+    "slug": "financial-advisor",
+    "name": "Copper",
+    "description": "Pragmatic money guide — makes personal finance actionable, builds realistic budgets, and plans without jargon",
+    "version": "1.0.0",
+    "category": "Personal",
+    "icon": "piggy-bank",
+    "tags": ["budgeting", "finance", "planning", "savings", "money"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-22.webp"
+  },
+  {
+    "slug": "travel-guide",
+    "name": "Scout",
+    "description": "Adventurous travel planner — crafts journeys with rhythm, uncovers hidden gems, and designs trips that tell a story",
+    "version": "1.0.0",
+    "category": "Lifestyle",
+    "icon": "map",
+    "tags": ["travel", "planning", "culture", "adventure", "destinations"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-24.webp"
+  },
+  {
+    "slug": "funnel-architect",
+    "name": "Smokey",
+    "description": "Conversion funnel architect — maps customer journeys, finds drop-off points, and optimizes every step from stranger to buyer",
+    "version": "1.0.0",
+    "category": "Sales",
+    "icon": "filter",
+    "tags": ["funnels", "conversion", "landing-pages", "optimization", "customer-journey"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-25.webp"
+  },
+  {
+    "slug": "sales-coach",
+    "name": "Panther",
+    "description": "Sales coach — sharpens pitches, handles objections, and turns reluctant sellers into confident closers",
+    "version": "1.0.0",
+    "category": "Sales",
+    "icon": "handshake",
+    "tags": ["sales", "pitching", "objections", "closing", "negotiation"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-27.webp"
+  },
+  {
+    "slug": "growth-strategist",
+    "name": "Prowl",
+    "description": "Growth strategist — engineers acquisition loops, retention systems, and viral mechanics that compound over time",
+    "version": "1.0.0",
+    "category": "Sales",
+    "icon": "trending-up",
+    "tags": ["growth", "acquisition", "retention", "viral", "metrics"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-28.webp"
+  },
+  {
+    "slug": "accountability-partner",
+    "name": "Rascal",
+    "description": "Relentless accountability partner — tracks every commitment, calls out excuses, and makes sure promises become results",
+    "version": "1.0.0",
+    "category": "Personal",
+    "icon": "target",
+    "tags": ["accountability", "commitments", "follow-through", "tracking", "habits"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-29.webp"
+  },
+  {
+    "slug": "copywriter",
+    "name": "Velvet",
+    "description": "Persuasive copywriter — crafts high-converting copy for ads, landing pages, emails, and sales pages",
+    "version": "1.0.0",
+    "category": "Sales",
+    "icon": "pencil-ruler",
+    "tags": ["copywriting", "ads", "landing-pages", "email", "persuasion"],
+    "model": "haiku",
+    "avatar_path": "/avatars/avatar-30.webp"
   }
 ]

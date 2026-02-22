@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,16 +20,53 @@ var (
 	minimaxKey     string
 	minimaxGroupID string
 	minimaxClient  = &http.Client{Timeout: 60 * time.Second}
+	audioStore     = &audioFileStore{files: make(map[string]string)}
+	audioDir       string
 )
+
+type audioFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string // filename -> full path
+}
+
+func (s *audioFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *audioFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
 
 func initMiniMax(key, groupID string) {
 	minimaxKey = key
 	minimaxGroupID = groupID
+
+	// Set up persistent audio directory
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		audioDir = filepath.Join(dir, "minimax-tts")
+	} else {
+		audioDir = filepath.Join(os.TempDir(), "minimax-tts")
+	}
+	os.MkdirAll(audioDir, 0755)
+
+	// Scan for existing audio files to restore the in-memory store
+	entries, _ := os.ReadDir(audioDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".mp3") {
+			audioStore.Add(e.Name(), filepath.Join(audioDir, e.Name()))
+		}
+	}
 }
 
 func registerRoutes(r chi.Router) {
 	r.Post("/tts", handleTTS)
 	r.Get("/voices", handleListVoices)
+	r.Get("/audio/{filename}", handleServeAudio)
 }
 
 type minimaxTTSRequest struct {
@@ -131,30 +171,56 @@ func handleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audioData, err := base64.StdEncoding.DecodeString(apiResp.Data.Audio)
+	audioData, err := hex.DecodeString(apiResp.Data.Audio)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to decode base64 audio data")
+		writeError(w, http.StatusInternalServerError, "failed to decode hex audio data")
 		return
 	}
 
-	tmpFile, err := os.CreateTemp("", "minimax-*.mp3")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp file")
-		return
-	}
-	defer tmpFile.Close()
-
-	if _, err := tmpFile.Write(audioData); err != nil {
-		os.Remove(tmpFile.Name())
+	filename := fmt.Sprintf("minimax-%d.mp3", time.Now().UnixNano())
+	filePath := filepath.Join(audioDir, filename)
+	if err := os.WriteFile(filePath, audioData, 0644); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save audio data")
 		return
 	}
+	audioStore.Add(filename, filePath)
+
+	// Truncate long text for display
+	displayText := req.Text
+	if len(displayText) > 80 {
+		displayText = displayText[:77] + "..."
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"file_path":    tmpFile.Name(),
+		"audio_file":   filename,
 		"voice_id":     req.VoiceID,
 		"content_type": "audio/mpeg",
+		"text":         displayText,
+		"__widget": map[string]string{
+			"type":  "audio-player",
+			"title": "MiniMax TTS",
+		},
 	})
+}
+
+func handleServeAudio(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+
+	// Sanitize filename to prevent path traversal
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "minimax-") || !strings.HasSuffix(filename, ".mp3") {
+		writeError(w, http.StatusBadRequest, "invalid audio filename")
+		return
+	}
+
+	fullPath, ok := audioStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "audio file not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "audio/mpeg")
+	http.ServeFile(w, r, fullPath)
 }
 
 func handleListVoices(w http.ResponseWriter, r *http.Request) {

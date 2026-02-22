@@ -5,6 +5,7 @@
 project_root := justfile_directory()
 frontend_dir := project_root / "web" / "frontend"
 binary_name := "openpaw"
+go_tags := "-tags fts5"
 
 # ============================================
 # DEVELOPMENT
@@ -16,12 +17,12 @@ dev:
 
 # Run the Go backend server
 serve:
-    go run ./cmd/openpaw
+    go run {{go_tags}} ./cmd/openpaw
 
 # Run frontend dev + Go backend in parallel
 dev-full:
     @echo "Starting Go backend and Vite frontend..."
-    @(go run ./cmd/openpaw &) && cd {{frontend_dir}} && npm run dev
+    @(go run {{go_tags}} ./cmd/openpaw &) && cd {{frontend_dir}} && npm run dev
 
 # Run linter (frontend ESLint)
 lint:
@@ -29,11 +30,11 @@ lint:
 
 # Run Go vet
 vet:
-    go vet ./...
+    go vet {{go_tags}} ./...
 
 # Run Go tests
 test:
-    go test ./...
+    go test {{go_tags}} ./...
 
 # ============================================
 # BUILD
@@ -45,7 +46,7 @@ frontend-build:
 
 # Build Go binary (embeds frontend dist via go:embed)
 go-build:
-    CGO_ENABLED=1 go build -o {{binary_name}} ./cmd/openpaw
+    CGO_ENABLED=1 go build {{go_tags}} -o {{binary_name}} ./cmd/openpaw
 
 # Full build: frontend → Go binary (production single-binary)
 build: frontend-build go-build
@@ -156,7 +157,7 @@ awesome:
     echo "  ✓ modules clean"
 
     echo "→ [2/7] Go vet..."
-    go vet ./...
+    go vet -tags fts5 ./...
     echo "  ✓ vet passed"
 
     echo "→ [3/7] Frontend lint..."
@@ -164,7 +165,7 @@ awesome:
     echo "  ✓ lint passed"
 
     echo "→ [4/7] Go tests..."
-    cd {{project_root}} && go test ./...
+    cd {{project_root}} && go test -tags fts5 ./...
     echo "  ✓ tests passed"
 
     echo "→ [5/7] Frontend build (TypeScript + Vite)..."
@@ -172,7 +173,7 @@ awesome:
     echo "  ✓ frontend built"
 
     echo "→ [6/7] Go build..."
-    cd {{project_root}} && CGO_ENABLED=1 go build -o {{binary_name}} ./cmd/openpaw
+    cd {{project_root}} && CGO_ENABLED=1 go build -tags fts5 -o {{binary_name}} ./cmd/openpaw
     echo "  ✓ binary built"
 
     echo "→ [7/7] Dead code scan (knip)..."
@@ -220,7 +221,7 @@ info:
 # Build Go sidecar with target-triple name for Tauri
 desktop-sidecar: frontend-build
     @mkdir -p desktop/src-tauri/binaries
-    CGO_ENABLED=1 go build -o desktop/src-tauri/binaries/openpaw-$(rustc --print host-tuple) ./cmd/openpaw
+    CGO_ENABLED=1 go build {{go_tags}} -o desktop/src-tauri/binaries/openpaw-$(rustc --print host-tuple) ./cmd/openpaw
 
 # Run Tauri dev mode (rebuilds sidecar first)
 desktop-dev: desktop-sidecar

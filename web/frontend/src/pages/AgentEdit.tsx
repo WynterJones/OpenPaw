@@ -8,20 +8,13 @@ import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { Toggle } from '../components/Toggle';
-import { api, agentFiles, agentSkills, skills as skillsApi, type AgentRole, type Skill, type MemoryFile, type Tool } from '../lib/api';
+import { api, agentFiles, agentMemories, agentSkills, skills as skillsApi, type AgentRole, type Skill, type MemoryItem, type Tool } from '../lib/api';
 
 interface AgentTool extends Tool {
   access_type: 'owned' | 'granted';
 }
 
-const PRESET_AVATARS = [
-  '/avatars/engineer.webp',
-  '/avatars/marketer.webp',
-  '/avatars/social.webp',
-  '/avatars/developer.webp',
-  '/avatars/creative.webp',
-  '/avatars/analyst.webp',
-];
+const PRESET_AVATARS = Array.from({ length: 45 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
 
 interface FileTab {
   key: string;
@@ -65,10 +58,10 @@ export function AgentEdit() {
   const [fileDirty, setFileDirty] = useState<Record<string, boolean>>({});
   const [fileSaving, setFileSaving] = useState(false);
 
-  // Memory state
-  const [memoryFiles, setMemoryFiles] = useState<MemoryFile[]>([]);
-  const [memoryContent, setMemoryContent] = useState('');
-  const [memoryDirty, setMemoryDirty] = useState(false);
+  // Memory state (SQLite)
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [memoryStats, setMemoryStats] = useState<{ total_active: number; total_archived: number; categories: Record<string, number> } | null>(null);
+  const [expandedMemory, setExpandedMemory] = useState<string | null>(null);
 
   // Skills state
   const [agentSkillList, setAgentSkillList] = useState<Skill[]>([]);
@@ -94,11 +87,12 @@ export function AgentEdit() {
 
   const loadMemory = useCallback(async (s: string) => {
     try {
-      const mem = await agentFiles.listMemory(s);
-      setMemoryFiles(mem);
-      const result = await agentFiles.get(s, 'memory/memory.md');
-      setMemoryContent(result.content);
-      setMemoryDirty(false);
+      const [mems, stats] = await Promise.all([
+        agentMemories.list(s),
+        agentMemories.stats(s),
+      ]);
+      setMemories(mems || []);
+      setMemoryStats(stats);
     } catch (e) { console.warn('loadMemory failed:', e); }
   }, []);
 
@@ -247,17 +241,17 @@ export function AgentEdit() {
     }
   };
 
-  const handleMemorySave = async () => {
+  const handleMemoryDelete = async (memoryId: string) => {
     if (!slug) return;
-    setFileSaving(true);
     try {
-      await agentFiles.update(slug, 'memory/memory.md', memoryContent);
-      setMemoryDirty(false);
-      toast('success', 'Memory saved');
+      await agentMemories.delete(slug, memoryId);
+      setMemories(prev => prev.filter(m => m.id !== memoryId));
+      if (memoryStats) {
+        setMemoryStats({ ...memoryStats, total_active: memoryStats.total_active - 1 });
+      }
+      toast('success', 'Memory deleted');
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to save memory');
-    } finally {
-      setFileSaving(false);
+      toast('error', err instanceof Error ? err.message : 'Failed to delete memory');
     }
   };
 
@@ -439,22 +433,24 @@ export function AgentEdit() {
                       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="hidden" aria-label="Upload avatar" tabIndex={-1} />
                     </label>
                   </div>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {PRESET_AVATARS.map((path, i) => (
-                      <button
-                        key={path}
-                        onClick={() => setAvatarPath(path)}
-                        aria-label={`Select preset avatar ${i + 1}`}
-                        aria-pressed={avatarPath === path}
-                        className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                          avatarPath === path
-                            ? 'border-accent-primary ring-2 ring-accent-primary/20 scale-110'
-                            : 'border-border-1 hover:border-border-0 opacity-60 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={path} alt="" className="w-full h-full" />
-                      </button>
-                    ))}
+                  <div className="w-full max-h-48 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2">
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {PRESET_AVATARS.map((path, i) => (
+                        <button
+                          key={path}
+                          onClick={() => setAvatarPath(path)}
+                          aria-label={`Select avatar ${i + 1}`}
+                          aria-pressed={avatarPath === path}
+                          className={`aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                            avatarPath === path
+                              ? 'border-accent-primary ring-2 ring-accent-primary/20 scale-105'
+                              : 'border-transparent hover:border-border-0 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={path} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -641,7 +637,7 @@ export function AgentEdit() {
                       id="tab-memory"
                       aria-selected={activeTab === 'memory'}
                       aria-controls="tabpanel-memory"
-                      onClick={() => setActiveTab('memory')}
+                      onClick={() => { setActiveTab('memory'); if (slug) loadMemory(slug); }}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
                         activeTab === 'memory'
                           ? 'bg-accent-muted text-accent-text'
@@ -649,7 +645,9 @@ export function AgentEdit() {
                       }`}
                     >
                       Memory
-                      {memoryDirty && <span className="ml-1 text-accent-primary">*</span>}
+                      {memories.length > 0 && (
+                        <span className="ml-1 text-[10px] bg-surface-3 text-text-3 px-1.5 rounded-full">{memories.length}</span>
+                      )}
                     </button>
                     <button
                       role="tab"
@@ -692,30 +690,70 @@ export function AgentEdit() {
                           <BookOpen className="w-4 h-4 text-accent-primary" />
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3">Long-term Memory</h3>
                         </div>
-                        <Button size="sm" onClick={handleMemorySave} loading={fileSaving} disabled={!memoryDirty} icon={<Save className="w-3.5 h-3.5" />}>
-                          Save
-                        </Button>
-                      </div>
-                      <div className="relative flex-1 min-h-[300px]">
-                        <textarea
-                          value={memoryContent}
-                          onChange={e => { setMemoryContent(e.target.value); setMemoryDirty(true); }}
-                          placeholder="Agent's long-term memory..."
-                          className="absolute inset-0 w-full h-full rounded-lg border border-border-1 bg-surface-0 text-text-1 px-4 py-3 text-[13px] leading-relaxed font-mono placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
-                          spellCheck={false}
-                        />
-                      </div>
-                      {memoryFiles.length > 0 && (
-                        <div className="mt-4">
-                          <h4 className="text-[11px] font-medium text-text-3 uppercase tracking-wider mb-2">Daily Logs</h4>
-                          <div className="space-y-1">
-                            {memoryFiles.filter(f => f.name !== 'memory.md').map(f => (
-                              <div key={f.name} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg bg-surface-0">
-                                <span className="text-text-2 font-mono">{f.name}</span>
-                                <span className="text-text-3">{(f.size / 1024).toFixed(1)}KB</span>
-                              </div>
-                            ))}
+                        {memoryStats && (
+                          <div className="flex items-center gap-3 text-[11px] text-text-3">
+                            <span>{memoryStats.total_active} active</span>
+                            {memoryStats.total_archived > 0 && <span>{memoryStats.total_archived} archived</span>}
                           </div>
+                        )}
+                      </div>
+
+                      {memoryStats && Object.keys(memoryStats.categories).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {Object.entries(memoryStats.categories).map(([cat, count]) => (
+                            <span key={cat} className="text-[10px] px-2 py-0.5 rounded-full bg-surface-2 text-text-2 border border-border-1">
+                              {cat} ({count})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {memories.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center text-sm text-text-3">
+                          No memories yet. The agent will save memories automatically during conversations.
+                        </div>
+                      ) : (
+                        <div className="space-y-2 overflow-y-auto flex-1">
+                          {memories.map(mem => (
+                            <div key={mem.id} className="rounded-lg border border-border-1 bg-surface-0 overflow-hidden">
+                              <button
+                                onClick={() => setExpandedMemory(expandedMemory === mem.id ? null : mem.id)}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-1/50 transition-colors cursor-pointer"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-text-1 truncate">{mem.summary || mem.content.slice(0, 100)}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {mem.category && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-muted text-accent-text">{mem.category}</span>
+                                    )}
+                                    <span className="text-[10px] text-text-3">{new Date(mem.created_at).toLocaleDateString()}</span>
+                                    {mem.importance >= 8 && <span className="text-[10px] text-yellow-500">high</span>}
+                                  </div>
+                                </div>
+                                <span className="text-[10px] text-text-3 flex-shrink-0">{expandedMemory === mem.id ? '\u25B2' : '\u25BC'}</span>
+                              </button>
+                              {expandedMemory === mem.id && (
+                                <div className="px-3 pb-3 border-t border-border-0">
+                                  <pre className="text-xs text-text-2 font-mono whitespace-pre-wrap mt-2 mb-2 leading-relaxed">{mem.content}</pre>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3 text-[10px] text-text-3">
+                                      {mem.source && <span>source: {mem.source}</span>}
+                                      {mem.tags && <span>tags: {mem.tags}</span>}
+                                      <span>importance: {mem.importance}/10</span>
+                                      <span>accessed: {mem.access_count}x</span>
+                                    </div>
+                                    <button
+                                      onClick={() => handleMemoryDelete(mem.id)}
+                                      className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                      title="Delete memory"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

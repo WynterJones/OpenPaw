@@ -2,6 +2,7 @@ package llm
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 )
 
@@ -10,16 +11,31 @@ type WidgetPayload struct {
 	Title    string          `json:"title,omitempty"`
 	ToolID   string          `json:"tool_id,omitempty"`
 	ToolName string          `json:"tool_name,omitempty"`
+	Endpoint string          `json:"endpoint,omitempty"`
 	Data     json.RawMessage `json:"data"`
 }
 
 type WidgetCollector struct {
-	mu      sync.Mutex
-	widgets []WidgetPayload
+	mu        sync.Mutex
+	widgets   []WidgetPayload
+	endpoints map[string]string // tool_id -> endpoint path
 }
 
 func NewWidgetCollector() *WidgetCollector {
-	return &WidgetCollector{}
+	return &WidgetCollector{
+		endpoints: make(map[string]string),
+	}
+}
+
+func (wc *WidgetCollector) TrackToolStart(toolName, toolID string, toolInput map[string]interface{}) {
+	if toolName != "call_tool" || toolID == "" {
+		return
+	}
+	if ep, ok := toolInput["endpoint"].(string); ok && ep != "" {
+		wc.mu.Lock()
+		wc.endpoints[toolID] = ep
+		wc.mu.Unlock()
+	}
 }
 
 func (wc *WidgetCollector) Collect(toolName, toolID, output string) bool {
@@ -67,11 +83,14 @@ func (wc *WidgetCollector) Collect(toolName, toolID, output string) bool {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 
+	endpoint := wc.endpoints[toolID]
+
 	wc.widgets = append(wc.widgets, WidgetPayload{
 		Type:     widgetType,
 		Title:    widgetTitle,
 		ToolID:   realToolID,
 		ToolName: toolName,
+		Endpoint: endpoint,
 		Data:     data,
 	})
 
@@ -95,6 +114,21 @@ func DetectWidgetType(raw map[string]json.RawMessage) string {
 		return "metric-card"
 	}
 
+	// Media detection: audio, video, or file based on content_type or file extension
+	ct := extractString(raw, "content_type")
+	filePath := findFilePathValue(raw)
+	ext := fileExtension(filePath)
+
+	if strings.HasPrefix(ct, "audio/") || isAudioExt(ext) {
+		return "audio-player"
+	}
+	if strings.HasPrefix(ct, "video/") || isVideoExt(ext) {
+		return "video-player"
+	}
+	if ext == ".pdf" || isFileExt(ext) {
+		return "file-preview"
+	}
+
 	// key-value: flat object with all scalar values
 	allScalar := true
 	for _, v := range raw {
@@ -114,6 +148,63 @@ func DetectWidgetType(raw map[string]json.RawMessage) string {
 	}
 
 	return "json-viewer"
+}
+
+func extractString(raw map[string]json.RawMessage, key string) string {
+	v, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(v, &s) == nil {
+		return s
+	}
+	return ""
+}
+
+func findFilePathValue(raw map[string]json.RawMessage) string {
+	for _, key := range []string{"audio_file", "file_path", "path", "url", "file", "filename", "video_file"} {
+		if s := extractString(raw, key); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func fileExtension(path string) string {
+	dot := strings.LastIndex(path, ".")
+	if dot == -1 {
+		return ""
+	}
+	ext := strings.ToLower(path[dot:])
+	if i := strings.IndexAny(ext, "?#"); i != -1 {
+		ext = ext[:i]
+	}
+	return ext
+}
+
+func isAudioExt(ext string) bool {
+	switch ext {
+	case ".mp3", ".wav", ".ogg", ".opus", ".aac", ".flac", ".m4a", ".wma":
+		return true
+	}
+	return false
+}
+
+func isVideoExt(ext string) bool {
+	switch ext {
+	case ".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v":
+		return true
+	}
+	return false
+}
+
+func isFileExt(ext string) bool {
+	switch ext {
+	case ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".json", ".xml", ".html", ".zip", ".tar", ".gz":
+		return true
+	}
+	return false
 }
 
 func trimBytes(b []byte) []byte {

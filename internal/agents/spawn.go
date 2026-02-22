@@ -15,14 +15,15 @@ import (
 
 // spawnConfig holds the variable parts of a builder spawn.
 type spawnConfig struct {
-	agentType    string   // e.g. "tool_builder", "dashboard_builder"
-	workDir      string   // working directory (empty for dashboard_builder)
-	prompt       string   // fully constructed prompt
-	tools        []string // LLM tools (nil for text-only builders)
-	maxTurns     int      // max agent loop turns
-	logToolCalls bool     // whether to log tool start events
-	postBuild    func(output string) string
-	failureMsg   string // message prefix on failure
+	agentType      string   // e.g. "tool_builder", "dashboard_builder"
+	workDir        string   // working directory (empty for dashboard_builder)
+	prompt         string   // fully constructed prompt
+	tools          []string // LLM tools (nil for text-only builders)
+	maxTurns       int      // max agent loop turns
+	logToolCalls   bool     // whether to log tool start events
+	suppressStream bool     // don't broadcast text deltas or save raw agent text (for JSON-only builders)
+	postBuild      func(output string) string
+	failureMsg     string // message prefix on failure
 }
 
 // spawnBuilder contains the common logic shared by all Spawn*Builder methods.
@@ -109,6 +110,11 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 					}
 				}
 
+				// Don't broadcast text deltas for JSON-only builders (e.g. dashboard_builder)
+				if cfg.suppressStream && event.Type == EventTextDelta {
+					return
+				}
+
 				m.broadcast("agent_stream", map[string]interface{}{
 					"agent_id":      agentID,
 					"work_order_id": workOrder.ID,
@@ -162,7 +168,7 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 		}
 
 		agentText := ""
-		if result != nil {
+		if result != nil && !cfg.suppressStream {
 			agentText = strings.TrimSpace(result.Text)
 		}
 		m.saveBuildResult(threadID, agentText, chatMsg, "builder", msgCost, msgInput, msgOutput, placeholderMsgID)
@@ -252,12 +258,13 @@ func (m *Manager) SpawnDashboardBuilder(ctx context.Context, workOrder *models.W
 	}
 
 	return m.spawnBuilder(ctx, spawnConfig{
-		agentType:    "dashboard_builder",
-		workDir:      "",
-		prompt:       prompt,
-		tools:        nil,
-		maxTurns:     1,
-		logToolCalls: false,
+		agentType:      "dashboard_builder",
+		workDir:        "",
+		prompt:         prompt,
+		tools:          nil,
+		maxTurns:       1,
+		logToolCalls:   false,
+		suppressStream: true,
 		postBuild: func(output string) string {
 			return m.postBuildDashboard(workOrder, output)
 		},

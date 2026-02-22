@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,16 +19,53 @@ var (
 	elevenLabsKey    string
 	elevenLabsClient = &http.Client{Timeout: 60 * time.Second}
 	elevenLabsBase   = "https://api.elevenlabs.io/v1"
+	audioStore       = &audioFileStore{files: make(map[string]string)}
+	audioDir         string
 )
+
+type audioFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *audioFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *audioFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
 
 func initElevenLabs(key string) {
 	elevenLabsKey = key
+
+	// Set up persistent audio directory
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		audioDir = filepath.Join(dir, "elevenlabs")
+	} else {
+		audioDir = filepath.Join(os.TempDir(), "elevenlabs")
+	}
+	os.MkdirAll(audioDir, 0755)
+
+	// Scan for existing audio files to restore the in-memory store
+	entries, _ := os.ReadDir(audioDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "elevenlabs-") && strings.HasSuffix(e.Name(), ".mp3") {
+			audioStore.Add(e.Name(), filepath.Join(audioDir, e.Name()))
+		}
+	}
 }
 
 func registerRoutes(r chi.Router) {
 	r.Get("/voices", handleListVoices)
 	r.Post("/tts", handleTTS)
 	r.Get("/models", handleListModels)
+	r.Get("/audio/{filename}", handleServeAudio)
 }
 
 func elevenLabsRequest(method, path string, body io.Reader) (*http.Response, error) {
@@ -151,25 +191,58 @@ func handleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpFile, err := os.CreateTemp("", "elevenlabs-*.mp3")
+	filename := fmt.Sprintf("elevenlabs-%d.mp3", time.Now().UnixNano())
+	filePath := filepath.Join(audioDir, filename)
+	outFile, err := os.Create(filePath)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp file")
+		writeError(w, http.StatusInternalServerError, "failed to create audio file")
 		return
 	}
-	defer tmpFile.Close()
+	defer outFile.Close()
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		os.Remove(tmpFile.Name())
+	if _, err := io.Copy(outFile, resp.Body); err != nil {
+		os.Remove(filePath)
 		writeError(w, http.StatusInternalServerError, "failed to save audio data")
 		return
 	}
 
+	audioStore.Add(filename, filePath)
+
+	displayText := req.Text
+	if len(displayText) > 80 {
+		displayText = displayText[:77] + "..."
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"file_path":    tmpFile.Name(),
+		"audio_file":   filename,
 		"voice_id":     req.VoiceID,
 		"characters":   len(req.Text),
 		"content_type": "audio/mpeg",
+		"text":         displayText,
+		"__widget": map[string]string{
+			"type":  "audio-player",
+			"title": "ElevenLabs TTS",
+		},
 	})
+}
+
+func handleServeAudio(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "elevenlabs-") || !strings.HasSuffix(filename, ".mp3") {
+		writeError(w, http.StatusBadRequest, "invalid audio filename")
+		return
+	}
+
+	fullPath, ok := audioStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "audio file not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "audio/mpeg")
+	http.ServeFile(w, r, fullPath)
 }
 
 func handleListModels(w http.ResponseWriter, r *http.Request) {

@@ -70,6 +70,7 @@ function AppRoutes() {
         }
       >
         <Route path="/chat" element={<Chat />} />
+        <Route path="/chat/:threadId" element={<Chat />} />
         <Route path="/tools" element={<Tools />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/agents/gateway" element={<GatewayEdit />} />

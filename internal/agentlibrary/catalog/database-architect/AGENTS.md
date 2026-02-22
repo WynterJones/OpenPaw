@@ -16,3 +16,9 @@
 2. Design the schema — tables, columns, types, constraints, indexes
 3. Plan migrations — ordered steps, rollback strategy, data backfill needs
 4. Review for edge cases — NULLs, cascades, unique constraints, concurrent access
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

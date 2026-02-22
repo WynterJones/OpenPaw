@@ -63,7 +63,7 @@ export function Secrets() {
         <div className="flex items-center gap-3 mb-4">
           <SearchBar value={search} onChange={handleSearch} placeholder="Search secrets..." className="flex-1" />
           <ViewToggle view={view} onViewChange={setView} />
-          <Button onClick={() => setAddOpen(true)} size="sm" icon={<Plus className="w-4 h-4" />}>Add Secret</Button>
+          <Button onClick={() => setAddOpen(true)} icon={<Plus className="w-4 h-4" />}>Add Secret</Button>
         </div>
         {!loaded ? (
           <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" /></div>

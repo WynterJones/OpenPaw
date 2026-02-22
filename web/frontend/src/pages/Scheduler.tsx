@@ -6,11 +6,9 @@ import {
   Trash2,
   ChevronRight,
   ArrowLeft,
-  CheckCircle,
-  XCircle,
   Loader2,
   Bot,
-  Wrench,
+  MessageSquare,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -24,20 +22,30 @@ import { DataTable } from '../components/DataTable';
 import { SearchBar } from '../components/SearchBar';
 import { ViewToggle, type ViewMode } from '../components/ViewToggle';
 import { Toggle } from '../components/Toggle';
-import { api, type Schedule, type ScheduleExecution, type Tool, type AgentRole } from '../lib/api';
+import { api, type Schedule, type ScheduleExecution, type AgentRole, type ChatThread } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 const CRON_PRESETS = [
-  { value: '0 * * * *', label: 'Every hour' },
-  { value: '0 9 * * *', label: 'Daily at 9:00 AM' },
-  { value: '0 9 * * 1', label: 'Weekly on Monday at 9:00 AM' },
-  { value: '0 0 1 * *', label: 'Monthly on the 1st' },
-  { value: '*/15 * * * *', label: 'Every 15 minutes' },
-  { value: '*/30 * * * *', label: 'Every 30 minutes' },
+  { value: '0 */5 * * * *', label: 'Every 5 minutes' },
+  { value: '0 */15 * * * *', label: 'Every 15 minutes' },
+  { value: '0 */30 * * * *', label: 'Every 30 minutes' },
+  { value: '0 0 * * * *', label: 'Every hour' },
+  { value: '0 0 */2 * * *', label: 'Every 2 hours' },
+  { value: '0 0 */6 * * *', label: 'Every 6 hours' },
+  { value: '0 0 9 * * *', label: 'Daily at 9:00 AM' },
+  { value: '0 0 9 * * 1-5', label: 'Weekdays at 9:00 AM' },
+  { value: '0 0 9 * * 1', label: 'Weekly on Monday at 9:00 AM' },
+  { value: '0 0 0 1 * *', label: 'Monthly on the 1st' },
   { value: 'custom', label: 'Custom...' },
 ];
 
-function ScheduleDetail({ schedule, onBack }: { schedule: Schedule; onBack: () => void }) {
+function ScheduleDetail({ schedule, onBack, getAgentName, getThreadTitle, getCronLabel }: {
+  schedule: Schedule;
+  onBack: () => void;
+  getAgentName: (slug: string) => string;
+  getThreadTitle: (id: string) => string;
+  getCronLabel: (expr: string) => string;
+}) {
   const { toast } = useToast();
   const [executions, setExecutions] = useState<ScheduleExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,8 +76,6 @@ function ScheduleDetail({ schedule, onBack }: { schedule: Schedule; onBack: () =
     }
   };
 
-  const isPrompt = schedule.type === 'prompt';
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -77,13 +83,8 @@ function ScheduleDetail({ schedule, onBack }: { schedule: Schedule; onBack: () =
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-text-0">{schedule.name}</h2>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${isPrompt ? 'bg-purple-500/20 text-purple-300' : 'bg-accent-muted text-accent-text'}`}>
-              {isPrompt ? 'AI Prompt' : 'Tool Action'}
-            </span>
-          </div>
-          <p className="text-sm text-text-2">{schedule.cron_label || schedule.cron_expr || schedule.cron}</p>
+          <h2 className="text-lg font-semibold text-text-0">{schedule.name}</h2>
+          <p className="text-sm text-text-2">{getCronLabel(schedule.cron_expr)}</p>
         </div>
         <Button size="sm" onClick={runNow} icon={<Play className="w-4 h-4" />}>Run Now</Button>
       </div>
@@ -91,23 +92,26 @@ function ScheduleDetail({ schedule, onBack }: { schedule: Schedule; onBack: () =
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">Cron</p>
-          <p className="text-sm font-mono text-text-1">{schedule.cron_expr || schedule.cron}</p>
+          <p className="text-sm font-mono text-text-1">{schedule.cron_expr}</p>
         </Card>
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">Next Run</p>
-          <p className="text-sm text-text-1">{schedule.next_run ? new Date(schedule.next_run).toLocaleString() : 'Not scheduled'}</p>
+          <p className="text-sm text-text-1">{schedule.next_run_at ? new Date(schedule.next_run_at).toLocaleString() : 'Not scheduled'}</p>
         </Card>
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">
-            {isPrompt ? 'Agent' : 'Tool / Action'}
-          </p>
-          <p className="text-sm text-text-1">
-            {isPrompt ? schedule.agent_role_slug : `${schedule.tool_name || schedule.tool_id} / ${schedule.action}`}
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">Agent</p>
+          <p className="text-sm text-text-1">{getAgentName(schedule.agent_role_slug)}</p>
         </Card>
       </div>
 
-      {isPrompt && schedule.prompt_content && (
+      {schedule.thread_id && (
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">Chat Thread</p>
+          <p className="text-sm text-text-1">{getThreadTitle(schedule.thread_id)}</p>
+        </Card>
+      )}
+
+      {schedule.prompt_content && (
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-2">Prompt</p>
           <p className="text-sm text-text-1 whitespace-pre-wrap">{schedule.prompt_content}</p>
@@ -174,8 +178,8 @@ const PAGE_SIZE = 12;
 export function Scheduler() {
   const { toast } = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [tools, setTools] = useState<Tool[]>([]);
   const [agents, setAgents] = useState<AgentRole[]>([]);
+  const [threads, setThreads] = useState<ChatThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Schedule | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -184,12 +188,10 @@ export function Scheduler() {
   const [page, setPage] = useState(0);
 
   const [name, setName] = useState('');
-  const [schedType, setSchedType] = useState<'tool_action' | 'prompt'>('tool_action');
-  const [cronPreset, setCronPreset] = useState('0 9 * * *');
+  const [cronPreset, setCronPreset] = useState('0 0 9 * * *');
   const [customCron, setCustomCron] = useState('');
-  const [toolId, setToolId] = useState('');
-  const [action, setAction] = useState('');
   const [agentSlug, setAgentSlug] = useState('');
+  const [threadId, setThreadId] = useState('');
   const [promptContent, setPromptContent] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -199,19 +201,19 @@ export function Scheduler() {
 
   const loadData = async () => {
     try {
-      const [schedulesData, toolsData, agentsData] = await Promise.all([
+      const [schedulesData, agentsData, threadsData] = await Promise.all([
         api.get<Schedule[]>('/schedules'),
-        api.get<Tool[]>('/tools'),
         api.get<AgentRole[]>('/agent-roles'),
+        api.get<ChatThread[]>('/chat/threads'),
       ]);
       setSchedules(Array.isArray(schedulesData) ? schedulesData : []);
-      setTools(Array.isArray(toolsData) ? toolsData : []);
       setAgents(Array.isArray(agentsData) ? agentsData : []);
+      setThreads(Array.isArray(threadsData) ? threadsData : []);
     } catch (e) {
       console.warn('loadSchedulerData failed:', e);
       setSchedules([]);
-      setTools([]);
       setAgents([]);
+      setThreads([]);
     } finally {
       setLoading(false);
     }
@@ -219,12 +221,10 @@ export function Scheduler() {
 
   const resetForm = () => {
     setName('');
-    setSchedType('tool_action');
-    setCronPreset('0 9 * * *');
+    setCronPreset('0 0 9 * * *');
     setCustomCron('');
-    setToolId('');
-    setAction('');
     setAgentSlug('');
+    setThreadId('');
     setPromptContent('');
   };
 
@@ -235,11 +235,9 @@ export function Scheduler() {
       await api.post('/schedules', {
         name,
         cron_expr: cron,
-        type: schedType,
-        tool_id: schedType === 'tool_action' ? toolId : '',
-        action: schedType === 'tool_action' ? action : '',
-        agent_role_slug: schedType === 'prompt' ? agentSlug : '',
-        prompt_content: schedType === 'prompt' ? promptContent : '',
+        agent_role_slug: agentSlug,
+        prompt_content: promptContent,
+        thread_id: threadId,
       });
       toast('success', 'Schedule created');
       setCreateOpen(false);
@@ -281,33 +279,28 @@ export function Scheduler() {
     }
   };
 
-  const toolOptions = [
-    { value: '', label: 'Select a tool...' },
-    ...tools.map(t => ({ value: t.id, label: t.name })),
-  ];
-
-  const selectedTool = tools.find(t => t.id === toolId);
-  const actionOptions = [
-    { value: '', label: 'Select an action...' },
-    ...(selectedTool?.actions?.map(a => ({ value: a.name, label: a.name })) || []),
-  ];
-
   const agentOptions = [
     { value: '', label: 'Select an agent...' },
     ...agents.filter(a => a.enabled).map(a => ({ value: a.slug, label: a.name })),
   ];
 
-  const canCreate = name.trim() && (
-    (schedType === 'tool_action' && toolId) ||
-    (schedType === 'prompt' && agentSlug && promptContent.trim())
-  );
+  const threadOptions = [
+    { value: '', label: 'Create new chat each run' },
+    ...threads.map(t => ({ value: t.id, label: t.title })),
+  ];
+
+  const canCreate = name.trim() && agentSlug && promptContent.trim();
+
+  const getAgentName = (slug: string) => agents.find(a => a.slug === slug)?.name || slug;
+  const getThreadTitle = (id: string) => threads.find(t => t.id === id)?.title || id;
+  const getCronLabel = (expr: string) => CRON_PRESETS.find(p => p.value === expr)?.label || expr;
 
   const handleSearch = (val: string) => { setSearch(val); setPage(0); };
 
   const filteredSchedules = schedules.filter(s => {
     if (!search.trim()) return true;
     const term = search.toLowerCase();
-    return s.name.toLowerCase().includes(term) || (s.cron_label || '').toLowerCase().includes(term);
+    return s.name.toLowerCase().includes(term) || getCronLabel(s.cron_expr).toLowerCase().includes(term);
   });
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
   const paginatedSchedules = filteredSchedules.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -317,7 +310,7 @@ export function Scheduler() {
       <div className="flex flex-col h-full">
         <Header title="Scheduler" />
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          <ScheduleDetail schedule={selected} onBack={() => setSelected(null)} />
+          <ScheduleDetail schedule={selected} onBack={() => setSelected(null)} getAgentName={getAgentName} getThreadTitle={getThreadTitle} getCronLabel={getCronLabel} />
         </div>
       </div>
     );
@@ -337,14 +330,14 @@ export function Scheduler() {
             <div className="flex items-center gap-3 mb-4">
               <SearchBar value={search} onChange={handleSearch} placeholder="Search schedules..." className="flex-1" />
               <ViewToggle view={view} onViewChange={setView} />
-              <Button size="sm" onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>Create Schedule</Button>
+              <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>Create Schedule</Button>
             </div>
 
             {filteredSchedules.length === 0 ? (
               <EmptyState
                 icon={<Clock className="w-8 h-8" />}
                 title={search ? 'No schedules found' : 'No schedules yet'}
-                description={search ? 'Try a different search term.' : 'Create schedules to run tools or send prompts to agents on a cron-based schedule.'}
+                description={search ? 'Try a different search term.' : 'Create schedules to send prompts to agents on a cron-based schedule.'}
               />
             ) : view === 'grid' ? (
               <>
@@ -355,14 +348,8 @@ export function Scheduler() {
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
-                            {s.type === 'prompt' ? (
-                              <Bot className="w-4 h-4 text-purple-400" />
-                            ) : (
-                              <Wrench className="w-4 h-4 text-accent-primary" />
-                            )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${s.type === 'prompt' ? 'bg-purple-500/20 text-purple-300' : 'bg-accent-muted text-accent-text'}`}>
-                              {s.type === 'prompt' ? 'AI Prompt' : 'Tool Action'}
-                            </span>
+                            <Bot className="w-4 h-4 text-accent-primary" />
+                            <span className="text-xs text-text-2">{getAgentName(s.agent_role_slug)}</span>
                           </div>
                           <div onClick={(e) => e.stopPropagation()}>
                             <Toggle enabled={s.enabled} onChange={() => toggleSchedule(s)} label="Enable schedule" />
@@ -370,28 +357,31 @@ export function Scheduler() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-text-0">{s.name}</p>
-                          <p className="text-xs text-text-3 mt-1">{s.cron_label || s.cron_expr || s.cron}</p>
+                          <p className="text-xs text-text-3 mt-1">{getCronLabel(s.cron_expr)}</p>
                         </div>
-                        <div className="flex items-center justify-between text-xs text-text-3">
-                          <span>{s.type === 'prompt' ? s.agent_role_slug : (s.tool_name || s.tool_id)}</span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); runNow(s.id); }}
-                              className="p-1 rounded text-text-3 hover:text-accent-text transition-colors cursor-pointer"
-                              title="Run now"
-                              aria-label="Run now"
-                            >
-                              <Play className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteSchedule(s.id); }}
-                              className="p-1 rounded text-text-3 hover:text-red-400 transition-colors cursor-pointer"
-                              title="Delete"
-                              aria-label="Delete schedule"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        {s.thread_id && (
+                          <div className="flex items-center gap-1.5 text-xs text-text-3">
+                            <MessageSquare className="w-3 h-3" />
+                            <span className="truncate">{getThreadTitle(s.thread_id)}</span>
                           </div>
+                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); runNow(s.id); }}
+                            className="p-1 rounded text-text-3 hover:text-accent-text transition-colors cursor-pointer"
+                            title="Run now"
+                            aria-label="Run now"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteSchedule(s.id); }}
+                            className="p-1 rounded text-text-3 hover:text-red-400 transition-colors cursor-pointer"
+                            title="Delete"
+                            aria-label="Delete schedule"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </Card>
@@ -409,29 +399,13 @@ export function Scheduler() {
                         header: 'Name',
                         render: (s: Schedule) => (
                           <div className="flex items-center gap-2">
-                            {s.type === 'prompt' ? (
-                              <Bot className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                            ) : (
-                              <Wrench className="w-4 h-4 text-accent-primary flex-shrink-0" />
-                            )}
+                            <Bot className="w-4 h-4 text-accent-primary flex-shrink-0" />
                             <div>
                               <p className="text-sm font-medium text-text-0">{s.name}</p>
-                              <p className="text-xs text-text-3">
-                                {s.type === 'prompt' ? s.agent_role_slug : (s.tool_name || s.tool_id)}
-                              </p>
-                              <p className="text-xs text-text-2 md:hidden mt-0.5">{s.cron_label || s.cron_expr || s.cron}</p>
+                              <p className="text-xs text-text-3">{getAgentName(s.agent_role_slug)}</p>
+                              <p className="text-xs text-text-2 md:hidden mt-0.5">{getCronLabel(s.cron_expr)}</p>
                             </div>
                           </div>
-                        ),
-                      },
-                      {
-                        key: 'type',
-                        header: 'Type',
-                        hideOnMobile: true,
-                        render: (s: Schedule) => (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${s.type === 'prompt' ? 'bg-purple-500/20 text-purple-300' : 'bg-accent-muted text-accent-text'}`}>
-                            {s.type === 'prompt' ? 'AI Prompt' : 'Tool Action'}
-                          </span>
                         ),
                       },
                       {
@@ -440,27 +414,37 @@ export function Scheduler() {
                         hideOnMobile: true,
                         render: (s: Schedule) => (
                           <div>
-                            <p className="text-sm text-text-1">{s.cron_label || s.cron_expr || s.cron}</p>
-                            <p className="text-xs font-mono text-text-3">{s.cron_expr || s.cron}</p>
+                            <p className="text-sm text-text-1">{getCronLabel(s.cron_expr)}</p>
+                            <p className="text-xs font-mono text-text-3">{s.cron_expr}</p>
                           </div>
+                        ),
+                      },
+                      {
+                        key: 'thread',
+                        header: 'Chat',
+                        hideOnMobile: true,
+                        render: (s: Schedule) => (
+                          <span className="text-sm text-text-1">
+                            {s.thread_id ? (
+                              <span className="flex items-center gap-1.5">
+                                <MessageSquare className="w-3.5 h-3.5 text-text-3" />
+                                {getThreadTitle(s.thread_id)}
+                              </span>
+                            ) : (
+                              <span className="text-text-3">New each run</span>
+                            )}
+                          </span>
                         ),
                       },
                       {
                         key: 'last',
                         header: 'Last Run',
                         hideOnMobile: true,
-                        render: (s: Schedule) => {
-                          const lastRun = s.last_run || s.last_run_at;
-                          return (
-                            <div className="flex items-center gap-1.5">
-                              {s.last_status === 'success' && <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />}
-                              {s.last_status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-400" />}
-                              <span className="text-sm text-text-1">
-                                {lastRun ? new Date(lastRun).toLocaleString() : 'Never'}
-                              </span>
-                            </div>
-                          );
-                        },
+                        render: (s: Schedule) => (
+                          <span className="text-sm text-text-1">
+                            {s.last_run_at ? new Date(s.last_run_at).toLocaleString() : 'Never'}
+                          </span>
+                        ),
                       },
                       {
                         key: 'status',
@@ -525,88 +509,85 @@ export function Scheduler() {
             placeholder="e.g. Daily report"
           />
 
-          <div>
-            <label className="block text-sm font-medium text-text-1 mb-2">Type</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSchedType('tool_action')}
-                aria-pressed={schedType === 'tool_action'}
-                className={`flex-1 flex items-center gap-2 p-3 rounded-lg border transition-colors cursor-pointer ${
-                  schedType === 'tool_action'
-                    ? 'border-accent-primary bg-accent-muted/30 text-text-0'
-                    : 'border-border-1 text-text-2 hover:border-border-0'
-                }`}
-              >
-                <Wrench className="w-4 h-4" />
-                <span className="text-sm font-medium">Tool Action</span>
-              </button>
-              <button
-                onClick={() => setSchedType('prompt')}
-                aria-pressed={schedType === 'prompt'}
-                className={`flex-1 flex items-center gap-2 p-3 rounded-lg border transition-colors cursor-pointer ${
-                  schedType === 'prompt'
-                    ? 'border-purple-500 bg-purple-500/10 text-text-0'
-                    : 'border-border-1 text-text-2 hover:border-border-0'
-                }`}
-              >
-                <Bot className="w-4 h-4" />
-                <span className="text-sm font-medium">AI Prompt</span>
-              </button>
-            </div>
-          </div>
+          <Select
+            label="Agent"
+            value={agentSlug}
+            onChange={e => setAgentSlug(e.target.value)}
+            options={agentOptions}
+          />
 
           <Select
-            label="Schedule Preset"
+            label="Chat"
+            value={threadId}
+            onChange={e => setThreadId(e.target.value)}
+            options={threadOptions}
+          />
+
+          <Select
+            label="Schedule"
             value={cronPreset}
             onChange={e => setCronPreset(e.target.value)}
             options={CRON_PRESETS}
           />
           {cronPreset === 'custom' && (
-            <Input
-              label="Custom Cron Expression"
-              value={customCron}
-              onChange={e => setCustomCron(e.target.value)}
-              placeholder="* * * * *"
-            />
+            <div className="space-y-2">
+              <Input
+                label="Custom Cron Expression"
+                value={customCron}
+                onChange={e => setCustomCron(e.target.value)}
+                placeholder="0 * * * * *"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: 'Every 5m', value: '0 */5 * * * *' },
+                  { label: 'Every 2h', value: '0 0 */2 * * *' },
+                  { label: 'Daily 8am', value: '0 0 8 * * *' },
+                  { label: 'Daily 6pm', value: '0 0 18 * * *' },
+                  { label: 'Weekdays 9am', value: '0 0 9 * * 1-5' },
+                  { label: 'Sat 10am', value: '0 0 10 * * 6' },
+                  { label: 'Every 6h', value: '0 0 */6 * * *' },
+                  { label: '1st & 15th', value: '0 0 9 1,15 * *' },
+                ].map(p => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setCustomCron(p.value)}
+                    className={`px-2 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
+                      customCron === p.value
+                        ? 'border-accent-primary bg-accent-muted/30 text-accent-text'
+                        : 'border-border-1 text-text-3 hover:text-text-1 hover:border-border-0'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-text-3">
+                Format: <code className="px-1 py-0.5 rounded bg-surface-2 text-text-2">sec min hour day month weekday</code>
+                {' \u00b7 '}
+                <a
+                  href="https://crontab.guru/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-text hover:underline"
+                >
+                  crontab.guru
+                </a>
+                {' '}(omit seconds field there)
+              </p>
+            </div>
           )}
 
-          {schedType === 'tool_action' ? (
-            <>
-              <Select
-                label="Tool"
-                value={toolId}
-                onChange={e => { setToolId(e.target.value); setAction(''); }}
-                options={toolOptions}
-              />
-              {toolId && (
-                <Select
-                  label="Action"
-                  value={action}
-                  onChange={e => setAction(e.target.value)}
-                  options={actionOptions}
-                />
-              )}
-            </>
-          ) : (
-            <>
-              <Select
-                label="Agent"
-                value={agentSlug}
-                onChange={e => setAgentSlug(e.target.value)}
-                options={agentOptions}
-              />
-              <div>
-                <label className="block text-sm font-medium text-text-1 mb-1.5">Prompt</label>
-                <textarea
-                  value={promptContent}
-                  onChange={e => setPromptContent(e.target.value)}
-                  placeholder="Enter the prompt to send to the agent..."
-                  rows={4}
-                  className="w-full px-3 py-2 rounded-lg text-sm bg-surface-2 border border-border-1 text-text-0 placeholder:text-text-3 focus:outline-none focus:ring-1 focus:ring-accent-primary resize-none"
-                />
-              </div>
-            </>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-text-1 mb-1.5">Prompt</label>
+            <textarea
+              value={promptContent}
+              onChange={e => setPromptContent(e.target.value)}
+              placeholder="Enter the prompt to send to the agent..."
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-surface-2 border border-border-1 text-text-0 placeholder:text-text-3 focus:outline-none focus:ring-1 focus:ring-accent-primary resize-none"
+            />
+          </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>

@@ -16,3 +16,9 @@
 2. Research — check known issues, documentation, previous resolutions
 3. Draft response — clear, empathetic, actionable
 4. Follow up — suggest related resources, prevent future occurrences
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

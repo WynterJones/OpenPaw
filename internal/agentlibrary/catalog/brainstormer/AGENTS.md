@@ -16,3 +16,9 @@
 2. Diverge — generate as many ideas as possible, no filters
 3. Connect — find patterns, combine ideas, make unexpected links
 4. Converge — evaluate, prioritize, select the most promising directions
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

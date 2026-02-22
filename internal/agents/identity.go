@@ -68,10 +68,10 @@ var defaultTemplates = map[string]string{
 - Use markdown formatting when it aids readability
 
 ## Memory Management
-- After significant conversations, update memory/memory.md with brief bullet-point notes
-- Format: ` + "`- [topic]: key takeaway`" + `
-- Keep notes concise and factual
-- Review your memory at session start
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start
 `,
 	FileHeartbeat: ``,
 	FileBoot: `# Startup
@@ -152,12 +152,6 @@ func InitAgentDir(dataDir, slug, name, soulContent string) error {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write %s: %w", fname, err)
 		}
-	}
-
-	// Create empty memory file
-	memPath := filepath.Join(dir, FileMemory)
-	if _, err := os.Stat(memPath); os.IsNotExist(err) {
-		os.WriteFile(memPath, []byte("# Memory\n\n"), 0644)
 	}
 
 	return nil
@@ -398,12 +392,6 @@ func InitGatewayDir(dataDir string) error {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write gateway %s: %w", fname, err)
 		}
-	}
-
-	// Create empty memory file
-	memPath := filepath.Join(dir, FileMemory)
-	if _, err := os.Stat(memPath); os.IsNotExist(err) {
-		os.WriteFile(memPath, []byte("# Memory\n\n"), 0644)
 	}
 
 	// Only create BOOTSTRAP.md on fresh install

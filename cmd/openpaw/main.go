@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,6 +35,16 @@ import (
 )
 
 var version = "dev"
+
+func init() {
+	if version == "dev" {
+		if data, err := os.ReadFile("VERSION"); err == nil {
+			if v := strings.TrimSpace(string(data)); v != "" {
+				version = v
+			}
+		}
+	}
+}
 
 func main() {
 	// Handle --version / -v flag
@@ -84,6 +95,15 @@ func main() {
 				logger.Error("Failed to persist JWT secret: %v", err)
 			}
 			logger.Success("Generated and persisted JWT secret")
+		}
+	}
+
+	// Read bind_address from DB if no env var override
+	if os.Getenv("OPENPAW_BIND") == "" {
+		var savedBind string
+		db.QueryRow("SELECT value FROM settings WHERE key = 'bind_address'").Scan(&savedBind)
+		if savedBind != "" {
+			cfg.BindAddress = savedBind
 		}
 	}
 
@@ -157,11 +177,12 @@ func main() {
 	dashboardsDir := filepath.Join(cfg.DataDir, "..", "dashboards")
 	os.MkdirAll(dashboardsDir, 0755)
 
-	// Resolve API key: OPENROUTER_API_KEY > ANTHROPIC_API_KEY (legacy) > encrypted DB value
+	// Tool data directory (persistent storage for tool-generated files like TTS audio)
+	toolDataDir := filepath.Join(cfg.DataDir, "..", "tool_data")
+	os.MkdirAll(toolDataDir, 0755)
+
+	// Resolve API key: OPENROUTER_API_KEY env var > encrypted DB value
 	envAPIKey := os.Getenv("OPENROUTER_API_KEY")
-	if envAPIKey == "" {
-		envAPIKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
 	var dbAPIKey string
 	var encryptedKey string
 	err = db.QueryRow("SELECT value FROM settings WHERE key = 'openrouter_api_key'").Scan(&encryptedKey)
@@ -211,7 +232,7 @@ func main() {
 	agentMgr.NotifyFn = notifyFn
 
 	// Create tool process manager
-	toolMgr := toolmgr.New(db, toolsDir, broadcastFn)
+	toolMgr := toolmgr.New(db, toolsDir, toolDataDir, broadcastFn, secretsMgr)
 	agentMgr.ToolMgr = toolMgr
 	agentMgr.DashboardsDir = dashboardsDir
 
@@ -241,9 +262,7 @@ func main() {
 	heartbeatMgr.LoadConfig()
 
 	// Wire scheduler dependencies and load schedules
-	sched.SetToolCaller(toolMgr)
 	sched.SetPromptSender(agentMgr)
-	sched.SetBrowserExecutor(browserMgr)
 	sched.SetNotifyFunc(notifyFn)
 	sched.LoadSchedules()
 	sched.StartDataRetention()
@@ -327,7 +346,7 @@ func main() {
 	go func() {
 		url := fmt.Sprintf("http://localhost:%d", cfg.Port)
 		logger.Listen(addr, url, cfg.Port)
-		if os.Getenv("OPENPAW_NO_OPEN") != "1" {
+		if os.Getenv("OPENPAW_OPEN") == "1" {
 			platform.OpenBrowser(url)
 		}
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -178,11 +178,16 @@ func (m *Manager) postBuildDashboard(workOrder *models.WorkOrder, builderOutput 
 		widgetsStr = string(config.Widgets)
 	}
 
-	// Check if updating an existing dashboard
+	// Check if updating an existing dashboard — prefer ID from work order, then name match
 	var existingID string
-	m.db.QueryRow(
-		"SELECT id FROM dashboards WHERE name = ?", config.Name,
-	).Scan(&existingID)
+	if workOrder.ToolID != "" {
+		m.db.QueryRow("SELECT id FROM dashboards WHERE id = ?", workOrder.ToolID).Scan(&existingID)
+	}
+	if existingID == "" {
+		m.db.QueryRow(
+			"SELECT id FROM dashboards WHERE name = ?", config.Name,
+		).Scan(&existingID)
+	}
 
 	now := time.Now().UTC()
 	dashboardID := existingID

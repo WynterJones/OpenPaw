@@ -16,3 +16,9 @@
 2. Audit the current state — data collection, storage, processing, sharing
 3. Flag gaps — missing consent flows, retention policies, data subject rights
 4. Recommend fixes — prioritized by risk, with implementation guidance
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

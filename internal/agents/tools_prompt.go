@@ -145,7 +145,7 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 // so the gateway knows about them and can include dashboard_id when updating.
 func (m *Manager) buildDashboardsPromptSection() string {
 	rows, err := m.db.Query(
-		"SELECT id, name, description, dashboard_type FROM dashboards WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 20",
+		"SELECT id, name, description, dashboard_type FROM dashboards ORDER BY updated_at DESC LIMIT 20",
 	)
 	if err != nil {
 		return ""

@@ -18,7 +18,7 @@
 4. Review — verify claims, flag gaps or contradictions, add confidence ratings
 
 ## Memory Management
-- After significant work, update memory/memory.md with key findings
-- Format: `- [topic]: key takeaway`
-- Keep notes concise and factual
-- Track which sources were most reliable for future reference
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

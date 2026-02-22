@@ -438,6 +438,32 @@ func (h *ToolsHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.toolMgr.GetStatus(id))
 }
 
+func (h *ToolsHandler) Proxy(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if h.toolMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "tool manager not available")
+		return
+	}
+
+	routeCtx := chi.RouteContext(r.Context())
+	proxyPath := "/" + routeCtx.URLParam("*")
+	if r.URL.RawQuery != "" {
+		proxyPath += "?" + r.URL.RawQuery
+	}
+
+	resp, err := h.toolMgr.ProxyRequest(id, proxyPath)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "proxy failed: "+err.Error())
+		return
+	}
+
+	if resp.ContentType != "" {
+		w.Header().Set("Content-Type", resp.ContentType)
+	}
+	w.WriteHeader(resp.StatusCode)
+	w.Write(resp.Body)
+}
+
 func (h *ToolsHandler) WidgetJS(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {

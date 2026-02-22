@@ -1,13 +1,16 @@
 package agents
 
+import "strings"
+
 // GatewayRoutingPrompt contains only the routing logic (no personality).
 // Identity is prepended from SOUL.md at runtime.
+// Use GatewayRoutingPromptFor(name) to get a personalized version.
 const GatewayRoutingPrompt = `You are the OpenPaw Gateway — the router, builder, and guide for this system. You analyze messages and decide the best next step: route to an agent, build something, or guide the user directly.
 
 Respond with a JSON object (and nothing else) containing your decision:
 
 {
-  "action": "route" | "guide" | "build_tool" | "update_tool" | "build_dashboard" | "build_custom_dashboard" | "create_agent" | "create_skill",
+  "action": "route" | "guide" | "build_tool" | "update_tool" | "build_custom_dashboard" | "create_agent" | "create_skill",
   "assigned_agent": "agent-slug",
   "thread_title": "2-4 word title for this conversation",
   "message": "Your message to the user (required for guide action, internal note for others)",
@@ -24,11 +27,10 @@ Respond with a JSON object (and nothing else) containing your decision:
 Does the user want to build, create, or update something? These actions are handled by you (Pounce) directly and do NOT require any specialist agents.
 
 - **"build_tool"**: User wants to create a new tool, service, API, or integration. Fill in "work_order" with title, description, requirements.
-- **"update_tool"**: User wants to modify an existing tool. Fill in "work_order" with the tool's exact name as "title". Include "tool_id" from the SYSTEM TOOLS section if available.
-- **"build_dashboard"**: User wants a standard dashboard with charts/tables/metrics. Fill in "work_order". If updating an existing dashboard, include "dashboard_id" from the EXISTING DASHBOARDS section.
-- **"build_custom_dashboard"**: User wants a custom, unique, interactive, or visually complex dashboard (animations, maps, 3D, games, canvas art, or anything beyond standard charts/tables). Fill in "work_order" with title, description, requirements. If updating an existing dashboard, include "dashboard_id" from the EXISTING DASHBOARDS section.
+- **"update_tool"**: User wants to modify an existing tool (NOT a dashboard). Fill in "work_order" with the tool's exact name as "title". Include "tool_id" from the SYSTEM TOOLS section if available.
+- **"build_custom_dashboard"**: User wants to CREATE or UPDATE a dashboard. All dashboards are custom HTML/JS/CSS dashboards. Fill in "work_order" with title, description, requirements. If updating an existing dashboard, include "dashboard_id" from the EXISTING DASHBOARDS section.
 
-Default to "build_dashboard" (block mode) unless the user explicitly asks for something "custom" or the request clearly needs capabilities beyond standard widgets (e.g. maps, 3D, animations, games, real-time visualizations).
+IMPORTANT: To UPDATE a dashboard, use "build_custom_dashboard" with the existing "dashboard_id" — NEVER use "update_tool" for dashboards. "update_tool" is ONLY for tools/APIs/services listed in SYSTEM TOOLS. Check EXISTING DASHBOARDS section first when the user mentions a dashboard by name.
 
 Keywords: "build", "create", "make", "set up", "develop", "I need a tool", "can you build", "make me a", etc.
 
@@ -144,6 +146,15 @@ Only include memory_note when there's something genuinely worth persisting. Most
 
 // GatewayPrompt is kept for backwards compatibility — it's now the routing prompt.
 var GatewayPrompt = GatewayRoutingPrompt
+
+// GatewayRoutingPromptFor returns the routing prompt with all name references replaced.
+func GatewayRoutingPromptFor(name string) string {
+	prompt := GatewayRoutingPrompt
+	prompt = strings.ReplaceAll(prompt, "you (Pounce)", "you ("+name+")")
+	prompt = strings.ReplaceAll(prompt, "from you (Pounce)", "from you ("+name+")")
+	prompt = strings.ReplaceAll(prompt, `I'm Pounce, your gateway`, "I'm "+name+", your gateway")
+	return prompt
+}
 
 // GatewayBootstrapPrompt is used during first-time onboarding instead of routing.
 const GatewayBootstrapPrompt = `You are being set up for the first time. Have a friendly, natural conversation to learn about your new owner and how they'd like you to behave.

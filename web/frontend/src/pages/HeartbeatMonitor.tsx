@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Heart, Play, Clock, CheckCircle, XCircle, Loader2, RefreshCw, Settings2, Search } from 'lucide-react';
 import { Toggle } from '../components/Toggle';
 import { Header } from '../components/Header';
@@ -49,16 +49,98 @@ function parseActions(s: string): string[] {
   try { return JSON.parse(s); } catch (e) { console.warn('parseActions: failed to parse JSON:', e); return []; }
 }
 
-const INTERVAL_OPTIONS = [
-  { value: '900', label: '15 minutes' },
-  { value: '1800', label: '30 minutes' },
-  { value: '3600', label: '1 hour' },
-  { value: '7200', label: '2 hours' },
-  { value: '14400', label: '4 hours' },
-  { value: '28800', label: '8 hours' },
-  { value: '43200', label: '12 hours' },
-  { value: '86400', label: '24 hours' },
-];
+function formatInterval(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function parseDuration(input: string): number | null {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return null;
+
+  // Pure number = treat as seconds
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+
+  let total = 0;
+  let matched = false;
+  const regex = /(\d+)\s*(h|m|s)/g;
+  let match;
+  while ((match = regex.exec(trimmed)) !== null) {
+    matched = true;
+    const val = parseInt(match[1], 10);
+    switch (match[2]) {
+      case 'h': total += val * 3600; break;
+      case 'm': total += val * 60; break;
+      case 's': total += val; break;
+    }
+  }
+  return matched ? total : null;
+}
+
+function secondsToDurationStr(sec: number): string {
+  if (sec <= 0) return '0s';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const parts: string[] = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0) parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+function DurationInput({ value, onSave }: { value: string; onSave: (seconds: string) => void }) {
+  const numericValue = Number(value) || 0;
+  const [text, setText] = useState(() => secondsToDurationStr(numericValue));
+  const [error, setError] = useState('');
+
+  const displayValue = useMemo(() => secondsToDurationStr(numericValue), [numericValue]);
+
+  const handleBlur = () => {
+    const parsed = parseDuration(text);
+    if (parsed === null || parsed < 60) {
+      setError('Minimum 1m');
+      setText(displayValue);
+      return;
+    }
+    setError('');
+    if (parsed !== numericValue) {
+      onSave(String(parsed));
+    } else {
+      setText(secondsToDurationStr(parsed));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  return (
+    <div>
+      <label htmlFor="heartbeat-interval" className="block text-xs font-medium text-text-2 mb-1.5">Interval</label>
+      <input
+        id="heartbeat-interval"
+        type="text"
+        value={text}
+        onChange={e => { setText(e.target.value); setError(''); }}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="e.g. 10m, 1h 30m, 2h"
+        className={`w-full rounded-lg border px-3 py-2 text-sm text-text-1 bg-surface-0 placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent-primary/50 ${error ? 'border-red-500/50' : 'border-border-1'}`}
+      />
+      {error ? (
+        <p className="text-[11px] text-red-400 mt-1">{error}</p>
+      ) : (
+        <p className="text-[11px] text-text-3 mt-1">Use h, m, s &mdash; e.g. 1h 30m, 10m, 45s</p>
+      )}
+    </div>
+  );
+}
 
 const TIMEZONE_OPTIONS = [
   'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -203,7 +285,7 @@ export function HeartbeatMonitor() {
   const activeExecutions = executions.filter(e => e.status === 'running');
   const pastExecutions = executions.filter(e => e.status !== 'running');
   const enabledAgents = agents.filter(a => a.enabled && a.heartbeat_enabled);
-  const intervalLabel = INTERVAL_OPTIONS.find(o => o.value === config?.heartbeat_interval_sec)?.label || `${config?.heartbeat_interval_sec}s`;
+  const intervalLabel = config?.heartbeat_interval_sec ? formatInterval(Number(config.heartbeat_interval_sec)) : '—';
   const totalPages = Math.ceil(totalExecs / PAGE_SIZE);
 
   return (
@@ -259,11 +341,10 @@ export function HeartbeatMonitor() {
             <Card>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-4">Configuration</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select
-                  label="Interval"
+                <DurationInput
+                  key={config.heartbeat_interval_sec}
                   value={config.heartbeat_interval_sec}
-                  onChange={e => handleConfigSave('heartbeat_interval_sec', e.target.value)}
-                  options={INTERVAL_OPTIONS}
+                  onSave={(v) => handleConfigSave('heartbeat_interval_sec', v)}
                 />
                 <Select
                   label="Timezone"

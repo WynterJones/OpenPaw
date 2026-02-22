@@ -19,16 +19,11 @@ type SchedulesHandler struct {
 
 func scheduleToConfig(id string, s models.Schedule) scheduler.ScheduleConfig {
 	return scheduler.ScheduleConfig{
-		ID:                  id,
-		CronExpr:            s.CronExpr,
-		Type:                s.Type,
-		ToolID:              s.ToolID,
-		Action:              s.Action,
-		Payload:             s.Payload,
-		AgentRoleSlug:       s.AgentRoleSlug,
-		PromptContent:       s.PromptContent,
-		BrowserSessionID:    s.BrowserSessionID,
-		BrowserInstructions: s.BrowserInstructions,
+		ID:            id,
+		CronExpr:      s.CronExpr,
+		AgentRoleSlug: s.AgentRoleSlug,
+		PromptContent: s.PromptContent,
+		ThreadID:      s.ThreadID,
 	}
 }
 
@@ -39,7 +34,7 @@ func NewSchedulesHandler(db *database.DB, sched *scheduler.Scheduler) *Schedules
 func (h *SchedulesHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
 		`SELECT id, name, description, cron_expr, tool_id, action, payload, enabled,
-		        type, agent_role_slug, prompt_content, dashboard_id, widget_id,
+		        type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id,
 		        browser_session_id, browser_instructions,
 		        last_run_at, next_run_at, created_at, updated_at
 		 FROM schedules ORDER BY created_at DESC`,
@@ -54,7 +49,7 @@ func (h *SchedulesHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var s models.Schedule
 		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Enabled,
-			&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.DashboardID, &s.WidgetID,
+			&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &s.DashboardID, &s.WidgetID,
 			&s.BrowserSessionID, &s.BrowserInstructions,
 			&s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan schedule")
@@ -67,17 +62,12 @@ func (h *SchedulesHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name                string `json:"name"`
-		Description         string `json:"description"`
-		CronExpr            string `json:"cron_expr"`
-		Type                string `json:"type"`
-		ToolID              string `json:"tool_id"`
-		Action              string `json:"action"`
-		Payload             string `json:"payload"`
-		AgentRoleSlug       string `json:"agent_role_slug"`
-		PromptContent       string `json:"prompt_content"`
-		BrowserSessionID    string `json:"browser_session_id"`
-		BrowserInstructions string `json:"browser_instructions"`
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		CronExpr      string `json:"cron_expr"`
+		AgentRoleSlug string `json:"agent_role_slug"`
+		PromptContent string `json:"prompt_content"`
+		ThreadID      string `json:"thread_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -87,43 +77,24 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name and cron_expr are required")
 		return
 	}
-	if req.Type == "" {
-		req.Type = "tool_action"
-	}
-	if req.Payload == "" {
-		req.Payload = "{}"
+	if req.AgentRoleSlug == "" || req.PromptContent == "" {
+		writeError(w, http.StatusBadRequest, "agent_role_slug and prompt_content are required")
+		return
 	}
 
-	// Validate based on type
-	switch req.Type {
-	case "tool_action":
-		if req.ToolID == "" {
-			writeError(w, http.StatusBadRequest, "tool_id is required for tool_action schedules")
-			return
-		}
-		var toolExists string
-		if err := h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", req.ToolID).Scan(&toolExists); err != nil {
-			writeError(w, http.StatusBadRequest, "tool not found")
-			return
-		}
-	case "prompt":
-		if req.AgentRoleSlug == "" || req.PromptContent == "" {
-			writeError(w, http.StatusBadRequest, "agent_role_slug and prompt_content are required for prompt schedules")
-			return
-		}
-		var agentExists string
-		if err := h.db.QueryRow("SELECT slug FROM agent_roles WHERE slug = ? AND enabled = 1", req.AgentRoleSlug).Scan(&agentExists); err != nil {
-			writeError(w, http.StatusBadRequest, "agent role not found or disabled")
-			return
-		}
-	case "browser_task":
-		if req.BrowserSessionID == "" || req.BrowserInstructions == "" {
-			writeError(w, http.StatusBadRequest, "browser_session_id and browser_instructions are required for browser_task schedules")
-			return
-		}
-	default:
-		writeError(w, http.StatusBadRequest, "type must be 'tool_action', 'prompt', or 'browser_task'")
+	var agentExists string
+	if err := h.db.QueryRow("SELECT slug FROM agent_roles WHERE slug = ? AND enabled = 1", req.AgentRoleSlug).Scan(&agentExists); err != nil {
+		writeError(w, http.StatusBadRequest, "agent role not found or disabled")
 		return
+	}
+
+	// Validate thread_id if provided
+	if req.ThreadID != "" {
+		var threadExists string
+		if err := h.db.QueryRow("SELECT id FROM chat_threads WHERE id = ?", req.ThreadID).Scan(&threadExists); err != nil {
+			writeError(w, http.StatusBadRequest, "chat thread not found")
+			return
+		}
 	}
 
 	id := generateID()
@@ -131,27 +102,23 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.db.Exec(
 		`INSERT INTO schedules (id, name, description, cron_expr, tool_id, action, payload, enabled,
-		                        type, agent_role_slug, prompt_content, browser_session_id, browser_instructions, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, req.Name, req.Description, req.CronExpr, req.ToolID, req.Action, req.Payload, true,
-		req.Type, req.AgentRoleSlug, req.PromptContent, req.BrowserSessionID, req.BrowserInstructions, now, now,
+		                        type, agent_role_slug, prompt_content, thread_id, browser_session_id, browser_instructions, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, '', '', '{}', ?, 'prompt', ?, ?, ?, '', '', ?, ?)`,
+		id, req.Name, req.Description, req.CronExpr, true,
+		req.AgentRoleSlug, req.PromptContent, req.ThreadID, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create schedule")
 		return
 	}
 
-	h.scheduler.AddSchedule(scheduleToConfig(id, models.Schedule{
-		CronExpr:            req.CronExpr,
-		Type:                req.Type,
-		ToolID:              req.ToolID,
-		Action:              req.Action,
-		Payload:             req.Payload,
-		AgentRoleSlug:       req.AgentRoleSlug,
-		PromptContent:       req.PromptContent,
-		BrowserSessionID:    req.BrowserSessionID,
-		BrowserInstructions: req.BrowserInstructions,
-	}))
+	h.scheduler.AddSchedule(scheduler.ScheduleConfig{
+		ID:            id,
+		CronExpr:      req.CronExpr,
+		AgentRoleSlug: req.AgentRoleSlug,
+		PromptContent: req.PromptContent,
+		ThreadID:      req.ThreadID,
+	})
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "schedule_created", "schedule", "schedule", id, req.Name)
@@ -161,12 +128,10 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:          req.Name,
 		Description:   req.Description,
 		CronExpr:      req.CronExpr,
-		ToolID:        req.ToolID,
-		Action:        req.Action,
-		Payload:       req.Payload,
-		Type:          req.Type,
+		Type:          "prompt",
 		AgentRoleSlug: req.AgentRoleSlug,
 		PromptContent: req.PromptContent,
+		ThreadID:      req.ThreadID,
 		Enabled:       true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -187,10 +152,9 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name          *string `json:"name"`
 		Description   *string `json:"description"`
 		CronExpr      *string `json:"cron_expr"`
-		Action        *string `json:"action"`
-		Payload       *string `json:"payload"`
 		PromptContent *string `json:"prompt_content"`
 		AgentRoleSlug *string `json:"agent_role_slug"`
+		ThreadID      *string `json:"thread_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -213,14 +177,6 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, "cron_expr = ?")
 		args = append(args, *req.CronExpr)
 	}
-	if req.Action != nil {
-		setClauses = append(setClauses, "action = ?")
-		args = append(args, *req.Action)
-	}
-	if req.Payload != nil {
-		setClauses = append(setClauses, "payload = ?")
-		args = append(args, *req.Payload)
-	}
 	if req.PromptContent != nil {
 		setClauses = append(setClauses, "prompt_content = ?")
 		args = append(args, *req.PromptContent)
@@ -228,6 +184,10 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.AgentRoleSlug != nil {
 		setClauses = append(setClauses, "agent_role_slug = ?")
 		args = append(args, *req.AgentRoleSlug)
+	}
+	if req.ThreadID != nil {
+		setClauses = append(setClauses, "thread_id = ?")
+		args = append(args, *req.ThreadID)
 	}
 
 	args = append(args, id)
@@ -241,8 +201,8 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.CronExpr != nil {
 		var s models.Schedule
 		h.db.QueryRow(
-			"SELECT cron_expr, tool_id, action, payload, enabled, type, agent_role_slug, prompt_content FROM schedules WHERE id = ?", id,
-		).Scan(&s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Enabled, &s.Type, &s.AgentRoleSlug, &s.PromptContent)
+			"SELECT cron_expr, enabled, agent_role_slug, prompt_content, thread_id FROM schedules WHERE id = ?", id,
+		).Scan(&s.CronExpr, &s.Enabled, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
 		if s.Enabled {
 			h.scheduler.RemoveSchedule(id)
 			h.scheduler.AddSchedule(scheduleToConfig(id, s))
@@ -255,12 +215,12 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var s models.Schedule
 	h.db.QueryRow(
 		`SELECT id, name, description, cron_expr, tool_id, action, payload, enabled,
-		        type, agent_role_slug, prompt_content, dashboard_id, widget_id,
+		        type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id,
 		        browser_session_id, browser_instructions,
 		        last_run_at, next_run_at, created_at, updated_at
 		 FROM schedules WHERE id = ?`, id,
 	).Scan(&s.ID, &s.Name, &s.Description, &s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Enabled,
-		&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.DashboardID, &s.WidgetID,
+		&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &s.DashboardID, &s.WidgetID,
 		&s.BrowserSessionID, &s.BrowserInstructions,
 		&s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt)
 
@@ -293,9 +253,9 @@ func (h *SchedulesHandler) RunNow(w http.ResponseWriter, r *http.Request) {
 
 	var s models.Schedule
 	err := h.db.QueryRow(
-		`SELECT id, tool_id, action, payload, type, agent_role_slug, prompt_content
+		`SELECT id, agent_role_slug, prompt_content, thread_id
 		 FROM schedules WHERE id = ?`, id,
-	).Scan(&s.ID, &s.ToolID, &s.Action, &s.Payload, &s.Type, &s.AgentRoleSlug, &s.PromptContent)
+	).Scan(&s.ID, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "schedule not found")
 		return
@@ -332,8 +292,8 @@ func (h *SchedulesHandler) Toggle(w http.ResponseWriter, r *http.Request) {
 	if newEnabled {
 		var s models.Schedule
 		h.db.QueryRow(
-			"SELECT cron_expr, tool_id, action, payload, type, agent_role_slug, prompt_content FROM schedules WHERE id = ?", id,
-		).Scan(&s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Type, &s.AgentRoleSlug, &s.PromptContent)
+			"SELECT cron_expr, agent_role_slug, prompt_content, thread_id FROM schedules WHERE id = ?", id,
+		).Scan(&s.CronExpr, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
 		h.scheduler.AddSchedule(scheduleToConfig(id, s))
 	} else {
 		h.scheduler.RemoveSchedule(id)

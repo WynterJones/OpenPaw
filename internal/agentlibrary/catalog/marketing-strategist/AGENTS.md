@@ -16,3 +16,9 @@
 2. Research — competitor positioning, audience insights, channel opportunities
 3. Strategize — campaign structure, messaging, channels, timing
 4. Measure — KPIs, tracking plan, iteration schedule
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

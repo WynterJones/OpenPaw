@@ -2,24 +2,26 @@ import { useState, useEffect, useRef } from 'react';
 import { DollarSign, Zap, Users, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage, AgentRole, WidgetPayload } from '../../lib/api';
+import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask } from '../../lib/api';
 import { parseConfirmation, parseToolSummary, parseWidgets } from '../../lib/api';
 import { cleanToolColons, type StreamingTool, type CostInfo } from '../../lib/chatUtils';
 import { mentionComponents } from './MentionSystem';
 import { ToolActivityPanel, StreamingToolPanel } from './ToolPanels';
 import { ConfirmationCardUI, ToolSummaryCardUI } from './Cards';
 import { WidgetRenderer } from '../widgets/WidgetRenderer';
+import { SubAgentPanel } from './SubAgentPanel';
 
-export function StreamingMessage({ text, tools, cost, role, roles, widgets }: {
+export function StreamingMessage({ text, tools, cost, role, roles, widgets, subAgentTasks }: {
   text: string;
   tools: StreamingTool[];
   cost: CostInfo | null;
   role: AgentRole | null;
   roles: AgentRole[];
   widgets?: WidgetPayload[];
+  subAgentTasks?: SubAgentTask[];
 }) {
   return (
-    <div className="flex flex-col md:flex-row gap-1 md:gap-3">
+    <div className="streaming-entrance flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
         <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
           {role ? (
@@ -43,6 +45,9 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets }: {
               <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />
             </div>
           </div>
+        )}
+        {subAgentTasks && subAgentTasks.length > 0 && (
+          <SubAgentPanel tasks={subAgentTasks} roles={roles} />
         )}
         {widgets && widgets.length > 0 && widgets.map((w, i) => (
           <WidgetRenderer key={`sw-${i}`} widget={w} />

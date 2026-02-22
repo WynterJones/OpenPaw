@@ -20,7 +20,7 @@ func BuildBrowserActionDef() llm.ToolDef {
 			"action": map[string]interface{}{
 				"type":        "string",
 				"description": "The browser action to perform",
-				"enum":        []string{"navigate", "click", "type", "screenshot", "extract_text", "wait_element", "scroll", "back", "forward", "eval", "key_press"},
+				"enum":        []string{"navigate", "click", "type", "screenshot", "extract_text", "wait_element", "scroll", "back", "forward", "refresh", "eval", "key_press"},
 			},
 			"selector": map[string]interface{}{
 				"type":        "string",

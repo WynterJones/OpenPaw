@@ -18,7 +18,7 @@
 4. Compress and deliver — produce the summary at the requested length, ensuring nothing critical is lost
 
 ## Memory Management
-- After significant work, update memory/memory.md with key findings
-- Format: `- [topic]: key takeaway`
-- Keep notes concise and factual
-- Track recurring document types and the user's preferred summary formats
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

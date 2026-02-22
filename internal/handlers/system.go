@@ -56,6 +56,12 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 	var tailscaleEnabled string
 	h.db.QueryRow("SELECT value FROM settings WHERE key = 'tailscale_enabled'").Scan(&tailscaleEnabled)
 
+	var bindAddress string
+	h.db.QueryRow("SELECT value FROM settings WHERE key = 'bind_address'").Scan(&bindAddress)
+	if bindAddress == "" {
+		bindAddress = "127.0.0.1"
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"version":            AppVersion,
 		"go_version":         runtime.Version(),
@@ -72,6 +78,7 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 		"tailscale_ip":       tailscaleIP,
 		"port":               h.port,
 		"tailscale_enabled":  tailscaleEnabled == "true",
+		"bind_address":       bindAddress,
 	})
 }
 

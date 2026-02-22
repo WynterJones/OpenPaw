@@ -7,13 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	llm "github.com/openpaw/openpaw/internal/llm"
+	"github.com/openpaw/openpaw/internal/memory"
 )
 
 func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID string, history []ThreadMessage, hints *GatewayRoutingHints) (*GatewayResponse, *llm.UsageInfo, error) {
 	// Build dynamic agent list for gateway
 	agentList := m.buildAgentList()
-	gatewayPrompt := GatewayPrompt
+	gatewayPrompt := GatewayRoutingPromptFor(m.GatewayName())
 
 	// Inject current date/time
 	gatewayPrompt += fmt.Sprintf("\n\n## CURRENT TIME\n%s\n", time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"))
@@ -158,26 +160,40 @@ var RoleChatTools = []string{"Read", "Write", "Edit"}
 func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug string) (string, *llm.UsageInfo, string, error) {
 	resolvedModel := llm.ResolveModel(model, llm.ModelSonnet)
 
-	// Build history messages for multi-turn conversation
+	// Build history messages for multi-turn conversation.
+	// Messages from OTHER agents are re-attributed as user-role context so the
+	// current agent doesn't mistakenly think it authored them.
 	var historyMsgs []llm.HistoryMessage
 	for _, msg := range history {
 		role := msg.Role
+		content := msg.Content
 		if role == "system" {
 			role = "assistant"
 		}
 		if role != "user" && role != "assistant" {
 			continue
 		}
+		// If an assistant message came from a different agent, present it as
+		// third-party context so the current agent knows it didn't say this.
+		if role == "assistant" && msg.AgentSlug != "" && msg.AgentSlug != agentRoleSlug {
+			role = "user"
+			content = fmt.Sprintf("[Message from @%s — not you]:\n%s", msg.AgentSlug, content)
+		}
 		// Merge consecutive same-role messages
 		if len(historyMsgs) > 0 && historyMsgs[len(historyMsgs)-1].Role == role {
-			historyMsgs[len(historyMsgs)-1].Content += "\n\n" + msg.Content
+			historyMsgs[len(historyMsgs)-1].Content += "\n\n" + content
 		} else {
-			historyMsgs = append(historyMsgs, llm.HistoryMessage{Role: role, Content: msg.Content})
+			historyMsgs = append(historyMsgs, llm.HistoryMessage{Role: role, Content: content})
 		}
 	}
-	// Ensure history starts with user (API requirement)
+	// Ensure history starts with user (API requirement).
+	// If it starts with assistant (e.g. heartbeat-initiated thread), convert the
+	// leading assistant message to a user-role context block so it isn't dropped.
 	if len(historyMsgs) > 0 && historyMsgs[0].Role != "user" {
-		historyMsgs = historyMsgs[1:]
+		historyMsgs[0] = llm.HistoryMessage{
+			Role:    "user",
+			Content: "[Your previous message in this thread]:\n" + historyMsgs[0].Content,
+		}
 	}
 	// Ensure history ends with assistant (so the new user message can follow)
 	if len(historyMsgs) > 0 && historyMsgs[len(historyMsgs)-1].Role != "assistant" {
@@ -194,11 +210,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		System:  systemPrompt,
 		History: historyMsgs,
 		OnEvent: func(ev StreamEvent) {
+			if ev.Type == EventToolStart {
+				collector.TrackToolStart(ev.ToolName, ev.ToolID, ev.ToolInput)
+				m.db.LogAudit("system", "agent_tool_call", "tool_call", "agent_role", agentRoleSlug, ev.ToolName)
+			}
 			if ev.Type == EventToolEnd && ev.ToolOutput != "" {
 				collector.Collect(ev.ToolName, ev.ToolID, ev.ToolOutput)
-			}
-			if ev.Type == EventToolStart {
-				m.db.LogAudit("system", "agent_tool_call", "tool_call", "agent_role", agentRoleSlug, ev.ToolName)
 			}
 			if threadID == "" {
 				return
@@ -230,6 +247,29 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 				"call_tool": m.makeCallToolHandler(),
 			}
 		}
+	}
+
+	// Inject memory tools so agents can save/search memories across conversations
+	if m.MemoryMgr != nil {
+		m.MemoryMgr.EnsureMigrated(agentRoleSlug)
+		cfg.ExtraTools = append(cfg.ExtraTools, memory.BuildMemoryToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MemoryMgr.MakeMemoryHandlers(agentRoleSlug) {
+			cfg.ExtraHandlers[name] = handler
+		}
+	}
+
+	// Inject delegate_task if other agents are available for delegation
+	availableAgents := m.getAvailableAgentsForDelegation(agentRoleSlug)
+	if len(availableAgents) > 0 {
+		cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildDelegateTaskDef())
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		cfg.ExtraHandlers["delegate_task"] = m.makeDelegateTaskHandler(threadID, agentRoleSlug)
+		cfg.System += "\n\n" + buildDelegationPromptSection(availableAgents)
 	}
 
 	result, err := m.client.RunAgentLoop(ctx, cfg, userMessage)
@@ -267,8 +307,9 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 }
 
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
-func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt string) (string, error) {
-	// Look up agent role
+// If threadID is provided, the message is persisted to that chat thread.
+// If threadID is empty, a new thread is created.
+func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (string, error) {
 	var systemPrompt, model string
 	err := m.db.QueryRow(
 		"SELECT system_prompt, model FROM agent_roles WHERE slug = ? AND enabled = 1",
@@ -278,10 +319,61 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt str
 		return "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
 	}
 
-	result, _, _, err := m.RoleChat(ctx, systemPrompt, model, nil, prompt, "", "", agentSlug)
+	now := time.Now().UTC()
+
+	// Create thread if none provided
+	if threadID == "" {
+		threadID = uuid.New().String()
+		m.db.Exec(
+			"INSERT INTO chat_threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+			threadID, "Scheduled: "+prompt[:min(len(prompt), 40)], now, now,
+		)
+	}
+
+	// Save the user message to the thread
+	userMsgID := uuid.New().String()
+	m.db.Exec(
+		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, created_at) VALUES (?, ?, 'user', ?, ?, ?)",
+		userMsgID, threadID, prompt, agentSlug, now,
+	)
+	m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID)
+
+	// Load thread history for context
+	var history []ThreadMessage
+	rows, err := m.db.Query(
+		"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		threadID,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var tm ThreadMessage
+			if rows.Scan(&tm.Role, &tm.Content) == nil {
+				history = append(history, tm)
+			}
+		}
+	}
+
+	result, usage, _, err := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, "", agentSlug)
 	if err != nil {
 		return "", fmt.Errorf("scheduled prompt failed: %w", err)
 	}
+
+	// Save the assistant response to the thread
+	assistMsgID := uuid.New().String()
+	assistNow := time.Now().UTC()
+	var costUSD float64
+	var inputTokens, outputTokens int64
+	if usage != nil {
+		costUSD = usage.CostUSD
+		inputTokens = usage.InputTokens
+		outputTokens = usage.OutputTokens
+	}
+	m.db.Exec(
+		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, created_at) VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?)",
+		assistMsgID, threadID, result, agentSlug, costUSD, inputTokens, outputTokens, assistNow,
+	)
+	m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", assistNow, threadID)
 
 	return result, nil
 }

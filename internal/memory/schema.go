@@ -3,6 +3,7 @@ package memory
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -75,15 +76,30 @@ END;
 
 const schemaVersion = 1
 
+// hasFTS tracks whether FTS5 is available (set during schema init).
+var hasFTS bool
+
+// HasFTS returns true if FTS5 full-text search is available.
+func HasFTS() bool { return hasFTS }
+
 func applySchema(db *sql.DB) error {
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+
+	// FTS5 requires the fts5 build tag on go-sqlite3. Gracefully degrade if unavailable.
 	if _, err := db.Exec(ftsSQL); err != nil {
-		return fmt.Errorf("apply FTS: %w", err)
-	}
-	if _, err := db.Exec(triggersSQL); err != nil {
-		return fmt.Errorf("apply triggers: %w", err)
+		if strings.Contains(err.Error(), "no such module") {
+			// FTS5 not compiled in — memory_search will fall back to LIKE queries
+			hasFTS = false
+		} else {
+			return fmt.Errorf("apply FTS: %w", err)
+		}
+	} else {
+		hasFTS = true
+		if _, err := db.Exec(triggersSQL); err != nil {
+			return fmt.Errorf("apply triggers: %w", err)
+		}
 	}
 
 	// Track schema version

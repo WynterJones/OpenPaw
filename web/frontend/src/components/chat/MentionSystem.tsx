@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { Children, isValidElement, type ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import type { AgentRole } from '../../lib/api';
 import { MentionBadge } from './MentionBadge';
+import { CollapsibleCode } from './CollapsibleCode';
 
 let _cachedPatternRoles: AgentRole[] = [];
 let _cachedPattern = `@([A-Za-z][A-Za-z0-9_-]*)`;
@@ -50,6 +51,17 @@ function parseMentions(text: string, roles: AgentRole[]): ReactNode[] {
   return parts.length > 0 ? parts : [text];
 }
 
+function extractText(node: ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (isValidElement(node)) {
+    const props = node.props as Record<string, unknown>;
+    return extractText(props.children as ReactNode);
+  }
+  return '';
+}
+
 function processChildren(children: ReactNode, roles: AgentRole[]): ReactNode {
   if (typeof children === 'string') {
     return parseMentions(children, roles);
@@ -72,6 +84,23 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
     p: ({ children, ...props }) => <p {...props}>{processChildren(children, roles)}</p>,
     li: ({ children, ...props }) => <li {...props}>{processChildren(children, roles)}</li>,
     td: ({ children, ...props }) => <td {...props}>{processChildren(children, roles)}</td>,
+    pre: ({ children }) => {
+      if (Children.count(children) === 1) {
+        const child = Children.toArray(children)[0];
+        if (isValidElement(child) && child.type === 'code') {
+          const childProps = child.props as Record<string, unknown>;
+          const raw = extractText(childProps.children as ReactNode);
+          const className = childProps.className as string | undefined;
+          const lang = className?.replace('language-', '') || undefined;
+          return (
+            <CollapsibleCode language={lang} raw={raw}>
+              {childProps.children as ReactNode}
+            </CollapsibleCode>
+          );
+        }
+      }
+      return <pre>{children}</pre>;
+    },
   };
   return _mcResult;
 }

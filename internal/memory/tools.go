@@ -329,41 +329,76 @@ func (m *Manager) handleSearch(slug string) llm.ToolHandler {
 			return llm.ToolResult{Output: "Memory DB error: " + err.Error(), IsError: true}
 		}
 
-		// Build FTS query
-		query := `
-			SELECT m.id, m.content, m.summary, m.category, m.importance, m.tags,
-			       m.access_count, m.created_at, m.updated_at, m.archived,
-			       bm25(memories_fts) as rank
-			FROM memories_fts fts
-			JOIN memories m ON m.rowid = fts.rowid
-			WHERE memories_fts MATCH ?`
+		var query string
+		var args []interface{}
 
-		args := []interface{}{params.Query}
+		if HasFTS() {
+			// FTS5 full-text search
+			query = `
+				SELECT m.id, m.content, m.summary, m.category, m.importance, m.tags,
+				       m.access_count, m.created_at, m.updated_at, m.archived,
+				       bm25(memories_fts) as rank
+				FROM memories_fts fts
+				JOIN memories m ON m.rowid = fts.rowid
+				WHERE memories_fts MATCH ?`
+			args = []interface{}{params.Query}
 
-		if !params.IncludeArchived {
-			query += " AND m.archived = 0"
-		}
-		if params.Category != "" {
-			query += " AND m.category = ?"
-			args = append(args, params.Category)
-		}
-		if params.MinImportance > 0 {
-			query += " AND m.importance >= ?"
-			args = append(args, params.MinImportance)
-		}
-		if params.Tags != "" {
-			tagList := strings.Split(params.Tags, ",")
-			for _, tag := range tagList {
-				tag = strings.TrimSpace(tag)
-				if tag != "" {
-					query += " AND m.tags LIKE ?"
-					args = append(args, "%"+tag+"%")
+			if !params.IncludeArchived {
+				query += " AND m.archived = 0"
+			}
+			if params.Category != "" {
+				query += " AND m.category = ?"
+				args = append(args, params.Category)
+			}
+			if params.MinImportance > 0 {
+				query += " AND m.importance >= ?"
+				args = append(args, params.MinImportance)
+			}
+			if params.Tags != "" {
+				for _, tag := range strings.Split(params.Tags, ",") {
+					tag = strings.TrimSpace(tag)
+					if tag != "" {
+						query += " AND m.tags LIKE ?"
+						args = append(args, "%"+tag+"%")
+					}
 				}
 			}
-		}
+			query += " ORDER BY rank LIMIT ?"
+			args = append(args, params.Limit)
+		} else {
+			// Fallback: LIKE-based search when FTS5 is not available
+			likePattern := "%" + params.Query + "%"
+			query = `
+				SELECT id, content, summary, category, importance, tags,
+				       access_count, created_at, updated_at, archived,
+				       0 as rank
+				FROM memories
+				WHERE (content LIKE ? OR summary LIKE ? OR tags LIKE ?)`
+			args = []interface{}{likePattern, likePattern, likePattern}
 
-		query += " ORDER BY rank LIMIT ?"
-		args = append(args, params.Limit)
+			if !params.IncludeArchived {
+				query += " AND archived = 0"
+			}
+			if params.Category != "" {
+				query += " AND category = ?"
+				args = append(args, params.Category)
+			}
+			if params.MinImportance > 0 {
+				query += " AND importance >= ?"
+				args = append(args, params.MinImportance)
+			}
+			if params.Tags != "" {
+				for _, tag := range strings.Split(params.Tags, ",") {
+					tag = strings.TrimSpace(tag)
+					if tag != "" {
+						query += " AND tags LIKE ?"
+						args = append(args, "%"+tag+"%")
+					}
+				}
+			}
+			query += " ORDER BY importance DESC, created_at DESC LIMIT ?"
+			args = append(args, params.Limit)
+		}
 
 		rows, err := db.Query(query, args...)
 		if err != nil {

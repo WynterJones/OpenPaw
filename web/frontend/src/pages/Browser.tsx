@@ -442,6 +442,7 @@ function SessionDetail({
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
@@ -462,105 +463,114 @@ function SessionDetail({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {isStopped && (
-          <Button
-            onClick={() => doSessionAction('start')}
-            loading={loadingAction === 'start'}
-            icon={<Play className="w-4 h-4" />}
-          >
-            Start
-          </Button>
-        )}
-        {isRunning && (
-          <Button
-            variant="secondary"
-            onClick={() => doSessionAction('stop')}
-            loading={loadingAction === 'stop'}
-            icon={<Square className="w-4 h-4" />}
-          >
-            Stop
-          </Button>
-        )}
+      {/* Two-column layout */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Left column: controls */}
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {isStopped && (
+              <Button
+                onClick={() => doSessionAction('start')}
+                loading={loadingAction === 'start'}
+                icon={<Play className="w-4 h-4" />}
+              >
+                Start
+              </Button>
+            )}
+            {isRunning && (
+              <Button
+                variant="secondary"
+                onClick={() => doSessionAction('stop')}
+                loading={loadingAction === 'stop'}
+                icon={<Square className="w-4 h-4" />}
+              >
+                Stop
+              </Button>
+            )}
 
-        <div className="flex-1" />
+            <div className="flex-1" />
 
-        {confirmDelete ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-red-400">Delete this session?</span>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleDelete}
-              loading={loadingAction === 'delete'}
-            >
-              Confirm
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            onClick={() => setConfirmDelete(true)}
-            icon={<Trash2 className="w-4 h-4" />}
-            className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-          >
-            Delete
-          </Button>
-        )}
-      </div>
-
-      <BrowserViewer sessionId={session.id} humanControl={humanControl} />
-
-      <BrowserActionBar
-        sessionId={session.id}
-        currentUrl={session.current_url}
-        humanControl={humanControl}
-        onTakeControl={() => {
-          setHumanControl(true);
-          addLog('control', 'Human control activated', true);
-          onRefresh();
-        }}
-        onReleaseControl={() => {
-          setHumanControl(false);
-          addLog('release', 'Human control released', true);
-          onRefresh();
-        }}
-      />
-
-      <Card>
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3">
-          Action Log
-        </h4>
-        {actionLog.length === 0 ? (
-          <p className="text-sm text-text-3 italic">No actions recorded yet.</p>
-        ) : (
-          <div className="space-y-1.5 max-h-56 overflow-y-auto">
-            {actionLog.map((entry) => (
-              <div key={entry.id} className="flex items-start gap-2 text-xs font-mono">
-                <span className="text-text-3 flex-shrink-0 tabular-nums">
-                  {entry.timestamp.toLocaleTimeString()}
-                </span>
-                <span
-                  className={`flex-shrink-0 font-semibold ${
-                    entry.success ? 'text-emerald-400' : 'text-red-400'
-                  }`}
+            {confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-red-400">Delete this session?</span>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDelete}
+                  loading={loadingAction === 'delete'}
                 >
-                  [{entry.action}]
-                </span>
-                <span className="text-text-2 break-all">{entry.detail}</span>
+                  Confirm
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Cancel
+                </Button>
               </div>
-            ))}
-            <div ref={logEndRef} />
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                icon={<Trash2 className="w-4 h-4" />}
+                className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+              >
+                Delete
+              </Button>
+            )}
           </div>
-        )}
-      </Card>
+
+          <BrowserActionBar
+            sessionId={session.id}
+            currentUrl={session.current_url}
+            humanControl={humanControl}
+            onTakeControl={() => {
+              setHumanControl(true);
+              addLog('control', 'Human control activated', true);
+              onRefresh();
+            }}
+            onReleaseControl={() => {
+              setHumanControl(false);
+              addLog('release', 'Human control released', true);
+              onRefresh();
+            }}
+          />
+
+          <Card>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3">
+              Action Log
+            </h4>
+            {actionLog.length === 0 ? (
+              <p className="text-sm text-text-3 italic">No actions recorded yet.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {actionLog.map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-2 text-xs font-mono">
+                    <span className="text-text-3 flex-shrink-0 tabular-nums">
+                      {entry.timestamp.toLocaleTimeString()}
+                    </span>
+                    <span
+                      className={`flex-shrink-0 font-semibold ${
+                        entry.success ? 'text-emerald-400' : 'text-red-400'
+                      }`}
+                    >
+                      [{entry.action}]
+                    </span>
+                    <span className="text-text-2 break-all">{entry.detail}</span>
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Right column: screenshot viewer */}
+        <div className="lg:w-[500px] lg:flex-shrink-0 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+          <BrowserViewer sessionId={session.id} humanControl={humanControl} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -699,7 +709,7 @@ export function Browser() {
             <div className="flex items-center gap-3 mb-4">
               <SearchBar value={search} onChange={handleSearch} placeholder="Search sessions..." className="flex-1" />
               <ViewToggle view={view} onViewChange={setView} />
-              <Button size="sm" onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>
+              <Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>
                 New Session
               </Button>
             </div>

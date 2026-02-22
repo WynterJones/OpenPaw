@@ -100,7 +100,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	skillsHandler := handlers.NewSkillsHandler(dataDir)
 	logsHandler := handlers.NewLogsHandler(s.DB)
-	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, dataDir)
+	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, dataDir, port)
 	agentsHandler := handlers.NewAgentsHandler(s.DB, s.AgentManager)
 	systemHandler := handlers.NewSystemHandler(s.DB, dataDir, llmClient, port)
 	browserHandler := handlers.NewBrowserHandler(s.DB, s.BrowserMgr)
@@ -181,6 +181,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/restart", toolsHandler.Restart)
 				r.Get("/{id}/status", toolsHandler.Status)
 				r.Get("/{id}/widget.js", toolsHandler.WidgetJS)
+				r.Get("/{id}/proxy/*", toolsHandler.Proxy)
 			})
 
 			// Tool Library
@@ -399,6 +400,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			// Settings
 			r.Get("/settings", settingsHandler.Get)
 			r.Put("/settings", settingsHandler.Update)
+			r.Get("/settings/general", settingsHandler.GetGeneral)
+			r.Put("/settings/general", settingsHandler.UpdateGeneral)
 			r.Put("/settings/design", settingsHandler.UpdateDesign)
 			r.Post("/settings/design/background", settingsHandler.UploadBackground)
 			r.Delete("/settings/design/background", settingsHandler.DeleteBackground)

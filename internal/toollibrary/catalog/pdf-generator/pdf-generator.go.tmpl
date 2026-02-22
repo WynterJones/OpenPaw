@@ -2,16 +2,58 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/go-chi/chi/v5"
 )
+
+var (
+	pdfStore = &pdfFileStore{files: make(map[string]string)}
+	dataDir  string
+)
+
+type pdfFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *pdfFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *pdfFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
+
+func initDataDir() {
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		dataDir = filepath.Join(dir, "pdf-generator")
+	} else {
+		dataDir = filepath.Join(os.TempDir(), "pdf-generator")
+	}
+	os.MkdirAll(dataDir, 0755)
+
+	entries, _ := os.ReadDir(dataDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "pdf-") {
+			pdfStore.Add(e.Name(), filepath.Join(dataDir, e.Name()))
+		}
+	}
+}
 
 // Paper sizes in inches
 var paperSizes = map[string][2]float64{
@@ -23,6 +65,7 @@ var paperSizes = map[string][2]float64{
 func registerRoutes(r chi.Router) {
 	r.Post("/from-html", handleFromHTML)
 	r.Get("/from-url", handleFromURL)
+	r.Get("/files/{filename}", handleServeFile)
 }
 
 func handleFromHTML(w http.ResponseWriter, r *http.Request) {
@@ -53,12 +96,22 @@ func handleFromHTML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(buf)
+	filename := fmt.Sprintf("pdf-%d.pdf", time.Now().UnixNano())
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save PDF: "+err.Error())
+		return
+	}
+	pdfStore.Add(filename, filePath)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"format":     "pdf",
 		"size_bytes": len(buf),
-		"pdf_base64": encoded,
+		"file_path":  filename,
+		"__widget": map[string]string{
+			"type":  "file-preview",
+			"title": "PDF",
+		},
 	})
 }
 
@@ -83,13 +136,41 @@ func handleFromURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(buf)
+	filename := fmt.Sprintf("pdf-%d.pdf", time.Now().UnixNano())
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save PDF: "+err.Error())
+		return
+	}
+	pdfStore.Add(filename, filePath)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"format":     "pdf",
 		"size_bytes": len(buf),
-		"pdf_base64": encoded,
+		"file_path":  filename,
+		"__widget": map[string]string{
+			"type":  "file-preview",
+			"title": "PDF",
+		},
 	})
+}
+
+func handleServeFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "pdf-") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	fullPath, ok := pdfStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	http.ServeFile(w, r, fullPath)
 }
 
 func generatePDFFromHTML(html string, landscape bool, paperWidth, paperHeight, margin float64) ([]byte, error) {

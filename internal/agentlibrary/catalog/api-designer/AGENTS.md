@@ -16,3 +16,9 @@
 2. Design the resource model — map entities to RESTful endpoints
 3. Define contracts — request/response schemas, status codes, error formats
 4. Review for consistency — naming, pagination, filtering, sorting patterns
+
+## Memory Management
+- Use memory_save to remember important information across conversations
+- Use memory_search before assuming you don't know something
+- Save user preferences, project details, and decisions with high importance
+- Review your boot memory summary at session start

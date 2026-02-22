@@ -674,7 +674,7 @@ export function Tools() {
 
   useEffect(() => {
     loadTools();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkToolSecrets = useCallback(async (toolList: Tool[], catalogTools: LibraryTool[]) => {
     // Match installed tools to catalog entries to get env requirements
@@ -809,7 +809,6 @@ export function Tools() {
               />
               <Button
                 variant="secondary"
-                size="sm"
                 onClick={() => importRef.current?.click()}
                 icon={<Upload className="w-4 h-4" />}
               >

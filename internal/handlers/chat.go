@@ -99,12 +99,25 @@ func (h *ChatHandler) ActiveThreadIds(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	active := make([]string, 0)
+	seen := make(map[string]bool)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err == nil {
-			active = append(active, id)
+			seen[id] = true
 		}
+	}
+
+	// Also include threads with active routing (non-builder chats)
+	h.threadCancels.Range(func(key, _ interface{}) bool {
+		if id, ok := key.(string); ok {
+			seen[id] = true
+		}
+		return true
+	})
+
+	active := make([]string, 0, len(seen))
+	for id := range seen {
+		active = append(active, id)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{

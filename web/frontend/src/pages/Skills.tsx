@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Sparkles, Plus, Trash2, X, Save } from 'lucide-react';
+import { Plus, Trash2, X, Save, Wrench } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -76,6 +76,8 @@ export function Skills() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('list');
   const [page, setPage] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const loadSkills = useCallback(() => {
     skillsApi.list()
@@ -88,15 +90,19 @@ export function Skills() {
     loadSkills();
   }, [loadSkills]);
 
-  const handleDelete = async (name: string) => {
-    if (!confirm(`Delete skill "${name}"? This cannot be undone.`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
     try {
-      await skillsApi.delete(name);
-      setSkillList(prev => prev.filter(s => s.name !== name));
-      if (editing?.name === name) setEditing(null);
+      await skillsApi.delete(deleteTarget);
+      setSkillList(prev => prev.filter(s => s.name !== deleteTarget));
+      if (editing?.name === deleteTarget) setEditing(null);
+      setDeleteTarget(null);
       toast('success', 'Skill deleted');
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Failed to delete skill');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -151,9 +157,14 @@ export function Skills() {
                 </button>
                 <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
               </div>
-              <Button size="sm" onClick={handleSaveEdit} loading={saving} icon={<Save className="w-3.5 h-3.5" />}>
-                Save
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="danger" onClick={() => setDeleteTarget(editing.name)} icon={<Trash2 className="w-3.5 h-3.5" />}>
+                  Delete
+                </Button>
+                <Button size="sm" onClick={handleSaveEdit} loading={saving} icon={<Save className="w-3.5 h-3.5" />}>
+                  Save
+                </Button>
+              </div>
             </div>
             <Card>
               <textarea
@@ -171,12 +182,12 @@ export function Skills() {
                 <div className="flex items-center gap-3 mb-4">
                   <SearchBar value={search} onChange={handleSearch} placeholder="Search skills..." className="flex-1" />
                   <ViewToggle view={view} onViewChange={setView} />
-                  <Button size="sm" onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />} className="flex-shrink-0">Add Skill</Button>
+                  <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />} className="flex-shrink-0">Add Skill</Button>
                 </div>
 
                 {filteredSkills.length === 0 ? (
                   <EmptyState
-                    icon={<Sparkles className="w-8 h-8" />}
+                    icon={<Wrench className="w-8 h-8" />}
                     title={search ? 'No skills found' : 'No skills yet'}
                     description={search ? 'Try a different search term.' : 'Create a skill or install one from the Library page.'}
                   />
@@ -186,23 +197,9 @@ export function Skills() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {paginatedSkills.map(skill => (
                         <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
-                          <div className="flex flex-col gap-3">
-                            <div className="flex items-start justify-between">
-                              <div className="w-10 h-10 rounded-xl bg-accent-muted flex items-center justify-center flex-shrink-0">
-                                <Sparkles className="w-5 h-5 text-accent-text" />
-                              </div>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(skill.name); }}
-                                className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                title="Delete skill"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-text-0 font-mono truncate">{skill.name}</p>
-                              <p className="text-xs text-text-3 line-clamp-2 mt-1">{skill.description || skill.summary || 'No description'}</p>
-                            </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-text-0 font-mono truncate">{skill.name}</p>
+                            <p className="text-xs text-text-3 line-clamp-2 mt-1">{skill.description || skill.summary || 'No description'}</p>
                           </div>
                         </Card>
                       ))}
@@ -215,21 +212,9 @@ export function Skills() {
                       {paginatedSkills.map(skill => (
                         <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-accent-muted flex items-center justify-center flex-shrink-0">
-                              <Sparkles className="w-5 h-5 text-accent-text" />
-                            </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-text-0 font-mono">{skill.name}</p>
                               <p className="text-xs text-text-3 truncate">{skill.description || skill.summary || 'No description'}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(skill.name); }}
-                                className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                title="Delete skill"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </div>
                           </div>
                         </Card>
@@ -246,6 +231,18 @@ export function Skills() {
         onClose={() => setCreateOpen(false)}
         onCreated={(skill) => setSkillList(prev => [...prev, skill])}
       />
+
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Skill" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-1">
+            Are you sure you want to delete <strong className="text-text-0">{deleteTarget}</strong>? This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDelete} loading={deleteLoading}>Delete</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
