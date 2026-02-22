@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/from-html",
+      "description": "Convert HTML content to PDF",
+      "body": {"html": "HTML content to convert", "landscape": "Landscape orientation (default false)", "paper_size": "A4, Letter, or Legal", "margin": "CSS margin value (default 1cm)"},
+      "response": {"pdf_base64": "Base64 encoded PDF", "size_bytes": "PDF size"}
+    },
+    {
+      "method": "GET",
+      "path": "/from-url",
+      "description": "Convert a web page URL to PDF",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL to convert to PDF"},
+        {"name": "landscape", "type": "boolean", "required": false, "description": "Landscape orientation (default false)"},
+        {"name": "paper_size", "type": "string", "required": false, "description": "Paper size: A4, Letter, Legal (default A4)"},
+        {"name": "margin", "type": "string", "required": false, "description": "Margin in cm (default 1cm)"}
+      ],
+      "response": {"pdf_base64": "Base64 encoded PDF", "size_bytes": "PDF size"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

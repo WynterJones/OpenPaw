@@ -401,7 +401,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_tool: "+resp.WorkOrder.Title)
 	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔨 Building **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
 
-	_, err = h.agentManager.SpawnToolBuilder(ctx, wo, threadID, userID, placeholderID)
+	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Build failed: "+err.Error(), 0, 0, 0)
 	}
@@ -437,7 +437,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "update_tool: "+resp.WorkOrder.Title)
 	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔧 Updating **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
 
-	_, err = h.agentManager.SpawnToolBuilder(ctx, wo, threadID, userID, placeholderID)
+	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Update failed: "+err.Error(), 0, 0, 0)
 	}
@@ -469,7 +469,7 @@ func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_dashboard: "+resp.WorkOrder.Title)
 	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building the **"+resp.WorkOrder.Title+"** dashboard...", 0, 0, 0)
 
-	_, err = h.agentManager.SpawnDashboardBuilder(ctx, wo, threadID, userID, placeholderID)
+	_, err = h.agentManager.SpawnDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Dashboard build failed: "+err.Error(), 0, 0, 0)
 	}
@@ -505,7 +505,7 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_custom_dashboard: "+resp.WorkOrder.Title)
 	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building custom dashboard **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
 
-	_, err = h.agentManager.SpawnCustomDashboardBuilder(ctx, wo, threadID, userID, placeholderID)
+	_, err = h.agentManager.SpawnCustomDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Custom dashboard build failed: "+err.Error(), 0, 0, 0)
 	}

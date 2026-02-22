@@ -62,7 +62,9 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 
 ## Getting Started
 
-### 1. Complete Setup
+<p>
+  <img src="assets/headlines/complete-setup.webp" alt="Complete Setup" width="420" />
+</p>
 
 On first launch, OpenPaw shows an onboarding wizard:
 
@@ -72,7 +74,9 @@ On first launch, OpenPaw shows an onboarding wizard:
 
 After setup, you're redirected to log in. On your first conversation, the gateway agent ("Pounce") will introduce itself and ask about your preferences to personalize its personality.
 
-### 2. Chat with Agents
+<p>
+  <img src="assets/headlines/chat-with-agents.webp" alt="Chat with Agents" width="420" />
+</p>
 
 The **Chat** page is your main interface. Create threads and converse with AI agents:
 
@@ -91,7 +95,9 @@ Chat features include:
 - **Thread compaction** to summarize long conversations
 - **Stop button** to halt an agent mid-response
 
-### 3. Manage Agents
+<p>
+  <img src="assets/headlines/manage-agents.webp" alt="Manage Agents" width="420" />
+</p>
 
 The **Agents** page lets you create and configure specialist AI agents:
 
@@ -106,7 +112,9 @@ The **Agents** page lets you create and configure specialist AI agents:
 - Configure the **Gateway Agent** separately with its own identity files
 - Agents remember context across conversations via a **per-agent memory database**
 
-### 4. Skills System
+<p>
+  <img src="assets/headlines/skills-system.webp" alt="Skills System" width="420" />
+</p>
 
 The **Skills** page manages reusable skill definitions:
 
@@ -115,7 +123,9 @@ The **Skills** page manages reusable skill definitions:
 - Agents can publish their skills back to the global library
 - Skills appear in agent system prompts as available capabilities
 
-### 5. Manage Tools
+<p>
+  <img src="assets/headlines/manage-tools.webp" alt="Manage Tools" width="420" />
+</p>
 
 The **Tools** page shows everything that's been built:
 
@@ -132,7 +142,9 @@ When you ask for a new tool, OpenPaw:
 3. Spawns a builder agent to implement the logic
 4. Compiles, starts, and health-checks the tool automatically
 
-### 6. Tool Library
+<p>
+  <img src="assets/headlines/tool-library.webp" alt="Tool Library" width="420" />
+</p>
 
 The **Tool Library** provides pre-built tools that can be installed with one click:
 
@@ -141,7 +153,9 @@ The **Tool Library** provides pre-built tools that can be installed with one cli
 - Export tools for sharing and import tools from other installations
 - Integrity checking for installed tools
 
-### 7. Store Secrets
+<p>
+  <img src="assets/headlines/store-secrets.webp" alt="Store Secrets" width="420" />
+</p>
 
 The **Secrets** page manages API keys, tokens, and credentials:
 
@@ -151,7 +165,9 @@ The **Secrets** page manages API keys, tokens, and credentials:
 
 Secret values are encrypted with AES-256-GCM at rest and **never displayed again** after saving.
 
-### 8. Create Schedules
+<p>
+  <img src="assets/headlines/create-schedules.webp" alt="Create Schedules" width="420" />
+</p>
 
 The **Scheduler** page lets you automate tasks:
 
@@ -162,7 +178,9 @@ The **Scheduler** page lets you automate tasks:
 - Toggle schedules on/off and view execution history
 - Automatic data retention management
 
-### 9. Build Dashboards
+<p>
+  <img src="assets/headlines/build-dashboards.webp" alt="Build Dashboards" width="420" />
+</p>
 
 The **Dashboards** page displays data from your tools:
 
@@ -175,7 +193,9 @@ The **Dashboards** page displays data from your tools:
   - Auto-inherit app theming via CSS custom properties
 - Dashboards support auto-refresh, manual refresh, and live tool data sources
 
-### 10. Context System
+<p>
+  <img src="assets/headlines/context-system.webp" alt="Context System" width="420" />
+</p>
 
 The **Context** page is a file manager for reference documents:
 
@@ -184,7 +204,9 @@ The **Context** page is a file manager for reference documents:
 - "About You" section for personal context that agents can access
 - Supported files are injected into agent context for informed responses
 
-### 11. Browser Automation
+<p>
+  <img src="assets/headlines/browser-automation.webp" alt="Browser Automation" width="420" />
+</p>
 
 The **Browser** page provides headless browser sessions powered by [go-rod](https://github.com/go-rod/rod):
 
@@ -195,7 +217,9 @@ The **Browser** page provides headless browser sessions powered by [go-rod](http
 - Track browser tasks with full action history
 - Schedule browser automation tasks via the scheduler
 
-### 12. Heartbeat Monitor
+<p>
+  <img src="assets/headlines/heartbeat-monitor.webp" alt="Heartbeat Monitor" width="420" />
+</p>
 
 The **Heartbeat** page runs periodic AI-powered system health checks:
 
@@ -205,7 +229,9 @@ The **Heartbeat** page runs periodic AI-powered system health checks:
 - Results are broadcast in real-time and stored in execution history
 - Enable/disable and trigger manual runs
 
-### 13. Notifications
+<p>
+  <img src="assets/headlines/notifications.webp" alt="Notifications" width="420" />
+</p>
 
 A **notification system** keeps you informed of important events:
 
@@ -214,7 +240,9 @@ A **notification system** keeps you informed of important events:
 - Mark as read, dismiss individual notifications, or dismiss all
 - Unread count badge in the UI
 
-### 14. Customize the Design
+<p>
+  <img src="assets/headlines/customize-the-design.webp" alt="Customize the Design" width="420" />
+</p>
 
 Under **Settings > Design**, you can customize the look and feel of the UI:
 
@@ -224,7 +252,9 @@ Under **Settings > Design**, you can customize the look and feel of the UI:
 
 Changes are applied instantly via CSS variables. You can also ask agents in chat to restyle things — they have API access to update the design config.
 
-### 15. Settings
+<p>
+  <img src="assets/headlines/settings.webp" alt="Settings" width="420" />
+</p>
 
 The **Settings** page provides system configuration:
 
@@ -234,7 +264,9 @@ The **Settings** page provides system configuration:
 - **Available Models** — browse models available through OpenRouter
 - **System** — view system info, check API balance, delete all data
 
-### 16. Review Activity
+<p>
+  <img src="assets/headlines/review-activity.webp" alt="Review Activity" width="420" />
+</p>
 
 The **Logs** page shows a full audit trail:
 
@@ -252,7 +284,10 @@ By default, OpenPaw binds to `127.0.0.1:41295` (localhost only). To access from 
 
 Authentication is required — there's no anonymous access. The UI is fully responsive with a mobile-optimized bottom navigation bar.
 
-## API
+<a id="api"></a>
+<p>
+  <img src="assets/headlines/api.webp" alt="API" width="430" />
+</p>
 
 All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in HttpOnly cookies (`openpaw_token`), with CSRF protection via the `X-CSRF-Token` header for mutating requests.
 
@@ -498,7 +533,10 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | PUT | `/api/v1/settings/api-key` | Update API key |
 | GET | `/api/v1/settings/available-models` | Browse available OpenRouter models |
 
-## Project Structure
+<a id="project-structure"></a>
+<p>
+  <img src="assets/headlines/project-structure.webp" alt="Project Structure" width="430" />
+</p>
 
 ```
 OpenPaw/
@@ -540,7 +578,10 @@ OpenPaw/
   tests/                  Playwright E2E tests
 ```
 
-## Just Commands
+<a id="just-commands"></a>
+<p>
+  <img src="assets/headlines/just-commands.webp" alt="Just Commands" width="430" />
+</p>
 
 OpenPaw uses [just](https://github.com/casey/just) as a command runner. Run `just --list` to see all available commands.
 
@@ -612,7 +653,10 @@ OpenPaw uses [just](https://github.com/casey/just) as a command runner. Run `jus
 | `just check-claude` | Check if Claude Code CLI is installed |
 | `just overview` | Show project directory structure |
 
-## Desktop App
+<a id="desktop-app"></a>
+<p>
+  <img src="assets/headlines/desktop-app.webp" alt="Desktop App" width="430" />
+</p>
 
 OpenPaw can also run as a native desktop application using [Tauri v2](https://tauri.app/). The desktop wrapper bundles the Go binary as a sidecar — it launches the server automatically, waits for it to be ready, then opens the UI in a native window. No browser required.
 
@@ -663,11 +707,16 @@ just desktop-clean    # Remove desktop build artifacts
 just desktop-icons    # Regenerate app icons from assets/icon.png
 ```
 
-## Built-in Libraries
+<a id="built-in-libraries"></a>
+<p>
+  <img src="assets/headlines/built-in-libraries.webp" alt="Built-in Libraries" width="430" />
+</p>
 
 OpenPaw ships with three catalogs of pre-built components that can be installed with one click from the **Library** page.
 
-### Tool Library (39 tools)
+<p>
+  <img src="assets/headlines/tool-library.webp" alt="Tool Library" width="420" />
+</p>
 
 Each tool is a standalone Go HTTP service that gets compiled and managed automatically. Tools marked "free" require no API key.
 
@@ -771,7 +820,14 @@ Pre-built agent personalities with identity files (SOUL.md, AGENTS.md, BOOT.md) 
 | Security Auditor | Shadow | Engineering | Scans for vulnerabilities, reviews permissions, hardens defenses |
 | Summarizer | Neko | Content | Distills long documents into concise, actionable briefs |
 
-## FarmWork
+<a id="farmwork"></a>
+<p>
+  <img src="assets/headlines/farmwork.webp" alt="FarmWork" width="430" />
+</p>
+
+<p align="center">
+  <img src="assets/farmer.webp" alt="FarmWork" width="250" />
+</p>
 
 OpenPaw uses [FarmWork](https://farmwork.dev) to keep the codebase self-documenting and continuously audited. FarmWork is an AI-assisted development framework that combines natural language commands with specialized agents to maintain code quality, track project health, and enforce structured workflows.
 

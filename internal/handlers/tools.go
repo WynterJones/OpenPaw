@@ -116,9 +116,6 @@ func (h *ToolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ToolsHandler) spawnToolBuilder(toolID, name, description, config, userID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), h.agentManager.AgentTimeout())
-	defer cancel()
-
 	toolDir := filepath.Join(h.toolsDir, toolID)
 	wo, err := agents.CreateWorkOrder(h.db, agents.WorkOrderToolBuild,
 		name, description, config, toolDir, toolID, "", userID,
@@ -127,7 +124,7 @@ func (h *ToolsHandler) spawnToolBuilder(toolID, name, description, config, userI
 		return
 	}
 
-	_, err = h.agentManager.SpawnToolBuilder(ctx, wo, "", userID)
+	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, "", userID)
 	if err != nil {
 		now := time.Now().UTC()
 		if _, dbErr := h.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID); dbErr != nil {
