@@ -286,7 +286,7 @@ Authentication is required — there's no anonymous access. The UI is fully resp
 
 <a id="api"></a>
 <p>
-  <img src="assets/headlines/api.webp" alt="API" width="430" />
+  <img src="assets/headlines/api.webp" alt="API" width="420" />
 </p>
 
 All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in HttpOnly cookies (`openpaw_token`), with CSRF protection via the `X-CSRF-Token` header for mutating requests.
@@ -535,7 +535,7 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 
 <a id="project-structure"></a>
 <p>
-  <img src="assets/headlines/project-structure.webp" alt="Project Structure" width="430" />
+  <img src="assets/headlines/project-structure.webp" alt="Project Structure" width="420" />
 </p>
 
 ```
@@ -580,7 +580,7 @@ OpenPaw/
 
 <a id="just-commands"></a>
 <p>
-  <img src="assets/headlines/just-commands.webp" alt="Just Commands" width="430" />
+  <img src="assets/headlines/just-commands.webp" alt="Just Commands" width="420" />
 </p>
 
 OpenPaw uses [just](https://github.com/casey/just) as a command runner. Run `just --list` to see all available commands.
@@ -655,7 +655,7 @@ OpenPaw uses [just](https://github.com/casey/just) as a command runner. Run `jus
 
 <a id="desktop-app"></a>
 <p>
-  <img src="assets/headlines/desktop-app.webp" alt="Desktop App" width="430" />
+  <img src="assets/headlines/desktop-app.webp" alt="Desktop App" width="420" />
 </p>
 
 OpenPaw can also run as a native desktop application using [Tauri v2](https://tauri.app/). The desktop wrapper bundles the Go binary as a sidecar — it launches the server automatically, waits for it to be ready, then opens the UI in a native window. No browser required.
@@ -709,14 +709,10 @@ just desktop-icons    # Regenerate app icons from assets/icon.png
 
 <a id="built-in-libraries"></a>
 <p>
-  <img src="assets/headlines/built-in-libraries.webp" alt="Built-in Libraries" width="430" />
+  <img src="assets/headlines/built-in-libraries.webp" alt="Built-in Libraries" width="420" />
 </p>
 
 OpenPaw ships with three catalogs of pre-built components that can be installed with one click from the **Library** page.
-
-<p>
-  <img src="assets/headlines/tool-library.webp" alt="Tool Library" width="420" />
-</p>
 
 Each tool is a standalone Go HTTP service that gets compiled and managed automatically. Tools marked "free" require no API key.
 
@@ -822,11 +818,7 @@ Pre-built agent personalities with identity files (SOUL.md, AGENTS.md, BOOT.md) 
 
 <a id="farmwork"></a>
 <p>
-  <img src="assets/headlines/farmwork.webp" alt="FarmWork" width="430" />
-</p>
-
-<p align="center">
-  <img src="assets/farmer.webp" alt="FarmWork" width="250" />
+  <img src="assets/headlines/farmwork.webp" alt="FarmWork" width="420" />
 </p>
 
 OpenPaw uses [FarmWork](https://farmwork.dev) to keep the codebase self-documenting and continuously audited. FarmWork is an AI-assisted development framework that combines natural language commands with specialized agents to maintain code quality, track project health, and enforce structured workflows.
@@ -861,6 +853,8 @@ _PLANS/                       Implementation blueprints (created during Plan Mod
 _RESEARCH/                    Research docs (created via "let's research..." command)
 .beads/                       Local issue tracking data
 ```
+
+<img src="assets/farmer.webp" alt="FarmWork" width="250" />
 
 ### Key Commands
 
