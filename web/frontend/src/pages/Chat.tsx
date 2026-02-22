@@ -520,7 +520,7 @@ export function Chat() {
       }
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
-  }, [resetStreaming, setCostInfo, setStreamingText, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads]);
+  }, [resetStreaming, setCostInfo, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads]);
 
   const { connected: wsConnected } = useWebSocket({
     onMessage: handleWSMessage,
