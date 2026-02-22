@@ -309,14 +309,15 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
-func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (string, error) {
+func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (response, usedThreadID string, err error) {
 	var systemPrompt, model string
-	err := m.db.QueryRow(
-		"SELECT system_prompt, model FROM agent_roles WHERE slug = ? AND enabled = 1",
+	var identityInitialized bool
+	err = m.db.QueryRow(
+		"SELECT system_prompt, model, identity_initialized FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentSlug,
-	).Scan(&systemPrompt, &model)
+	).Scan(&systemPrompt, &model, &identityInitialized)
 	if err != nil {
-		return "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
+		return "", "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
 	}
 
 	now := time.Now().UTC()
@@ -354,9 +355,20 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 		}
 	}
 
-	result, usage, _, err := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, "", agentSlug)
-	if err != nil {
-		return "", fmt.Errorf("scheduled prompt failed: %w", err)
+	// If identity system is initialized, assemble prompt from files and set agentDir
+	// so the agent gets tools and full max turns (same as normal chat).
+	var agentDir string
+	if identityInitialized {
+		assembled, err := AssembleSystemPrompt(m.DataDir, agentSlug)
+		if err == nil {
+			systemPrompt = assembled
+			agentDir = AgentDir(m.DataDir, agentSlug)
+		}
+	}
+
+	result, usage, _, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug)
+	if chatErr != nil {
+		return "", threadID, fmt.Errorf("scheduled prompt failed: %w", chatErr)
 	}
 
 	// Save the assistant response to the thread
@@ -375,5 +387,5 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 	)
 	m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", assistNow, threadID)
 
-	return result, nil
+	return result, threadID, nil
 }

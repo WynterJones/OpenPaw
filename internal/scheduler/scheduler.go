@@ -13,7 +13,7 @@ import (
 
 // PromptSender sends a scheduled prompt to an AI agent.
 type PromptSender interface {
-	SendScheduledPrompt(ctx context.Context, slug, prompt, threadID string) (string, error)
+	SendScheduledPrompt(ctx context.Context, slug, prompt, threadID string) (response, usedThreadID string, err error)
 }
 
 // NotifyFunc creates a notification and broadcasts it.
@@ -109,7 +109,7 @@ func (s *Scheduler) executeSchedule(cfg ScheduleConfig) {
 
 	s.db.Exec("UPDATE schedules SET last_run_at = ?, updated_at = ? WHERE id = ?", now, now, cfg.ID)
 
-	output, execErr := s.executePrompt(cfg)
+	output, threadID, execErr := s.executePrompt(cfg)
 
 	finishedAt := time.Now().UTC()
 	status := "success"
@@ -126,12 +126,28 @@ func (s *Scheduler) executeSchedule(cfg ScheduleConfig) {
 		"UPDATE schedule_executions SET status = ?, output = ?, error = ?, finished_at = ? WHERE id = ?",
 		status, output, errStr, finishedAt, execID,
 	)
+
+	// Send notification with link to the chat thread
+	if s.notifyFn != nil && status == "success" && threadID != "" {
+		title := "Scheduled task completed"
+		// Look up a friendly name for the agent
+		var agentName string
+		s.db.QueryRow("SELECT name FROM agent_roles WHERE slug = ?", cfg.AgentRoleSlug).Scan(&agentName)
+		if agentName != "" {
+			title = agentName + " completed a scheduled task"
+		}
+		body := cfg.PromptContent
+		if len(body) > 100 {
+			body = body[:100] + "..."
+		}
+		s.notifyFn(title, body, "normal", cfg.AgentRoleSlug, "schedule", "/chat/"+threadID)
+	}
 }
 
-func (s *Scheduler) executePrompt(cfg ScheduleConfig) (string, error) {
+func (s *Scheduler) executePrompt(cfg ScheduleConfig) (output, threadID string, err error) {
 	if s.promptSender == nil {
 		logger.Warn("Schedule %s: prompt sender not configured, skipping", cfg.ID)
-		return "", nil
+		return "", "", nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
