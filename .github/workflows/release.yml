@@ -16,7 +16,7 @@ jobs:
             goos: darwin
             goarch: arm64
             artifact: openpaw-darwin-arm64
-          - runner: macos-13
+          - runner: macos-14
             goos: darwin
             goarch: amd64
             artifact: openpaw-darwin-x64
@@ -58,6 +58,7 @@ jobs:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           go build -tags fts5 -ldflags "-s -w -X main.version=$VERSION" -o ${{ matrix.artifact }} ./cmd/openpaw
