@@ -23,6 +23,14 @@ OpenPaw is a single app you run on your computer. You chat with AI agents, descr
 
 The app and everything it builds runs locally. AI chat is handled through [OpenRouter](https://openrouter.ai/) (bring your own API key).
 
+<table>
+  <tr>
+    <td align="center"><img src="assets/dashboard.webp" alt="Dashboards" width="100%" /><br><sub><b>Dashboards</b></sub></td>
+    <td align="center"><img src="assets/chat.webp" alt="Chat" width="100%" /><br><sub><b>Chat</b></sub></td>
+    <td align="center"><img src="assets/agents.webp" alt="Agents" width="100%" /><br><sub><b>Agents</b></sub></td>
+  </tr>
+</table>
+
 ---
 
 ## Installation
