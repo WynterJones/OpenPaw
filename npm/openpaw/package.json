@@ -1,5 +1,5 @@
 {
-  "name": "openpaw",
+  "name": "@openpaw-ai/openpaw",
   "version": "0.1.0",
   "description": "AI-powered agent management platform",
   "repository": {
