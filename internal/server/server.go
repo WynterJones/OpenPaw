@@ -107,9 +107,10 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	notificationsHandler := handlers.NewNotificationsHandler(s.DB)
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
 	memoryHandler := handlers.NewMemoryHandler(s.MemoryMgr)
-	toolLibraryHandler := handlers.NewToolLibraryHandler(s.DB, toolMgr, toolsDir)
+	toolLibraryHandler := handlers.NewToolLibraryHandler(s.DB, toolMgr, toolsDir, secretsMgr)
 	agentLibraryHandler := handlers.NewAgentLibraryHandler(s.DB, dataDir)
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
+	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -144,6 +145,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// Public uploaded background serving
 		r.Get("/uploads/backgrounds/{filename}", settingsHandler.ServeBackground)
+
+		// Public dashboard assets (served in sandboxed iframes that can't send auth cookies)
+		r.Get("/dashboards/{id}/assets/*", dashboardsHandler.ServeAssets)
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
@@ -200,6 +204,13 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{slug}/install", skillLibraryHandler.InstallCatalogSkill)
 			})
 
+			// Skills.sh (external skills directory)
+			r.Route("/skills-sh", func(r chi.Router) {
+				r.Get("/", skillsShHandler.Search)
+				r.Get("/detail", skillsShHandler.GetSkill)
+				r.Post("/install", skillsShHandler.Install)
+			})
+
 			// Tool Import/Export/Integrity
 			r.Get("/tools/{id}/export", toolLibraryHandler.ExportTool)
 			r.Post("/tools/import", toolLibraryHandler.ImportTool)
@@ -209,6 +220,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Route("/secrets", func(r chi.Router) {
 				r.Get("/", secretsHandler.List)
 				r.Post("/", secretsHandler.Create)
+				r.Post("/check", secretsHandler.CheckNames)
 				r.Delete("/{id}", secretsHandler.Delete)
 				r.Post("/{id}/rotate", secretsHandler.Rotate)
 				r.Post("/{id}/test", secretsHandler.Test)
@@ -235,7 +247,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/refresh", dashboardsHandler.RefreshData)
 				r.Get("/{id}/data/{widgetId}", dashboardsHandler.GetWidgetData)
 				r.Post("/{id}/collect", dashboardsHandler.CollectData)
-				r.Get("/{id}/assets/*", dashboardsHandler.ServeAssets)
 			})
 
 			// Agent Roles

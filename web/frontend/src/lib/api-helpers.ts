@@ -7,6 +7,8 @@ import type {
   MemoryFile,
   Skill,
   LibrarySkill,
+  SkillsShSkill,
+  SkillsShDetail,
   ThreadMember,
   Tool,
   LibraryTool,
@@ -222,6 +224,22 @@ export const skillLibrary = {
   install: (slug: string) => api.post<Skill>(`/skill-library/${slug}/install`),
 };
 
+// Skills.sh API helpers
+export const skillsSh = {
+  search: (q?: string) => {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    const qs = p.toString();
+    return api.get<SkillsShSkill[]>(`/skills-sh${qs ? '?' + qs : ''}`);
+  },
+  detail: (source: string, skill: string) => {
+    const p = new URLSearchParams({ source, skill });
+    return api.get<SkillsShDetail>(`/skills-sh/detail?${p.toString()}`);
+  },
+  install: (source: string, skillId: string) =>
+    api.post<Skill>('/skills-sh/install', { source, skill_id: skillId }),
+};
+
 // Tool Import/Export/Integrity helpers
 export const toolExtra = {
   exportUrl: (id: string) => `${BASE_URL}/tools/${id}/export`,
@@ -246,6 +264,17 @@ export const toolExtra = {
     return res.json();
   },
   integrity: (id: string) => api.get<ToolIntegrityInfo>(`/tools/${id}/integrity`),
+};
+
+// Secrets API helpers
+export interface SecretCheckResult {
+  name: string;
+  exists: boolean;
+  placeholder: boolean;
+}
+
+export const secretsApi = {
+  checkNames: (names: string[]) => api.post<SecretCheckResult[]>('/secrets/check', { names }),
 };
 
 // Heartbeat API helpers

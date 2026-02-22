@@ -8,9 +8,11 @@
     {
       "method": "GET",
       "path": "/current",
-      "description": "Get current air quality for a city",
+      "description": "Get current air quality by city name or coordinates",
       "query_params": [
-        {"name": "city", "type": "string", "required": true, "description": "City name"}
+        {"name": "city", "type": "string", "required": false, "description": "City name (use city OR lat/lon)"},
+        {"name": "lat", "type": "number", "required": false, "description": "Latitude (use with lon instead of city)"},
+        {"name": "lon", "type": "number", "required": false, "description": "Longitude (use with lat instead of city)"}
       ],
       "response": {"aqi": "US AQI value", "aqi_category": "AQI category (Good/Moderate/etc)", "pm2_5": "PM2.5 level", "pm10": "PM10 level", "ozone": "Ozone level"}
     },

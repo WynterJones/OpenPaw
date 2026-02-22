@@ -96,8 +96,19 @@ func processSSEStream(body io.ReadCloser, emit func(StreamEvent), model string) 
 
 		// Text content delta
 		if choice.Delta.Content != "" {
-			contentBuf.WriteString(choice.Delta.Content)
-			emit(StreamEvent{Type: EventTextDelta, Text: choice.Delta.Content})
+			delta := choice.Delta.Content
+			// Guard: some providers return accumulated content instead of
+			// true deltas. Detect this by checking if the new "delta"
+			// starts with everything we've already accumulated. If so,
+			// strip the prefix to extract only the new characters.
+			accumulated := contentBuf.String()
+			if len(delta) > len(accumulated) && accumulated != "" && strings.HasPrefix(delta, accumulated) {
+				delta = delta[len(accumulated):]
+			}
+			if delta != "" {
+				contentBuf.WriteString(delta)
+				emit(StreamEvent{Type: EventTextDelta, Text: delta})
+			}
 		}
 
 		// Tool call deltas

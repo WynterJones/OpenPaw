@@ -52,9 +52,10 @@ func TestRequestID_UniquePerRequest(t *testing.T) {
 
 // --- CORS ---
 
-func TestCORS_SetsHeaders(t *testing.T) {
+func TestCORS_DevOrigin(t *testing.T) {
 	handler := CORS(okHandler)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -79,14 +80,42 @@ func TestCORS_SetsHeaders(t *testing.T) {
 	}
 }
 
+func TestCORS_NullOrigin(t *testing.T) {
+	handler := CORS(okHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboards/123/assets/index.html", nil)
+	req.Header.Set("Origin", "null")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "null" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "null")
+	}
+	if got := rr.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("Access-Control-Allow-Credentials should not be set for null origin, got %q", got)
+	}
+}
+
+func TestCORS_SameOriginNoHeader(t *testing.T) {
+	handler := CORS(okHandler)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Access-Control-Allow-Origin should not be set for same-origin, got %q", got)
+	}
+}
+
 func TestCORS_PreflightOptions(t *testing.T) {
-	// The inner handler should NOT be called for OPTIONS.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("inner handler should not be called on OPTIONS preflight")
 	})
 
 	handler := CORS(inner)
 	req := httptest.NewRequest(http.MethodOptions, "/api/test", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)

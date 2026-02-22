@@ -14,7 +14,8 @@ const (
 	WorkOrderToolBuild            WorkOrderType = "tool_build"
 	WorkOrderToolUpdate           WorkOrderType = "tool_update"
 	WorkOrderDashboardBuild       WorkOrderType = "dashboard_build"
-	WorkOrderDashboardCustomBuild WorkOrderType = "dashboard_custom_build"
+	WorkOrderDashboardCustomBuild  WorkOrderType = "dashboard_custom_build"
+	WorkOrderDashboardCustomUpdate WorkOrderType = "dashboard_custom_build_update"
 )
 
 type WorkOrderStatus string

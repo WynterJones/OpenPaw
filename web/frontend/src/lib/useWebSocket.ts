@@ -27,6 +27,7 @@ function ensureConnection() {
   sharedWs = ws;
 
   ws.onopen = () => {
+    if (sharedWs !== ws) return; // superseded by a newer connection
     sharedConnected = true;
     connectionListeners.forEach(fn => fn(true));
     if (reconnectTimer) {
@@ -36,6 +37,11 @@ function ensureConnection() {
   };
 
   ws.onmessage = (ev) => {
+    if (sharedWs !== ws) {
+      // Ghost connection — close it and stop delivering messages
+      ws.close();
+      return;
+    }
     try {
       const msg: WSMessage = JSON.parse(ev.data);
       messageListeners.forEach(fn => fn(msg));
@@ -45,6 +51,8 @@ function ensureConnection() {
   };
 
   ws.onclose = () => {
+    // Only update shared state if this is still the active connection
+    if (sharedWs !== ws) return;
     sharedConnected = false;
     sharedWs = null;
     connectionListeners.forEach(fn => fn(false));

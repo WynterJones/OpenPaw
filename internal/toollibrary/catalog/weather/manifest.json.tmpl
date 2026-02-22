@@ -8,9 +8,11 @@
     {
       "method": "GET",
       "path": "/current",
-      "description": "Get current weather for a city",
+      "description": "Get current weather by city name or coordinates",
       "query_params": [
-        {"name": "city", "type": "string", "required": true, "description": "City name"}
+        {"name": "city", "type": "string", "required": false, "description": "City name (use city OR lat/lon)"},
+        {"name": "lat", "type": "number", "required": false, "description": "Latitude (use with lon instead of city)"},
+        {"name": "lon", "type": "number", "required": false, "description": "Longitude (use with lat instead of city)"}
       ],
       "response": {"temperature": "Current temperature in Celsius", "conditions": "Weather conditions", "humidity": "Relative humidity %", "wind_speed": "Wind speed"}
     },

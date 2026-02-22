@@ -122,6 +122,7 @@ The **Skills** page manages reusable skill definitions:
 - Install skills to individual agents from the global library
 - Agents can publish their skills back to the global library
 - Skills appear in agent system prompts as available capabilities
+- Browse and install from **[Skills.sh](https://skills.sh)** — Vercel's open agent skills directory with 70k+ community skills — directly from the Library page
 
 <p>
   <img src="assets/headlines/manage-tools.webp" alt="Manage Tools" width="333" />
@@ -346,6 +347,13 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/tool-library/{slug}` | Get catalog tool details |
 | POST | `/api/v1/tool-library/{slug}/install` | Install a catalog tool |
 
+#### Skills.sh (External Skills Directory)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/skills-sh` | Search skills.sh directory |
+| GET | `/api/v1/skills-sh/detail` | Get skill detail from GitHub |
+| POST | `/api/v1/skills-sh/install` | Install a skill from skills.sh |
+
 #### Secrets
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -559,6 +567,7 @@ OpenPaw/
     scheduler/            Cron job runner (tool calls, agent prompts, browser tasks)
     secrets/              AES-256-GCM encryption
     server/               Chi router setup and route registration
+    skillssh/             Skills.sh API client (search + install from skills.sh directory)
     toollibrary/          Pre-built tool catalog and import/export
     toolmgr/              Tool process manager (compile, start, stop, health check, auto-restart)
     websocket/            Real-time WebSocket hub with topic subscriptions

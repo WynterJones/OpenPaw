@@ -150,6 +150,39 @@ func (h *SecretsHandler) Rotate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "secret rotated"})
 }
 
+func (h *SecretsHandler) CheckNames(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Names []string `json:"names"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	type secretStatus struct {
+		Name        string `json:"name"`
+		Exists      bool   `json:"exists"`
+		Placeholder bool   `json:"placeholder"`
+	}
+
+	results := make([]secretStatus, 0, len(req.Names))
+	for _, name := range req.Names {
+		var encrypted string
+		err := h.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", name).Scan(&encrypted)
+		if err != nil {
+			results = append(results, secretStatus{Name: name, Exists: false, Placeholder: false})
+			continue
+		}
+		isPlaceholder := false
+		if decrypted, decErr := h.manager.Decrypt(encrypted); decErr == nil && decrypted == "REPLACE_ME" {
+			isPlaceholder = true
+		}
+		results = append(results, secretStatus{Name: name, Exists: true, Placeholder: isPlaceholder})
+	}
+
+	writeJSON(w, http.StatusOK, results)
+}
+
 func (h *SecretsHandler) Test(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

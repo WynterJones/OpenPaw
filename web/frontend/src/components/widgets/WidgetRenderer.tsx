@@ -10,6 +10,7 @@ import { AreaChartWidget } from './AreaChartWidget';
 import { PieChartWidget } from './PieChartWidget';
 import { ProgressBarWidget } from './ProgressBarWidget';
 import { TextBlockWidget } from './TextBlockWidget';
+import { ImageWidget } from './ImageWidget';
 import { detectBestWidget } from './detectWidget';
 import type { WidgetPayload } from '../../lib/api';
 
@@ -33,6 +34,8 @@ function renderWidgetByType(type: string, widget: WidgetPayload): React.ReactEle
     case 'status-card':
       if (!data.label && !data.status) return null;
       return <StatusCardWidget data={data} />;
+    case 'image':
+      return <ImageWidget data={data} />;
     case 'json-viewer':
       return <JsonViewerWidget data={data} />;
     case 'line-chart':

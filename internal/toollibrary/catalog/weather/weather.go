@@ -122,15 +122,31 @@ func geocodeCity(city string) (float64, float64, string, error) {
 }
 
 func handleCurrentWeather(w http.ResponseWriter, r *http.Request) {
-	city := r.URL.Query().Get("city")
-	if city == "" {
-		writeError(w, http.StatusBadRequest, "city parameter is required")
-		return
-	}
+	q := r.URL.Query()
+	var lat, lon float64
+	var location string
+	var err error
 
-	lat, lon, location, err := geocodeCity(city)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	if q.Get("lat") != "" && q.Get("lon") != "" {
+		lat, err = strconv.ParseFloat(q.Get("lat"), 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid lat value")
+			return
+		}
+		lon, err = strconv.ParseFloat(q.Get("lon"), 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid lon value")
+			return
+		}
+		location = fmt.Sprintf("%.2f, %.2f", lat, lon)
+	} else if q.Get("city") != "" {
+		lat, lon, location, err = geocodeCity(q.Get("city"))
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+	} else {
+		writeError(w, http.StatusBadRequest, "city or lat/lon parameters are required")
 		return
 	}
 

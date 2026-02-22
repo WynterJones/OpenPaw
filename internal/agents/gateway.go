@@ -31,6 +31,12 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		}
 	}
 
+	// Inject existing dashboards so gateway can match update requests
+	dashSection := m.buildDashboardsPromptSection()
+	if dashSection != "" {
+		gatewayPrompt += "\n\n" + dashSection
+	}
+
 	// Inject routing hints so gateway has full context
 	if hints != nil {
 		gatewayPrompt += "\n\n## ROUTING CONTEXT\n"
@@ -122,6 +128,7 @@ type GatewayWorkOrder struct {
 	Requirements string `json:"requirements"`
 	Type         string `json:"type"`
 	ToolID       string `json:"tool_id,omitempty"`
+	DashboardID  string `json:"dashboard_id,omitempty"`
 }
 
 func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutput string) (string, error) {

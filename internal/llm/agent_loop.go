@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -89,12 +90,10 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 	}
 
 	// Truncate large tool results from older turns to control token growth.
-	// Keeps the last turn's tool results intact but trims older ones.
 	truncateOldToolResults := func() {
 		if len(messages) < 6 {
 			return
 		}
-		// Find the last assistant message index (start of current turn's results)
 		lastAssistantIdx := -1
 		for i := len(messages) - 1; i >= 0; i-- {
 			if messages[i].Role == "assistant" {
@@ -103,15 +102,17 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 			}
 		}
 		for i := 0; i < lastAssistantIdx; i++ {
-			if messages[i].Role == "tool" && len(messages[i].Content) > 2000 {
-				// Check for base64 data patterns or just large content
-				content := messages[i].Content
-				if strings.Contains(content, "\"screenshot\"") || len(content) > 5000 {
-					messages[i].Content = content[:500] + "\n...[truncated large tool output]..."
-				} else {
-					messages[i].Content = content[:2000] + "\n...[truncated]..."
-				}
+			if messages[i].Role != "tool" || len(messages[i].Content) <= 2000 {
+				continue
 			}
+			// First pass: try to strip just the binary fields
+			stripped := StripBinaryFields(messages[i].Content)
+			if len(stripped) <= 2000 {
+				messages[i].Content = stripped
+				continue
+			}
+			// Still too large — hard-truncate
+			messages[i].Content = stripped[:500] + "\n...[truncated large tool output]..."
 		}
 	}
 
@@ -214,9 +215,13 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 				ToolOutput: result.Output,
 			})
 
+			// Strip large base64 data before adding to LLM context.
+			// The widget collector already captured the full output via OnEvent.
+			llmContent := StripBinaryFields(result.Output)
+
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
-				Content:    result.Output,
+				Content:    llmContent,
 				ToolCallID: tc.ID,
 			})
 		}
@@ -285,4 +290,60 @@ func (c *Client) RunOneShot(ctx context.Context, model string, system, prompt st
 	}
 
 	return text, usage, nil
+}
+
+var base64SampleRe = regexp.MustCompile(`^[A-Za-z0-9+/\s]{200,}={0,2}$`)
+
+var binaryFieldNames = map[string]bool{
+	"image_base64": true,
+	"pdf_base64":   true,
+	"image_data":   true,
+	"imageData":    true,
+	"screenshot":   true,
+	"base64":       true,
+	"data":         true,
+}
+
+// StripBinaryFields removes large base64-encoded values from JSON tool output
+// so the LLM doesn't receive huge binary payloads as tokens. The widget
+// collector should capture the full output before this is called.
+func StripBinaryFields(output string) string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(output), &raw); err != nil {
+		return output
+	}
+
+	changed := false
+	for key, val := range raw {
+		if !binaryFieldNames[key] {
+			continue
+		}
+		var s string
+		if err := json.Unmarshal(val, &s); err != nil {
+			continue
+		}
+		if len(s) < 500 {
+			continue
+		}
+		sample := strings.ReplaceAll(s[:200], "\n", "")
+		sample = strings.ReplaceAll(sample, "\r", "")
+		if !base64SampleRe.MatchString(sample) {
+			continue
+		}
+		sizeKB := len(s) * 3 / 4 / 1024
+		replacement := fmt.Sprintf("[binary data stripped — %dKB, displayed in widget]", sizeKB)
+		b, _ := json.Marshal(replacement)
+		raw[key] = b
+		changed = true
+	}
+
+	if !changed {
+		return output
+	}
+
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return output
+	}
+	return string(b)
 }

@@ -217,9 +217,7 @@ export function Agents() {
                 <Pagination page={page} totalPages={totalPages} total={filteredRoles.length} onPageChange={setPage} label="agents" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <Card padding={false} hover className="overflow-hidden border-border-0!" onClick={() => navigate('/agents/gateway')}>
-                    <div className="relative h-48">
-                      <img src="/gateway-avatar.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl" />
-                      <div className="absolute inset-0 bg-black/80" />
+                    <div className="relative h-48 bg-surface-2">
                       <div className="relative z-10 flex flex-col justify-between h-full p-6">
                         <div className="flex items-start justify-between">
                           <div className="relative">
@@ -245,9 +243,7 @@ export function Agents() {
                   </Card>
                   {paginatedRoles.map(role => (
                     <Card key={role.slug} padding={false} hover className="overflow-hidden border-border-0!" onClick={() => navigate(`/agents/${role.slug}`)}>
-                      <div className="relative h-48">
-                        <img src={role.avatar_path} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl" />
-                        <div className="absolute inset-0 bg-black/80" />
+                      <div className="relative h-48 bg-surface-2">
                         <div className="relative z-10 flex flex-col justify-between h-full p-6">
                           <div className="flex items-start justify-between">
                             <img src={role.avatar_path} alt={role.name} className="w-16 h-16 rounded-2xl shadow-lg" />

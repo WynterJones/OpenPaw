@@ -25,8 +25,8 @@ Does the user want to build, create, or update something? These actions are hand
 
 - **"build_tool"**: User wants to create a new tool, service, API, or integration. Fill in "work_order" with title, description, requirements.
 - **"update_tool"**: User wants to modify an existing tool. Fill in "work_order" with the tool's exact name as "title". Include "tool_id" from the SYSTEM TOOLS section if available.
-- **"build_dashboard"**: User wants a standard dashboard with charts/tables/metrics. Fill in "work_order".
-- **"build_custom_dashboard"**: User wants a custom, unique, interactive, or visually complex dashboard (animations, maps, 3D, games, canvas art, or anything beyond standard charts/tables). Fill in "work_order" with title, description, requirements.
+- **"build_dashboard"**: User wants a standard dashboard with charts/tables/metrics. Fill in "work_order". If updating an existing dashboard, include "dashboard_id" from the EXISTING DASHBOARDS section.
+- **"build_custom_dashboard"**: User wants a custom, unique, interactive, or visually complex dashboard (animations, maps, 3D, games, canvas art, or anything beyond standard charts/tables). Fill in "work_order" with title, description, requirements. If updating an existing dashboard, include "dashboard_id" from the EXISTING DASHBOARDS section.
 
 Default to "build_dashboard" (block mode) unless the user explicitly asks for something "custom" or the request clearly needs capabilities beyond standard widgets (e.g. maps, 3D, animations, games, real-time visualizations).
 
@@ -361,7 +361,8 @@ Requirements: %s
 
 ## OpenPaw SDK API (available in dashboard.js via window.OpenPaw)
 
-// Call a running tool's endpoint
+// Call a running tool's endpoint. The payload object keys become URL query parameters.
+// For example: callTool(id, '/current', { city: 'London' }) → GET /current?city=London
 await OpenPaw.callTool(toolId, endpoint, payload?)
 // Returns: parsed JSON response from the tool
 
@@ -375,6 +376,10 @@ const stop = OpenPaw.refresh(callback, intervalMs)
 
 // Current theme colors as JS object
 OpenPaw.theme.surface0, .text0, .accent, etc.
+
+## CRITICAL: payload keys MUST match the tool's query_params names exactly.
+If a tool documents param "lat", you MUST use { lat: 44.23 }, NOT { latitude: 44.23 }.
+If a tool documents param "city", use a simple city name the geocoding API can resolve (e.g. "London" not "London, England, United Kingdom").
 
 ## USING LIBRARIES (esm.sh — no install needed)
 
@@ -395,9 +400,10 @@ Pin versions for stability. esm.sh handles tree-shaking and TypeScript.
 
 1. Use --op-* CSS custom properties for ALL colors, fonts, spacing, radii. Never hardcode colors.
 2. Default theme is dark. Your dashboard auto-inherits the parent app's theme.
-3. Make it responsive — test at mobile (320px) and desktop widths.
-4. Use CSS Grid or Flexbox for layouts.
-5. Add loading states and error handling for API calls.
+3. The dashboard runs in an iframe with a transparent background. The parent app provides the background (solid color or image). DO NOT set background-color on html or body — keep them transparent. Use semi-transparent backgrounds on cards/panels (e.g. rgba or --op-surface-1 with opacity) so the parent background shows through.
+4. Make it responsive — test at mobile (320px) and desktop widths.
+5. Use CSS Grid or Flexbox for layouts.
+6. Add loading states and error handling for API calls.
 
 ## RULES
 
@@ -412,7 +418,8 @@ Pin versions for stability. esm.sh handles tree-shaking and TypeScript.
 3. DO NOT modify openpaw-sdk.js — it is a system file.
 4. You may create additional .js, .css, or .html files as needed.
 5. dashboard.js should use type="module" imports (already set in index.html).
-6. STOP when the dashboard is complete and functional.
+6. VERIFY before finishing: Use the call_tool tool to test EVERY tool call your dashboard makes. Confirm each returns valid data (not an error). If a call fails, fix the endpoint, params, or city name and retest. Do NOT declare the dashboard complete until all tool calls succeed.
+7. STOP when the dashboard is complete, verified, and functional.
 `
 
 const CustomDashboardUpdaterPrompt = `You are the OpenPaw Custom Dashboard Updater. You modify existing custom HTML/JS/CSS dashboards.

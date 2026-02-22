@@ -444,13 +444,21 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 }
 
 func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse) {
-	// Check for existing dashboard to enable updates
+	// Check for existing dashboard to enable updates — prefer explicit ID from gateway
 	var existingConfig string
 	var existingName string
-	h.db.QueryRow(
-		"SELECT name, widgets FROM dashboards WHERE name LIKE ? ESCAPE '\\' LIMIT 1",
-		"%"+escapeLike(resp.WorkOrder.Title)+"%",
-	).Scan(&existingName, &existingConfig)
+	if resp.WorkOrder.DashboardID != "" {
+		h.db.QueryRow(
+			"SELECT name, widgets FROM dashboards WHERE id = ?",
+			resp.WorkOrder.DashboardID,
+		).Scan(&existingName, &existingConfig)
+	}
+	if existingConfig == "" {
+		h.db.QueryRow(
+			"SELECT name, widgets FROM dashboards WHERE name LIKE ? ESCAPE '\\' LIMIT 1",
+			"%"+escapeLike(resp.WorkOrder.Title)+"%",
+		).Scan(&existingName, &existingConfig)
+	}
 
 	requirements := resp.WorkOrder.Requirements
 	if existingConfig != "" {
@@ -479,18 +487,30 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	dashboardID := uuid.New().String()
 	dashboardDir := filepath.Join(h.dashboardsDir, dashboardID)
 
-	// Check for existing custom dashboard to enable updates
+	// Check for existing custom dashboard — prefer explicit ID from gateway
 	var existingID string
-	h.db.QueryRow(
-		"SELECT id FROM dashboards WHERE name LIKE ? ESCAPE '\\' AND dashboard_type = 'custom' LIMIT 1",
-		"%"+escapeLike(resp.WorkOrder.Title)+"%",
-	).Scan(&existingID)
+	if resp.WorkOrder.DashboardID != "" {
+		var checkID string
+		err := h.db.QueryRow(
+			"SELECT id FROM dashboards WHERE id = ? AND dashboard_type = 'custom'",
+			resp.WorkOrder.DashboardID,
+		).Scan(&checkID)
+		if err == nil {
+			existingID = checkID
+		}
+	}
+	if existingID == "" {
+		h.db.QueryRow(
+			"SELECT id FROM dashboards WHERE name LIKE ? ESCAPE '\\' AND dashboard_type = 'custom' LIMIT 1",
+			"%"+escapeLike(resp.WorkOrder.Title)+"%",
+		).Scan(&existingID)
+	}
 
 	woType := agents.WorkOrderDashboardCustomBuild
 	if existingID != "" {
 		dashboardID = existingID
 		dashboardDir = filepath.Join(h.dashboardsDir, existingID)
-		woType = agents.WorkOrderDashboardCustomBuild // still the same type; update detection happens in prompt
+		woType = agents.WorkOrderDashboardCustomUpdate
 	}
 
 	wo, err := agents.CreateWorkOrder(h.db, woType,

@@ -477,6 +477,12 @@ export function Chat() {
         } else if (status.active) {
           setThinking(true);
           setWorkStatus('Working...');
+        } else {
+          // Thread is not active — clear stale sidebar indicator
+          setActiveThreadIds(prev => {
+            if (!prev.has(activeThread!)) return prev;
+            const next = new Set(prev); next.delete(activeThread!); return next;
+          });
         }
       }).catch((e) => { console.warn('recoverStreamState failed:', e); });
 
@@ -538,7 +544,7 @@ export function Chat() {
     const interval = wsConnected ? 10000 : 2500;
     pollingRef.current = window.setInterval(async () => {
       ticks++;
-      if (ticks > maxTicks) { setThinking(false); setWorkStatus(null); stopPolling(); return; }
+      if (ticks > maxTicks) { setThinking(false); setWorkStatus(null); setActiveThreadIds(prev => { const next = new Set(prev); next.delete(threadId); return next; }); stopPolling(); return; }
       try {
         const [msgs, status] = await Promise.all([
           api.get<ChatMessage[]>(`/chat/threads/${threadId}/messages`),
@@ -558,6 +564,7 @@ export function Chat() {
         } else if (hasAssistantReply) {
           setThinking(false);
           setWorkStatus(null);
+          setActiveThreadIds(prev => { const next = new Set(prev); next.delete(threadId); return next; });
           stopPolling();
           loadThreads();
         } else {
@@ -581,6 +588,12 @@ export function Chat() {
             : 'Processing...';
           setWorkStatus(label);
           startPolling(activeThread, '');
+        } else {
+          // Not active — clear stale sidebar indicator if present
+          setActiveThreadIds(prev => {
+            if (!prev.has(activeThread)) return prev;
+            const next = new Set(prev); next.delete(activeThread); return next;
+          });
         }
       } catch (e) { console.warn('checkOngoing failed:', e); }
     };

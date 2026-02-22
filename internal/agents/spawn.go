@@ -272,7 +272,7 @@ func (m *Manager) SpawnCustomDashboardBuilder(ctx context.Context, workOrder *mo
 	}
 
 	// Only scaffold for new builds — updates work with existing code
-	if workOrder.Type != string(WorkOrderDashboardCustomBuild)+"_update" {
+	if workOrder.Type != string(WorkOrderDashboardCustomUpdate) {
 		templateData := DashboardTemplateData{
 			DashboardID: workOrder.ToolID,
 			Name:        workOrder.Title,
@@ -292,7 +292,7 @@ func (m *Manager) SpawnCustomDashboardBuilder(ctx context.Context, workOrder *mo
 		}
 	}
 
-	isUpdate := workOrder.Type == string(WorkOrderDashboardCustomBuild)+"_update"
+	isUpdate := workOrder.Type == string(WorkOrderDashboardCustomUpdate)
 	var prompt string
 	if isUpdate {
 		prompt = fmt.Sprintf(CustomDashboardUpdaterPrompt, dashboardDir, workOrder.Description, workOrder.Requirements, toolsSection)

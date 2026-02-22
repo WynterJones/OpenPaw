@@ -5,11 +5,15 @@ import {
   ChevronDown,
   ImageIcon,
   X,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { DashboardGrid } from '../components/DashboardGrid';
 import { DashboardBackground } from '../components/BackgroundImage';
+import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import { useDashboardRefresh } from '../hooks/useDashboardRefresh';
 import { useToast } from '../components/Toast';
 import { api, getCSRFToken, type Dashboard, type DashboardWidgetConfig, type DashboardLayout } from '../lib/api';
@@ -49,6 +53,11 @@ export function Dashboards() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [bgUploading, setBgUploading] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const { toast } = useToast();
 
   const selected = dashboards.find(d => d.id === selectedId) || null;
@@ -90,9 +99,11 @@ export function Dashboards() {
             return;
         }
 
+        // Use '*' because the sandboxed iframe has a null origin and cannot receive
+        // messages targeted at a specific origin.
         promise
-          .then(result => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, result }, window.location.origin))
-          .catch(err => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, error: err.message }, window.location.origin));
+          .then(result => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, result }, '*'))
+          .catch(err => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, error: err.message }, '*'));
       }
 
       if (type === 'openpaw_theme_request') {
@@ -102,7 +113,7 @@ export function Dashboards() {
           const val = style.getPropertyValue('--' + v).trim();
           if (val) vars['--' + v] = val;
         }
-        iframe.contentWindow?.postMessage({ type: 'openpaw_theme', vars }, window.location.origin);
+        iframe.contentWindow?.postMessage({ type: 'openpaw_theme', vars }, '*');
       }
     }
 
@@ -158,6 +169,50 @@ export function Dashboards() {
       setDashboards(prev => prev.map(d => d.id === selectedId ? { ...d, bg_image: url } : d));
     } catch {
       toast('error', 'Failed to update background');
+    }
+  };
+
+  const openRename = () => {
+    if (!selected) return;
+    setRenameValue(selected.name);
+    setRenameOpen(true);
+  };
+
+  const renameDashboard = async () => {
+    if (!selectedId || !renameValue.trim()) return;
+    setRenameSaving(true);
+    try {
+      await api.put(`/dashboards/${selectedId}`, { name: renameValue.trim() });
+      setDashboards(prev => prev.map(d => d.id === selectedId ? { ...d, name: renameValue.trim() } : d));
+      setRenameOpen(false);
+      toast('success', 'Dashboard renamed');
+    } catch {
+      toast('error', 'Failed to rename dashboard');
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
+  const deleteDashboard = async () => {
+    if (!selectedId) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/dashboards/${selectedId}`);
+      const remaining = dashboards.filter(d => d.id !== selectedId);
+      setDashboards(remaining);
+      setDeleteOpen(false);
+      if (remaining.length > 0) {
+        setSelectedId(remaining[0].id);
+        localStorage.setItem(LAST_DASHBOARD_KEY, remaining[0].id);
+      } else {
+        setSelectedId(null);
+        localStorage.removeItem(LAST_DASHBOARD_KEY);
+      }
+      toast('success', 'Dashboard deleted');
+    } catch {
+      toast('error', 'Failed to delete dashboard');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -275,6 +330,26 @@ export function Dashboards() {
             )}
           </div>
 
+          {/* Rename button */}
+          <button
+            onClick={openRename}
+            className="p-1.5 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer"
+            title="Rename dashboard"
+            aria-label="Rename dashboard"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+
+          {/* Delete button */}
+          <button
+            onClick={() => setDeleteOpen(true)}
+            className="p-1.5 rounded-lg text-text-2 hover:bg-danger/10 hover:text-danger transition-colors cursor-pointer"
+            title="Delete dashboard"
+            aria-label="Delete dashboard"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+
           {/* Background picker button */}
           <div className="relative">
             <button
@@ -347,7 +422,7 @@ export function Dashboards() {
             ref={iframeRef}
             src={`/api/v1/dashboards/${selected!.id}/assets/index.html`}
             sandbox="allow-scripts"
-            className="w-full h-full border-0 relative z-[1]"
+            className="w-full h-full border-0 relative z-[1] bg-transparent"
             title={selected!.name}
           />
         </div>
@@ -377,6 +452,38 @@ export function Dashboards() {
           </div>
         </div>
       )}
+
+      {/* Rename modal */}
+      <Modal open={renameOpen} onClose={() => setRenameOpen(false)} title="Rename Dashboard" size="sm">
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim()) renameDashboard(); }}
+            placeholder="Dashboard name"
+            className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-border-0 text-sm text-text-0 focus:outline-none focus:ring-1 focus:ring-accent-primary"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRenameOpen(false)}>Cancel</Button>
+            <Button onClick={renameDashboard} loading={renameSaving} disabled={!renameValue.trim()}>Save</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Delete Dashboard" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-1">
+            Are you sure you want to delete <strong className="text-text-0">{selected?.name}</strong>? This will remove all widgets and collected data. This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={deleteDashboard} loading={deleteLoading}>Delete</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

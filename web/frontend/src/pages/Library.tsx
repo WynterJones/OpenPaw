@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Wrench, Bot, Sparkles, Package, Check, Download, WandSparkles, ScanSearch, FilePenLine, BarChart3, BookOpenCheck, TestTubes, ImageIcon, Film, FileText, Plug } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Wrench, Bot, Sparkles, Package, Check, Download, WandSparkles, ScanSearch, FilePenLine, BarChart3, BookOpenCheck, TestTubes, ImageIcon, Film, FileText, Plug, ExternalLink, TrendingUp, AlertTriangle, KeyRound } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
@@ -8,7 +8,7 @@ import { EmptyState } from '../components/EmptyState';
 import { SearchBar } from '../components/SearchBar';
 import { useToast } from '../components/Toast';
 import { FilterDropdown } from '../components/FilterDropdown';
-import { toolLibrary, agentLibrary, skillLibrary, type LibraryTool, type LibraryAgent, type LibrarySkill } from '../lib/api';
+import { toolLibrary, agentLibrary, skillLibrary, skillsSh, secretsApi, type LibraryTool, type LibraryAgent, type LibrarySkill, type SkillsShSkill, type SkillsShDetail, type SecretCheckResult } from '../lib/api';
 
 type LibraryTab = 'tools' | 'agents' | 'skills';
 const libraryTabs: { key: LibraryTab; label: string; icon: typeof Wrench }[] = [
@@ -51,7 +51,7 @@ const skillIconMap: Record<string, React.ComponentType<{ className?: string }>> 
   'plug': Plug,
 };
 
-function ToolCard({ tool, onClick }: { tool: LibraryTool; onClick: () => void }) {
+function ToolCard({ tool, onClick, needsSecrets }: { tool: LibraryTool; onClick: () => void; needsSecrets?: boolean }) {
   return (
     <Card hover onClick={onClick}>
       <div className="flex items-center gap-2 mb-2">
@@ -61,6 +61,12 @@ function ToolCard({ tool, onClick }: { tool: LibraryTool; onClick: () => void })
             Installed
           </span>
         )}
+        {tool.installed && needsSecrets && (
+          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+            <AlertTriangle className="w-2.5 h-2.5" />
+            Needs secrets
+          </span>
+        )}
       </div>
       <h3 className="text-base font-semibold text-text-0 mb-0.5">{tool.name}</h3>
       <p className="text-sm text-text-2 line-clamp-2 leading-snug">{tool.description}</p>
@@ -68,8 +74,10 @@ function ToolCard({ tool, onClick }: { tool: LibraryTool; onClick: () => void })
   );
 }
 
-function ToolModal({ tool, open, onClose, onInstall, installing }: { tool: LibraryTool | null; open: boolean; onClose: () => void; onInstall: (slug: string) => void; installing: boolean }) {
+function ToolModal({ tool, open, onClose, onInstall, installing, secretStatuses }: { tool: LibraryTool | null; open: boolean; onClose: () => void; onInstall: (slug: string) => void; installing: boolean; secretStatuses?: SecretCheckResult[] }) {
   if (!tool) return null;
+  const missingOrPlaceholder = secretStatuses?.filter(s => !s.exists || s.placeholder) ?? [];
+  const hasSecretIssues = tool.installed && tool.env && tool.env.length > 0 && missingOrPlaceholder.length > 0;
   return (
     <Modal open={open} onClose={onClose} title={tool.name} size="md">
       <div className="space-y-3">
@@ -89,17 +97,40 @@ function ToolModal({ tool, open, onClose, onInstall, installing }: { tool: Libra
           <div className="rounded-lg bg-surface-2 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">Required Environment</p>
             <div className="flex flex-wrap gap-1.5">
-              {tool.env.map(e => (
-                <code key={e} className="px-2 py-0.5 rounded text-xs font-mono bg-surface-3 text-text-1 border border-border-0">{e}</code>
-              ))}
+              {tool.env.map(e => {
+                const status = secretStatuses?.find(s => s.name === e);
+                const configured = status && status.exists && !status.placeholder;
+                return (
+                  <code key={e} className={`px-2 py-0.5 rounded text-xs font-mono border ${configured ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-surface-3 text-text-1 border-border-0'}`}>{e}{configured ? ' \u2713' : ''}</code>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {hasSecretIssues && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-400">Secrets need configuration</p>
+              <p className="text-xs text-text-2 mt-0.5">
+                {missingOrPlaceholder.map(s => s.name).join(', ')} {missingOrPlaceholder.length === 1 ? 'needs' : 'need'} a real value. Go to <a href="/secrets" className="text-accent-text underline">Secrets</a> to update.
+              </p>
             </div>
           </div>
         )}
         <div className="pt-2 border-t border-border-0">
           {tool.installed ? (
-            <span className="text-sm text-emerald-400 flex items-center gap-1.5">
-              <Check className="w-4 h-4" /> Already installed
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-emerald-400 flex items-center gap-1.5">
+                <Check className="w-4 h-4" /> Already installed
+              </span>
+              {hasSecretIssues && (
+                <a href="/secrets" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors">
+                  <KeyRound className="w-4 h-4" />
+                  Configure Secrets
+                </a>
+              )}
+            </div>
           ) : (
             <Button onClick={() => onInstall(tool.slug)} loading={installing} icon={<Download className="w-4 h-4" />} className="w-full">
               Install Tool
@@ -255,11 +286,35 @@ function ToolsPanel() {
   const [category, setCategory] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [selected, setSelected] = useState<LibraryTool | null>(null);
+  const [secretStatuses, setSecretStatuses] = useState<SecretCheckResult[]>([]);
+  const [toolsMissingSecrets, setToolsMissingSecrets] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
       const data = await toolLibrary.list({ q: search || undefined, category: category || undefined });
-      setCatalog(Array.isArray(data) ? data : []);
+      const tools = Array.isArray(data) ? data : [];
+      setCatalog(tools);
+
+      // Check secrets for installed tools that have env requirements
+      const installedWithEnv = tools.filter(t => t.installed && t.env && t.env.length > 0);
+      const allEnvNames = [...new Set(installedWithEnv.flatMap(t => t.env || []))];
+      if (allEnvNames.length > 0) {
+        try {
+          const statuses = await secretsApi.checkNames(allEnvNames);
+          setSecretStatuses(statuses);
+          const missing = new Set<string>();
+          for (const tool of installedWithEnv) {
+            const hasMissing = (tool.env || []).some(envName => {
+              const s = statuses.find(st => st.name === envName);
+              return !s || !s.exists || s.placeholder;
+            });
+            if (hasMissing) missing.add(tool.slug);
+          }
+          setToolsMissingSecrets(missing);
+        } catch { /* ignore secrets check failure */ }
+      } else {
+        setToolsMissingSecrets(new Set());
+      }
     } catch { setCatalog([]); }
     finally { setLoading(false); }
   }, [search, category]);
@@ -278,6 +333,16 @@ function ToolsPanel() {
     } finally { setInstalling(null); }
   };
 
+  const handleSelect = async (tool: LibraryTool) => {
+    setSelected(tool);
+    if (tool.installed && tool.env && tool.env.length > 0) {
+      try {
+        const statuses = await secretsApi.checkNames(tool.env);
+        setSecretStatuses(statuses);
+      } catch { /* ignore */ }
+    }
+  };
+
   const categories = [...new Set(catalog.map(t => t.category))].sort();
 
   return (
@@ -294,10 +359,10 @@ function ToolsPanel() {
         <EmptyState icon={<Package className="w-8 h-8" />} title="No tools found" description="Try a different search or category filter." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {catalog.map(tool => <ToolCard key={tool.slug} tool={tool} onClick={() => setSelected(tool)} />)}
+          {catalog.map(tool => <ToolCard key={tool.slug} tool={tool} onClick={() => handleSelect(tool)} needsSecrets={toolsMissingSecrets.has(tool.slug)} />)}
         </div>
       )}
-      <ToolModal tool={selected} open={!!selected} onClose={() => setSelected(null)} onInstall={handleInstall} installing={installing === selected?.slug} />
+      <ToolModal tool={selected} open={!!selected} onClose={() => setSelected(null)} onInstall={handleInstall} installing={installing === selected?.slug} secretStatuses={secretStatuses} />
     </>
   );
 }
@@ -357,7 +422,7 @@ function AgentsPanel() {
   );
 }
 
-function SkillsPanel() {
+function SkillsCatalogPanel() {
   const { toast } = useToast();
   const [catalog, setCatalog] = useState<LibrarySkill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -408,6 +473,208 @@ function SkillsPanel() {
         </div>
       )}
       <SkillModal skill={selected} open={!!selected} onClose={() => setSelected(null)} onInstall={handleInstall} installing={installing === selected?.slug} />
+    </>
+  );
+}
+
+function SkillsShCard({ skill, onClick }: { skill: SkillsShSkill; onClick: () => void }) {
+  return (
+    <Card hover onClick={onClick}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-surface-3 text-text-2 border border-border-0">
+          skills.sh
+        </span>
+        {skill.installed && (
+          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+            Installed
+          </span>
+        )}
+      </div>
+      <h3 className="text-base font-semibold text-text-0 mb-0.5">{skill.name || skill.skill_id}</h3>
+      <div className="flex items-center gap-3 text-xs text-text-3">
+        <span className="flex items-center gap-1">
+          <TrendingUp className="w-3 h-3" />
+          {skill.installs.toLocaleString()} installs
+        </span>
+        <span className="truncate">{skill.source}</span>
+      </div>
+    </Card>
+  );
+}
+
+function SkillsShModal({ skill, open, onClose, onInstall, installing }: {
+  skill: SkillsShDetail | null;
+  open: boolean;
+  onClose: () => void;
+  onInstall: () => void;
+  installing: boolean;
+}) {
+  if (!skill) return null;
+  return (
+    <Modal open={open} onClose={onClose} title={skill.name || skill.skill_id} size="md">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-surface-3 text-text-2 border border-border-0">
+            skills.sh
+          </span>
+          <span className="text-xs text-text-3">{skill.source}</span>
+        </div>
+        {skill.description && (
+          <p className="text-sm text-text-1 leading-relaxed">{skill.description}</p>
+        )}
+        {skill.body && (
+          <div className="rounded-lg bg-surface-2 p-3 max-h-48 overflow-y-auto">
+            <pre className="text-xs text-text-2 whitespace-pre-wrap font-mono">{skill.body}</pre>
+          </div>
+        )}
+        <a
+          href={`https://github.com/${skill.source}/tree/main/skills/${skill.skill_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-accent-text hover:underline"
+        >
+          <ExternalLink className="w-3 h-3" />
+          View on GitHub
+        </a>
+        <div className="pt-2 border-t border-border-0">
+          {skill.installed ? (
+            <span className="text-sm text-emerald-400 flex items-center gap-1.5">
+              <Check className="w-4 h-4" /> Already installed
+            </span>
+          ) : (
+            <Button onClick={onInstall} loading={installing} icon={<Download className="w-4 h-4" />} className="w-full">
+              Install Skill
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SkillsShPanel() {
+  const { toast } = useToast();
+  const [results, setResults] = useState<SkillsShSkill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [installing, setInstalling] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<SkillsShSkill | null>(null);
+  const [detail, setDetail] = useState<SkillsShDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const load = useCallback(async (q?: string) => {
+    setLoading(true);
+    try {
+      const data = await skillsSh.search(q);
+      setResults(Array.isArray(data) ? data : []);
+    } catch { setResults([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      load(search || undefined);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search, load]);
+
+  const handleCardClick = async (skill: SkillsShSkill) => {
+    setSelectedSkill(skill);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const d = await skillsSh.detail(skill.source, skill.skill_id);
+      setDetail(d);
+    } catch {
+      toast('error', 'Failed to load skill details');
+      setSelectedSkill(null);
+    } finally { setDetailLoading(false); }
+  };
+
+  const handleInstall = async () => {
+    if (!selectedSkill) return;
+    setInstalling(true);
+    try {
+      await skillsSh.install(selectedSkill.source, selectedSkill.skill_id);
+      toast('success', 'Skill installed from skills.sh');
+      setSelectedSkill(null);
+      setDetail(null);
+      load(search || undefined);
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Install failed');
+    } finally { setInstalling(false); }
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-3 mb-3">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search skills.sh..." className="flex-1" />
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : results.length === 0 ? (
+        <EmptyState icon={<Package className="w-8 h-8" />} title="No skills found" description="Try a different search term." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {results.map(skill => (
+            <SkillsShCard key={skill.id || skill.skill_id} skill={skill} onClick={() => handleCardClick(skill)} />
+          ))}
+        </div>
+      )}
+      {detailLoading && selectedSkill && (
+        <Modal open={true} onClose={() => { setSelectedSkill(null); setDetailLoading(false); }} title="Loading..." size="md">
+          <div className="flex items-center justify-center py-8">
+            <div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        </Modal>
+      )}
+      <SkillsShModal
+        skill={detail}
+        open={!!detail && !!selectedSkill}
+        onClose={() => { setSelectedSkill(null); setDetail(null); }}
+        onInstall={handleInstall}
+        installing={installing}
+      />
+    </>
+  );
+}
+
+type SkillsSubTab = 'catalog' | 'skillssh';
+
+function SkillsPanel() {
+  const [subTab, setSubTab] = useState<SkillsSubTab>('catalog');
+  return (
+    <>
+      <div className="flex items-center gap-1.5 mb-4">
+        <button
+          onClick={() => setSubTab('catalog')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors cursor-pointer ${
+            subTab === 'catalog'
+              ? 'bg-accent-primary text-accent-btn-text'
+              : 'bg-surface-2 text-text-2 hover:text-text-0 hover:bg-surface-3'
+          }`}
+        >
+          Our Skills
+        </button>
+        <button
+          onClick={() => setSubTab('skillssh')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors cursor-pointer ${
+            subTab === 'skillssh'
+              ? 'bg-accent-primary text-accent-btn-text'
+              : 'bg-surface-2 text-text-2 hover:text-text-0 hover:bg-surface-3'
+          }`}
+        >
+          Skills.sh
+        </button>
+      </div>
+      {subTab === 'catalog' && <SkillsCatalogPanel />}
+      {subTab === 'skillssh' && <SkillsShPanel />}
     </>
   );
 }

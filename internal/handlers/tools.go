@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -245,23 +247,64 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Action  string `json:"action"`
-		Payload string `json:"payload"`
+		Endpoint string `json:"endpoint"`
+		Payload  string `json:"payload"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	userID := middleware.GetUserID(r.Context())
-	h.db.LogAudit(userID, "tool_called", "tool", "tool", id, req.Action)
+	endpoint := req.Endpoint
+	if endpoint == "" {
+		endpoint = "/"
+	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"tool_id": id,
-		"action":  req.Action,
-		"status":  "executed",
-		"result":  "Tool invocation recorded. Agent orchestration will handle execution.",
-	})
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "tool_called", "tool", "tool", id, endpoint)
+
+	if h.toolMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "tool manager not available")
+		return
+	}
+
+	// If payload is a JSON object, append its fields as query parameters
+	// so tools that use GET with query params (e.g. ?city=Kingston) work correctly.
+	if req.Payload != "" {
+		var params map[string]interface{}
+		if json.Unmarshal([]byte(req.Payload), &params) == nil && len(params) > 0 {
+			q := url.Values{}
+			for k, v := range params {
+				q.Set(k, fmt.Sprintf("%v", v))
+			}
+			if idx := len(endpoint); idx > 0 {
+				sep := "?"
+				for i := 0; i < len(endpoint); i++ {
+					if endpoint[i] == '?' {
+						sep = "&"
+						break
+					}
+				}
+				endpoint = endpoint + sep + q.Encode()
+			}
+		}
+	}
+
+	data, err := h.toolMgr.CallTool(id, endpoint, nil)
+	if err != nil {
+		logger.Error("Tool call failed for %s endpoint %s: %v", id, endpoint, err)
+		writeError(w, http.StatusBadGateway, "tool call failed: "+err.Error())
+		return
+	}
+
+	var parsed interface{}
+	if json.Unmarshal(data, &parsed) == nil {
+		writeJSON(w, http.StatusOK, parsed)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	}
 }
 
 func (h *ToolsHandler) Enable(w http.ResponseWriter, r *http.Request) {

@@ -301,6 +301,11 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'")
+	// Sandboxed iframes have a null origin — allow any origin for static assets
+	// and remove credentials header since * is incompatible with credentials
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Del("Access-Control-Allow-Credentials")
 
 	http.ServeFile(w, r, resolved)
 }

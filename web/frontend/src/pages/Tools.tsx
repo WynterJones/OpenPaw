@@ -22,6 +22,8 @@ import {
   Shield,
   ShieldCheck,
   ShieldAlert,
+  AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
@@ -31,7 +33,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Pagination } from "../components/Pagination";
 import { SearchBar } from "../components/SearchBar";
 import { ViewToggle, type ViewMode } from "../components/ViewToggle";
-import { api, toolExtra, type Tool, type ToolEndpoint, type ToolIntegrityInfo } from "../lib/api";
+import { api, toolExtra, toolLibrary, secretsApi, type Tool, type LibraryTool, type ToolEndpoint, type ToolIntegrityInfo, type SecretCheckResult } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { useWebSocket } from "../lib/useWebSocket";
 
@@ -52,7 +54,7 @@ function statusDot(status: string) {
   );
 }
 
-function ToolCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
+function ToolCard({ tool, onClick, needsSecrets }: { tool: Tool; onClick: () => void; needsSecrets?: boolean }) {
   return (
     <Card hover onClick={onClick}>
       <div className="flex items-center gap-2 mb-3">
@@ -62,6 +64,12 @@ function ToolCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
           <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center gap-1">
             <Library className="w-2.5 h-2.5" />
             {tool.library_slug}
+          </span>
+        )}
+        {needsSecrets && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+            <AlertTriangle className="w-2.5 h-2.5" />
+            Needs secrets
           </span>
         )}
       </div>
@@ -303,6 +311,66 @@ function IntegrityPanel({ toolId }: { toolId: string }) {
   );
 }
 
+function SecretsPanel({ tool }: { tool: Tool }) {
+  const [statuses, setStatuses] = useState<SecretCheckResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const envVars = tool.manifest?.env;
+  const hasEnv = envVars && envVars.length > 0;
+
+  useEffect(() => {
+    if (!hasEnv) return;
+    const names = envVars!.map(e => typeof e === 'string' ? e : e.name);
+    secretsApi.checkNames(names)
+      .then(setStatuses)
+      .catch(() => setStatuses([]))
+      .finally(() => setLoading(false));
+  }, [tool.id, hasEnv, envVars]);
+
+  if (!hasEnv) return null;
+  if (loading) return <p className="text-xs text-text-3">Checking secrets...</p>;
+
+  const names = envVars.map(e => typeof e === 'string' ? e : e.name);
+  const missingOrPlaceholder = names.filter(name => {
+    const s = statuses.find(st => st.name === name);
+    return !s || !s.exists || s.placeholder;
+  });
+  const allConfigured = missingOrPlaceholder.length === 0;
+
+  return (
+    <Card>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3 flex items-center gap-2">
+        <KeyRound className="w-3.5 h-3.5" />
+        Secrets
+      </h4>
+      <div className="space-y-2">
+        {names.map(name => {
+          const s = statuses.find(st => st.name === name);
+          const configured = s && s.exists && !s.placeholder;
+          return (
+            <div key={name} className="flex items-center gap-2 text-sm">
+              {configured ? (
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              )}
+              <code className="font-mono text-text-1">{name}</code>
+              <span className={`text-xs ${configured ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {configured ? 'Configured' : s?.placeholder ? 'Placeholder — needs real value' : 'Missing'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {!allConfigured && (
+        <a href="/secrets" className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors">
+          <KeyRound className="w-4 h-4" />
+          Configure Secrets
+        </a>
+      )}
+    </Card>
+  );
+}
+
 function ToolDetail({ tool, onBack, onRefresh, onDelete }: { tool: Tool; onBack: () => void; onRefresh: () => void; onDelete: () => void }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState<string | null>(null);
@@ -473,6 +541,7 @@ function ToolDetail({ tool, onBack, onRefresh, onDelete }: { tool: Tool; onBack:
       </Card>
 
       <IntegrityPanel toolId={tool.id} />
+      <SecretsPanel tool={tool} />
 
       <Card>
         <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-4">
@@ -597,6 +666,7 @@ export function Tools() {
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const selectedToolRef = useRef<Tool | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const [toolsMissingSecrets, setToolsMissingSecrets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     selectedToolRef.current = selectedTool;
@@ -606,10 +676,41 @@ export function Tools() {
     loadTools();
   }, []);
 
+  const checkToolSecrets = useCallback(async (toolList: Tool[], catalogTools: LibraryTool[]) => {
+    // Match installed tools to catalog entries to get env requirements
+    const toolEnvMap = new Map<string, string[]>();
+    for (const tool of toolList) {
+      if (!tool.library_slug) continue;
+      const catalog = catalogTools.find(c => c.slug === tool.library_slug);
+      if (catalog?.env && catalog.env.length > 0) {
+        toolEnvMap.set(tool.id, catalog.env);
+      }
+    }
+    if (toolEnvMap.size === 0) { setToolsMissingSecrets(new Set()); return; }
+    const allEnvNames = [...new Set([...toolEnvMap.values()].flat())];
+    try {
+      const statuses = await secretsApi.checkNames(allEnvNames);
+      const missing = new Set<string>();
+      for (const [toolId, envNames] of toolEnvMap) {
+        const hasMissing = envNames.some(name => {
+          const s = statuses.find(st => st.name === name);
+          return !s || !s.exists || s.placeholder;
+        });
+        if (hasMissing) missing.add(toolId);
+      }
+      setToolsMissingSecrets(missing);
+    } catch { /* ignore */ }
+  }, []);
+
   const loadTools = async () => {
     try {
-      const data = await api.get<Tool[]>("/tools");
-      setTools(Array.isArray(data) ? data : []);
+      const [data, catalog] = await Promise.all([
+        api.get<Tool[]>("/tools"),
+        toolLibrary.list({}).catch(() => [] as LibraryTool[]),
+      ]);
+      const toolList = Array.isArray(data) ? data : [];
+      setTools(toolList);
+      checkToolSecrets(toolList, Array.isArray(catalog) ? catalog : []);
     } catch (e) {
       void e;
       setTools([]);
@@ -739,6 +840,7 @@ export function Tools() {
                       key={tool.id}
                       tool={tool}
                       onClick={() => selectTool(tool)}
+                      needsSecrets={toolsMissingSecrets.has(tool.id)}
                     />
                   ))}
                 </div>

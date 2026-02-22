@@ -110,6 +110,12 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 					Method      string `json:"method"`
 					Path        string `json:"path"`
 					Description string `json:"description"`
+					QueryParams []struct {
+						Name        string `json:"name"`
+						Type        string `json:"type"`
+						Required    bool   `json:"required"`
+						Description string `json:"description"`
+					} `json:"query_params"`
 				} `json:"endpoints"`
 			}
 			if json.Unmarshal(data, &manifest) == nil && len(manifest.Endpoints) > 0 {
@@ -119,10 +125,57 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 						continue
 					}
 					sb.WriteString(fmt.Sprintf("  - `%s %s` — %s\n", ep.Method, ep.Path, ep.Description))
+					for _, qp := range ep.QueryParams {
+						req := ""
+						if qp.Required {
+							req = ", **required**"
+						}
+						sb.WriteString(fmt.Sprintf("    - `%s` (%s%s) — %s\n", qp.Name, qp.Type, req, qp.Description))
+					}
 				}
 			}
 		}
 		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// buildDashboardsPromptSection queries the DB for existing dashboards and builds a prompt section
+// so the gateway knows about them and can include dashboard_id when updating.
+func (m *Manager) buildDashboardsPromptSection() string {
+	rows, err := m.db.Query(
+		"SELECT id, name, description, dashboard_type FROM dashboards WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 20",
+	)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+
+	type dashInfo struct {
+		ID, Name, Description, DashboardType string
+	}
+	var dashboards []dashInfo
+	for rows.Next() {
+		var d dashInfo
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.DashboardType); err != nil {
+			continue
+		}
+		dashboards = append(dashboards, d)
+	}
+	if len(dashboards) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## EXISTING DASHBOARDS\n\n")
+	sb.WriteString("When updating an existing dashboard, include its ID as `dashboard_id` in the work_order.\n\n")
+	for _, d := range dashboards {
+		desc := d.Description
+		if desc == "" {
+			desc = "No description"
+		}
+		sb.WriteString(fmt.Sprintf("- **%s** (ID: `%s`, type: %s) — %s\n", d.Name, d.ID, d.DashboardType, desc))
 	}
 
 	return sb.String()

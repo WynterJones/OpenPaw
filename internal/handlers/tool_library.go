@@ -19,18 +19,20 @@ import (
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/models"
+	"github.com/openpaw/openpaw/internal/secrets"
 	"github.com/openpaw/openpaw/internal/toollibrary"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 )
 
 type ToolLibraryHandler struct {
-	db       *database.DB
-	toolMgr  *toolmgr.Manager
-	toolsDir string
+	db         *database.DB
+	toolMgr    *toolmgr.Manager
+	toolsDir   string
+	secretsMgr *secrets.Manager
 }
 
-func NewToolLibraryHandler(db *database.DB, toolMgr *toolmgr.Manager, toolsDir string) *ToolLibraryHandler {
-	return &ToolLibraryHandler{db: db, toolMgr: toolMgr, toolsDir: toolsDir}
+func NewToolLibraryHandler(db *database.DB, toolMgr *toolmgr.Manager, toolsDir string, secretsMgr *secrets.Manager) *ToolLibraryHandler {
+	return &ToolLibraryHandler{db: db, toolMgr: toolMgr, toolsDir: toolsDir, secretsMgr: secretsMgr}
 }
 
 func (h *ToolLibraryHandler) ListCatalog(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +123,27 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "library_tool_installed", "tool", "tool", toolID, slug)
+
+	// Create placeholder secrets for required env vars that don't exist yet
+	catalogTool, _ := toollibrary.GetCatalogTool(slug)
+	if catalogTool != nil && len(catalogTool.Env) > 0 && h.secretsMgr != nil {
+		for _, envName := range catalogTool.Env {
+			var exists int
+			h.db.QueryRow("SELECT COUNT(*) FROM secrets WHERE name = ?", envName).Scan(&exists)
+			if exists == 0 {
+				placeholder := "REPLACE_ME"
+				encrypted, encErr := h.secretsMgr.Encrypt(placeholder)
+				if encErr == nil {
+					secretID := uuid.New().String()
+					now := time.Now().UTC()
+					h.db.Exec(
+						"INSERT INTO secrets (id, name, encrypted_value, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+						secretID, envName, encrypted, fmt.Sprintf("Required by %s — replace with your real key", catalogTool.Name), now, now,
+					)
+				}
+			}
+		}
+	}
 
 	var t models.Tool
 	h.db.QueryRow(

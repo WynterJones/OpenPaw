@@ -28,9 +28,16 @@ func (h *ChatHandler) saveConfirmationMessage(threadID, userID string, resp *age
 		return
 	}
 
+	// For dashboard actions, stash dashboard_id in the work order's tool_id field
+	// so it survives the confirmation round-trip
+	toolID := ""
+	if resp.WorkOrder.DashboardID != "" {
+		toolID = resp.WorkOrder.DashboardID
+	}
+
 	wo, err := agents.CreateWorkOrderWithStatus(h.db, woType,
 		resp.WorkOrder.Title, resp.WorkOrder.Description, resp.WorkOrder.Requirements,
-		"", "", threadID, userID, agents.WorkOrderAwaitingConfirmation,
+		"", toolID, threadID, userID, agents.WorkOrderAwaitingConfirmation,
 	)
 	if err != nil {
 		h.saveAssistantMessage(threadID, "", "Failed to create work order: "+err.Error(), 0, 0, 0)
@@ -146,6 +153,7 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 				Title:        wo.Title,
 				Description:  wo.Description,
 				Requirements: wo.Requirements,
+				DashboardID:  wo.ToolID,
 			},
 		}
 		switch wo.Type {
@@ -161,7 +169,7 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 			resp.Action = "build_dashboard"
 			h.broadcastStatus(threadID, "spawning", "Pounce is building...")
 			h.handleBuildDashboard(confirmCtx, threadID, userID, resp)
-		case string(agents.WorkOrderDashboardCustomBuild):
+		case string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
 			resp.Action = "build_custom_dashboard"
 			h.broadcastStatus(threadID, "spawning", "Pounce is building a custom dashboard...")
 			h.handleBuildCustomDashboard(confirmCtx, threadID, userID, resp)

@@ -504,6 +504,26 @@ export interface HeartbeatExecution {
   finished_at: string | null;
 }
 
+export interface SkillsShSkill {
+  id: string;
+  skill_id: string;
+  name: string;
+  installs: number;
+  source: string;
+  description?: string;
+  installed: boolean;
+}
+
+export interface SkillsShDetail {
+  skill_id: string;
+  name: string;
+  source: string;
+  description: string;
+  content: string;
+  body: string;
+  installed: boolean;
+}
+
 export interface HeartbeatConfig {
   heartbeat_enabled: string;
   heartbeat_interval_sec: string;
