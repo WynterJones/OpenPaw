@@ -37,7 +37,7 @@ The app and everything it builds runs locally. AI chat is handled through [OpenR
   <tr>
     <td align="center"><img src="assets/design.webp" alt="Design" width="100%" /><br><sub><b>Design</b></sub></td>
     <td align="center"><img src="assets/network.webp" alt="Network" width="100%" /><br><sub><b>Network</b></sub></td>
-    <td></td>
+    <td align="center"><img src="assets/settings.webp" alt="Settings" width="100%" /><br><sub><b>Settings</b></sub></td>
   </tr>
 </table>
 
