@@ -10,6 +10,10 @@
   "bin": {
     "openpaw": "bin/openpaw"
   },
+  "files": ["bin/"],
+  "engines": {
+    "node": ">=18"
+  },
   "optionalDependencies": {
     "@openpaw-ai/darwin-arm64": "0.1.0",
     "@openpaw-ai/darwin-x64": "0.1.0",

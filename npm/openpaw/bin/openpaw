@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync } = require("child_process");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -29,7 +29,6 @@ function getBinaryPath() {
   const ext = process.platform === "win32" ? ".exe" : "";
   const binaryName = `openpaw${ext}`;
 
-  // Try to find the platform package
   try {
     const pkgDir = path.dirname(require.resolve(`${pkgName}/package.json`));
     const binPath = path.join(pkgDir, binaryName);
@@ -49,12 +48,12 @@ function getBinaryPath() {
 }
 
 const binary = getBinaryPath();
+const child = spawn(binary, process.argv.slice(2), { stdio: "inherit" });
 
-try {
-  execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
-} catch (err) {
-  if (err.status !== null) {
-    process.exit(err.status);
-  }
-  throw err;
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => child.kill(signal));
 }
+
+child.on("close", (code) => {
+  process.exit(code ?? 1);
+});

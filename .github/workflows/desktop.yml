@@ -69,7 +69,7 @@ jobs:
           mkdir -p desktop/src-tauri/binaries
           EXT=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags "-s -w -X main.version=$VERSION" \
+          go build -tags fts5 -ldflags "-s -w -X main.version=$VERSION" \
             -o "desktop/src-tauri/binaries/openpaw-${{ matrix.target }}${EXT}" \
             ./cmd/openpaw
 
