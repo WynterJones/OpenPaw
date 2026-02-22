@@ -1,0 +1,30 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/time",
+      "description": "Get current time in a specific timezone",
+      "query_params": [
+        {"name": "timezone", "type": "string", "required": true, "description": "Timezone name (e.g. America/New_York, Europe/London)"}
+      ],
+      "response": {"datetime": "Current date and time", "timezone": "Timezone name", "utc_offset": "UTC offset", "day_of_week": "Day of the week", "day_of_year": "Day of the year", "week_number": "Week number"}
+    },
+    {
+      "method": "GET",
+      "path": "/timezones",
+      "description": "List all available timezones",
+      "query_params": [],
+      "response": {"timezones": "Array of available timezone names"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

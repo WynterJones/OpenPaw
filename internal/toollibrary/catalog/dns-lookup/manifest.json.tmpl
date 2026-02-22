@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/resolve",
+      "description": "Resolve DNS records for a domain name",
+      "query_params": [
+        {"name": "name", "type": "string", "required": true, "description": "Domain name to resolve (e.g. example.com)"},
+        {"name": "type", "type": "string", "required": false, "description": "Record type: A, AAAA, MX, CNAME, TXT, NS, SOA (default: A)"}
+      ],
+      "response": {"status": "DNS response status code", "question": "Query that was asked", "answer": "Array of DNS answer records"}
+    },
+    {
+      "method": "GET",
+      "path": "/reverse",
+      "description": "Reverse DNS lookup for an IP address",
+      "query_params": [
+        {"name": "ip", "type": "string", "required": true, "description": "IP address to look up (e.g. 8.8.8.8)"}
+      ],
+      "response": {"ip": "Original IP address", "names": "Array of reverse DNS hostnames"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

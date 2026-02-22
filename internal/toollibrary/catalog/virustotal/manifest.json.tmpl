@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/url-scan",
+      "description": "Submit a URL for scanning and get analysis results",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL to scan (e.g. https://example.com)"}
+      ],
+      "response": {"status": "Analysis status", "stats": "Analysis stats with harmless, malicious, suspicious, undetected counts", "url": "Scanned URL"}
+    },
+    {
+      "method": "GET",
+      "path": "/domain",
+      "description": "Get a domain report with reputation and analysis stats",
+      "query_params": [
+        {"name": "domain", "type": "string", "required": true, "description": "Domain name (e.g. example.com)"}
+      ],
+      "response": {"domain": "Domain name", "reputation": "Reputation score", "last_analysis_stats": "Analysis stats", "categories": "Domain categories"}
+    },
+    {
+      "method": "GET",
+      "path": "/ip",
+      "description": "Get an IP address report with reputation and analysis stats",
+      "query_params": [
+        {"name": "ip", "type": "string", "required": true, "description": "IP address (e.g. 8.8.8.8)"}
+      ],
+      "response": {"ip": "IP address", "reputation": "Reputation score", "last_analysis_stats": "Analysis stats", "country": "Country code", "as_owner": "AS owner name"}
+    }
+  ],
+  "env": ["VIRUSTOTAL_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

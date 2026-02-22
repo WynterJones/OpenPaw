@@ -433,8 +433,13 @@ export function Chat() {
         const data = await api.get<ChatThread[]>('/chat/threads');
         const list = data || [];
         setThreads(list);
+        // Clear stale activeThread from localStorage if thread no longer exists
+        const stored = localStorage.getItem('openpaw_active_thread');
+        if (stored && !list.some(t => t.id === stored)) {
+          setActiveThread(null);
+        }
         initActiveThreadIds();
-      } catch (e) { console.warn('loadThreads init failed:', e); setThreads([]); }
+      } catch (e) { console.warn('loadThreads init failed:', e); setThreads([]); setActiveThread(null); }
       loadRoles();
       loadContextFiles();
     };

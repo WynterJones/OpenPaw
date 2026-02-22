@@ -108,5 +108,115 @@
     "tags": ["summarization", "briefs", "distillation", "highlights"],
     "model": "haiku",
     "avatar_path": "/avatars/creative.webp"
+  },
+  {
+    "slug": "api-designer",
+    "name": "Ziggy",
+    "description": "Meticulous API architect — designs clean REST endpoints, writes OpenAPI specs, and ensures consistent contracts",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "route",
+    "tags": ["api", "rest", "openapi", "endpoints", "contracts"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/developer.webp"
+  },
+  {
+    "slug": "database-architect",
+    "name": "Ginger",
+    "description": "Methodical database designer — crafts efficient schemas, optimizes queries, and plans safe migrations",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "database",
+    "tags": ["database", "schema", "sql", "migrations", "optimization"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/analyst.webp"
+  },
+  {
+    "slug": "ux-designer",
+    "name": "Pixel",
+    "description": "Detail-oriented design critic — evaluates interfaces, suggests layout improvements, and champions accessibility",
+    "version": "1.0.0",
+    "category": "Design",
+    "icon": "palette",
+    "tags": ["ux", "ui", "design", "accessibility", "wireframes"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/creative.webp"
+  },
+  {
+    "slug": "compliance-advisor",
+    "name": "Felix",
+    "description": "Careful compliance guide — reviews for GDPR, drafts privacy policies, and flags regulatory risks",
+    "version": "1.0.0",
+    "category": "Business",
+    "icon": "scale",
+    "tags": ["compliance", "gdpr", "privacy", "legal", "regulation"],
+    "model": "haiku",
+    "avatar_path": "/avatars/analyst.webp"
+  },
+  {
+    "slug": "marketing-strategist",
+    "name": "Pepper",
+    "description": "Creative marketing mind — crafts campaigns, optimizes SEO, and builds audience growth strategies",
+    "version": "1.0.0",
+    "category": "Business",
+    "icon": "megaphone",
+    "tags": ["marketing", "seo", "campaigns", "growth", "strategy"],
+    "model": "haiku",
+    "avatar_path": "/avatars/marketer.webp"
+  },
+  {
+    "slug": "customer-support",
+    "name": "Mochi",
+    "description": "Empathetic support specialist — drafts helpful responses, builds FAQ libraries, and resolves issues with care",
+    "version": "1.0.0",
+    "category": "Support",
+    "icon": "headphones",
+    "tags": ["support", "customer-service", "faq", "helpdesk", "responses"],
+    "model": "haiku",
+    "avatar_path": "/avatars/social.webp"
+  },
+  {
+    "slug": "translator",
+    "name": "Rosetta",
+    "description": "Fluent multilingual translator — localizes content, adapts tone for cultures, and maintains consistency across languages",
+    "version": "1.0.0",
+    "category": "Content",
+    "icon": "languages",
+    "tags": ["translation", "localization", "i18n", "multilingual", "languages"],
+    "model": "haiku",
+    "avatar_path": "/avatars/social.webp"
+  },
+  {
+    "slug": "brainstormer",
+    "name": "Biscuit",
+    "description": "Boundless idea generator — runs brainstorming sessions, explores every angle, and sparks creative breakthroughs",
+    "version": "1.0.0",
+    "category": "Creative",
+    "icon": "lightbulb",
+    "tags": ["ideation", "brainstorming", "creativity", "innovation", "ideas"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/creative.webp"
+  },
+  {
+    "slug": "system-architect",
+    "name": "Atlas",
+    "description": "Big-picture systems thinker — designs scalable architectures, evaluates trade-offs, and maps complex integrations",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "network",
+    "tags": ["architecture", "system-design", "scalability", "integration", "patterns"],
+    "model": "opus",
+    "avatar_path": "/avatars/engineer.webp"
+  },
+  {
+    "slug": "test-engineer",
+    "name": "Chai",
+    "description": "Thorough quality guardian — writes test plans, generates edge cases, and ensures nothing slips through the cracks",
+    "version": "1.0.0",
+    "category": "Engineering",
+    "icon": "test-tubes",
+    "tags": ["testing", "qa", "test-plans", "edge-cases", "quality"],
+    "model": "sonnet",
+    "avatar_path": "/avatars/developer.webp"
   }
 ]

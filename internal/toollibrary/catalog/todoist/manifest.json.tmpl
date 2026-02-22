@@ -1,0 +1,43 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/tasks",
+      "description": "List tasks from Todoist",
+      "query_params": [
+        {"name": "project_id", "type": "string", "required": false, "description": "Filter tasks by project ID"}
+      ],
+      "response": {"tasks": "Array of tasks with id, content, description, project_id, is_completed, priority, due"}
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "description": "Create a new task in Todoist",
+      "body": {"content": "Task content (required)", "project_id": "Project ID (optional)", "priority": "Priority 1-4 (optional)", "due_string": "Due date string e.g. 'tomorrow' (optional)"},
+      "response": {"id": "Task ID", "content": "Task content", "project_id": "Project ID"}
+    },
+    {
+      "method": "GET",
+      "path": "/projects",
+      "description": "List all projects",
+      "response": {"projects": "Array of projects with id, name, color, is_favorite, url"}
+    },
+    {
+      "method": "POST",
+      "path": "/tasks/close",
+      "description": "Close (complete) a task",
+      "body": {"task_id": "Task ID to close (required)"},
+      "response": {"success": "Whether the task was closed successfully"}
+    }
+  ],
+  "env": ["TODOIST_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

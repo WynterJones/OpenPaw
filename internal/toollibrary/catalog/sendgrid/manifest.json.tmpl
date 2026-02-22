@@ -1,0 +1,31 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/send",
+      "description": "Send an email via SendGrid",
+      "body": {"to": "Recipient email (required)", "from": "Sender email (required)", "subject": "Email subject (required)", "text": "Plain text body (required)", "html": "HTML body (optional)"},
+      "response": {"success": "Whether the email was sent successfully", "message_id": "SendGrid message ID"}
+    },
+    {
+      "method": "GET",
+      "path": "/stats",
+      "description": "Get email sending statistics",
+      "query_params": [
+        {"name": "start_date", "type": "string", "required": true, "description": "Start date in YYYY-MM-DD format"},
+        {"name": "end_date", "type": "string", "required": false, "description": "End date in YYYY-MM-DD format (defaults to today)"}
+      ],
+      "response": {"stats": "Array of daily stats with date, requests, delivered, opens, clicks, bounces, spam_reports"}
+    }
+  ],
+  "env": ["SENDGRID_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/check",
+      "description": "Check if a URL has been archived in the Wayback Machine",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL to check (e.g. example.com)"}
+      ],
+      "response": {"available": "Whether the URL is archived", "snapshot_url": "URL of the closest snapshot", "timestamp": "Timestamp of the closest snapshot"}
+    },
+    {
+      "method": "GET",
+      "path": "/snapshots",
+      "description": "List archived snapshots of a URL",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL to search snapshots for"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Maximum number of snapshots to return (default 10)"}
+      ],
+      "response": {"snapshots": "Array of snapshot records with timestamp, original URL, status code, and digest"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

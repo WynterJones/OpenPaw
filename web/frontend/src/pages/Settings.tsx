@@ -1040,10 +1040,7 @@ function DesignTab() {
     document.documentElement.style.setProperty('--op-font-family', localFont);
   }, [localFont]);
 
-  // Live preview font scale
-  useEffect(() => {
-    document.documentElement.style.setProperty('--op-font-scale', localFontScale);
-  }, [localFontScale]);
+  // Font scale applied on save only — live preview causes layout jitter
 
   const save = async () => {
     setSaving(true);

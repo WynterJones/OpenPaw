@@ -1,0 +1,44 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/geocode",
+      "description": "Forward geocode a place name to coordinates",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Place name or address to geocode (e.g. New York)"}
+      ],
+      "response": {"results": "Array of results with place_name, center [lon, lat], relevance"}
+    },
+    {
+      "method": "GET",
+      "path": "/reverse",
+      "description": "Reverse geocode coordinates to a place name",
+      "query_params": [
+        {"name": "lat", "type": "number", "required": true, "description": "Latitude"},
+        {"name": "lon", "type": "number", "required": true, "description": "Longitude"}
+      ],
+      "response": {"results": "Array of places near the coordinates with place_name, place_type"}
+    },
+    {
+      "method": "GET",
+      "path": "/directions",
+      "description": "Get directions between two points",
+      "query_params": [
+        {"name": "origin", "type": "string", "required": true, "description": "Origin coordinates as lon,lat (e.g. -74.0060,40.7128)"},
+        {"name": "destination", "type": "string", "required": true, "description": "Destination coordinates as lon,lat (e.g. -118.2437,34.0522)"},
+        {"name": "profile", "type": "string", "required": false, "description": "Routing profile: driving, walking, cycling, driving-traffic (default: driving)"}
+      ],
+      "response": {"distance": "Total distance in meters", "duration": "Total duration in seconds", "steps": "Array of route steps with instruction, distance, duration"}
+    }
+  ],
+  "env": ["MAPBOX_ACCESS_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -13,8 +13,8 @@ func TestLoadRegistry(t *testing.T) {
 	if len(agents) == 0 {
 		t.Fatal("LoadRegistry() returned empty list")
 	}
-	if len(agents) != 10 {
-		t.Errorf("LoadRegistry() returned %d agents, want 10", len(agents))
+	if len(agents) != 20 {
+		t.Errorf("LoadRegistry() returned %d agents, want 20", len(agents))
 	}
 
 	slugs := make(map[string]bool)
@@ -96,6 +96,10 @@ func TestLoadRegistryCategories(t *testing.T) {
 		"Data":         true,
 		"Ops":          true,
 		"Personal":     true,
+		"Design":       true,
+		"Business":     true,
+		"Support":      true,
+		"Creative":     true,
 	}
 	for _, agent := range agents {
 		if !validCategories[agent.Category] {
@@ -233,6 +237,9 @@ func TestExpectedSlugs(t *testing.T) {
 	expected := []string{
 		"researcher", "code-reviewer", "writer", "data-analyst", "debugger",
 		"project-manager", "ops-engineer", "learning-coach", "security-auditor", "summarizer",
+		"api-designer", "database-architect", "ux-designer", "compliance-advisor",
+		"marketing-strategist", "customer-support", "translator", "brainstormer",
+		"system-architect", "test-engineer",
 	}
 
 	slugSet := make(map[string]bool)

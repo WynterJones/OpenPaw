@@ -716,5 +716,410 @@
       "AIRTABLE_API_KEY",
       "AIRTABLE_BASE_ID"
     ]
+  },
+  {
+    "slug": "ip-geolocation",
+    "name": "IP Geolocation",
+    "description": "Look up any IP address for location, ISP, timezone, and org. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "map-pin",
+    "tags": [
+      "ip",
+      "geolocation",
+      "location",
+      "isp",
+      "free"
+    ]
+  },
+  {
+    "slug": "hacker-news",
+    "name": "Hacker News",
+    "description": "Top stories, comments, and user profiles via the Hacker News API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "flame",
+    "tags": [
+      "hacker-news",
+      "tech",
+      "stories",
+      "comments",
+      "free"
+    ]
+  },
+  {
+    "slug": "public-holidays",
+    "name": "Public Holidays",
+    "description": "Public holidays by country and year via Nager.Date API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "calendar",
+    "tags": [
+      "holidays",
+      "calendar",
+      "countries",
+      "dates",
+      "free"
+    ]
+  },
+  {
+    "slug": "qr-code",
+    "name": "QR Code",
+    "description": "Generate and read QR codes via goqr.me API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "qr-code",
+    "tags": [
+      "qr-code",
+      "generate",
+      "scan",
+      "barcode",
+      "free"
+    ]
+  },
+  {
+    "slug": "internet-archive",
+    "name": "Internet Archive",
+    "description": "Check archived pages and browse snapshots via the Wayback Machine API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "archive",
+    "tags": [
+      "archive",
+      "wayback",
+      "snapshots",
+      "history",
+      "free"
+    ]
+  },
+  {
+    "slug": "dns-lookup",
+    "name": "DNS Lookup",
+    "description": "Query DNS records via Google DNS API. Supports A, AAAA, MX, CNAME, TXT, NS, SOA. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "server",
+    "tags": [
+      "dns",
+      "lookup",
+      "records",
+      "networking",
+      "free"
+    ]
+  },
+  {
+    "slug": "world-clock",
+    "name": "World Clock",
+    "description": "Current time in any timezone via World Time API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "clock",
+    "tags": [
+      "time",
+      "timezone",
+      "clock",
+      "utc",
+      "free"
+    ]
+  },
+  {
+    "slug": "random-user",
+    "name": "Random User",
+    "description": "Generate realistic fake user profiles for testing via randomuser.me. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "user",
+    "tags": [
+      "random",
+      "users",
+      "testing",
+      "mock-data",
+      "free"
+    ]
+  },
+  {
+    "slug": "tmdb",
+    "name": "TMDB",
+    "description": "Search movies and TV shows, get details, and browse trending via The Movie Database API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "film",
+    "tags": [
+      "movies",
+      "tv-shows",
+      "trending",
+      "ratings",
+      "entertainment"
+    ],
+    "env": [
+      "TMDB_API_KEY"
+    ]
+  },
+  {
+    "slug": "giphy",
+    "name": "Giphy",
+    "description": "Search, trending, and random GIFs via the Giphy API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "image-play",
+    "tags": [
+      "giphy",
+      "gifs",
+      "trending",
+      "search",
+      "media"
+    ],
+    "env": [
+      "GIPHY_API_KEY"
+    ]
+  },
+  {
+    "slug": "todoist",
+    "name": "Todoist",
+    "description": "Create, list, and manage tasks and projects via the Todoist API.",
+    "version": "1.0.0",
+    "category": "Productivity",
+    "icon": "check-square",
+    "tags": [
+      "todoist",
+      "tasks",
+      "projects",
+      "todo",
+      "productivity"
+    ],
+    "env": [
+      "TODOIST_API_KEY"
+    ]
+  },
+  {
+    "slug": "virustotal",
+    "name": "VirusTotal",
+    "description": "Scan URLs and check domains/IPs for malware via the VirusTotal API.",
+    "version": "1.0.0",
+    "category": "Security",
+    "icon": "shield-check",
+    "tags": [
+      "virustotal",
+      "malware",
+      "security",
+      "scanning",
+      "threat-detection"
+    ],
+    "env": [
+      "VIRUSTOTAL_API_KEY"
+    ]
+  },
+  {
+    "slug": "haveibeenpwned",
+    "name": "Have I Been Pwned",
+    "description": "Check if emails or passwords appear in data breaches via the HIBP API.",
+    "version": "1.0.0",
+    "category": "Security",
+    "icon": "lock",
+    "tags": [
+      "hibp",
+      "breaches",
+      "security",
+      "passwords",
+      "email"
+    ],
+    "env": [
+      "HIBP_API_KEY"
+    ]
+  },
+  {
+    "slug": "mapbox",
+    "name": "Mapbox",
+    "description": "Geocoding, reverse geocoding, and directions via the Mapbox API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "map",
+    "tags": [
+      "mapbox",
+      "geocoding",
+      "directions",
+      "maps",
+      "navigation"
+    ],
+    "env": [
+      "MAPBOX_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "sendgrid",
+    "name": "SendGrid",
+    "description": "Send transactional emails and view delivery stats via the SendGrid API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "send",
+    "tags": [
+      "sendgrid",
+      "email",
+      "transactional",
+      "delivery",
+      "marketing"
+    ],
+    "env": [
+      "SENDGRID_API_KEY"
+    ]
+  },
+  {
+    "slug": "twilio",
+    "name": "Twilio",
+    "description": "Send SMS messages, list messages, and check account info via the Twilio API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "phone",
+    "tags": [
+      "twilio",
+      "sms",
+      "messaging",
+      "phone",
+      "communication"
+    ],
+    "env": [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN"
+    ]
+  },
+  {
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "description": "Manage DNS zones, records, and view analytics via the Cloudflare API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "cloud",
+    "tags": [
+      "cloudflare",
+      "dns",
+      "cdn",
+      "zones",
+      "analytics"
+    ],
+    "env": [
+      "CLOUDFLARE_API_TOKEN"
+    ]
+  },
+  {
+    "slug": "spotify",
+    "name": "Spotify",
+    "description": "Search music, artists, and albums via the Spotify Web API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "music",
+    "tags": [
+      "spotify",
+      "music",
+      "artists",
+      "albums",
+      "search"
+    ],
+    "env": [
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "reddit",
+    "name": "Reddit",
+    "description": "Search posts, browse subreddits, and get trending content via the Reddit API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "message-square-text",
+    "tags": [
+      "reddit",
+      "posts",
+      "subreddits",
+      "trending",
+      "social"
+    ],
+    "env": [
+      "REDDIT_CLIENT_ID",
+      "REDDIT_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "twitch",
+    "name": "Twitch",
+    "description": "Browse live streams, search channels, and discover games via the Twitch API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "tv",
+    "tags": [
+      "twitch",
+      "streams",
+      "channels",
+      "games",
+      "live"
+    ],
+    "env": [
+      "TWITCH_CLIENT_ID",
+      "TWITCH_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "screenshot",
+    "name": "Screenshot",
+    "description": "Capture website screenshots using headless Chrome. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "camera",
+    "tags": [
+      "screenshot",
+      "capture",
+      "website",
+      "chrome",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "pdf-generator",
+    "name": "PDF Generator",
+    "description": "Convert HTML or web pages to PDF using headless Chrome. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "file-text",
+    "tags": [
+      "pdf",
+      "html",
+      "convert",
+      "chrome",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "ssl-checker",
+    "name": "SSL Checker",
+    "description": "Check SSL certificates for any domain — expiry, issuer, protocol, SANs. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "shield",
+    "tags": [
+      "ssl",
+      "tls",
+      "certificate",
+      "security",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "image-resizer",
+    "name": "Image Resizer",
+    "description": "Resize images with contain, cover, and fill modes. Supports PNG and JPEG. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "image",
+    "tags": [
+      "image",
+      "resize",
+      "crop",
+      "png",
+      "jpeg",
+      "local",
+      "free"
+    ]
   }
 ]

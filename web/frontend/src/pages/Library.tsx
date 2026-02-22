@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Wrench, Bot, Sparkles, Package, Check, Download, WandSparkles, ScanSearch, FilePenLine, BarChart3, BookOpenCheck, TestTubes, ImageIcon, Film, FileText, Plug, Copy, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Wrench, Bot, Sparkles, Package, Check, Download, WandSparkles, ScanSearch, FilePenLine, BarChart3, BookOpenCheck, TestTubes, ImageIcon, Film, FileText, Plug } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
 import { Modal } from '../components/Modal';
@@ -7,141 +7,10 @@ import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { SearchBar } from '../components/SearchBar';
 import { useToast } from '../components/Toast';
+import { FilterDropdown } from '../components/FilterDropdown';
 import { toolLibrary, agentLibrary, skillLibrary, type LibraryTool, type LibraryAgent, type LibrarySkill } from '../lib/api';
 
 type LibraryTab = 'tools' | 'agents' | 'skills';
-type InstallMethod = 'one-liner' | 'npm' | 'hackable' | 'docker';
-type Platform = 'macOS/Linux' | 'Windows';
-
-const installCommands: Record<InstallMethod, Record<Platform, { comment: string; command: string }>> = {
-  'one-liner': {
-    'macOS/Linux': {
-      comment: '# Works everywhere. Installs everything. You\'re welcome.',
-      command: 'curl -fsSL https://openpaw.ai/install.sh | bash',
-    },
-    'Windows': {
-      comment: '# Works everywhere. Installs everything. You\'re welcome.',
-      command: 'irm https://openpaw.ai/install.ps1 | iex',
-    },
-  },
-  'npm': {
-    'macOS/Linux': {
-      comment: '# Requires Node.js 18+',
-      command: 'npx openpaw@latest',
-    },
-    'Windows': {
-      comment: '# Requires Node.js 18+',
-      command: 'npx openpaw@latest',
-    },
-  },
-  'hackable': {
-    'macOS/Linux': {
-      comment: '# Clone, build, own it',
-      command: 'git clone https://github.com/openpaw/openpaw && cd openpaw && just build',
-    },
-    'Windows': {
-      comment: '# Clone, build, own it',
-      command: 'git clone https://github.com/openpaw/openpaw && cd openpaw && just build',
-    },
-  },
-  'docker': {
-    'macOS/Linux': {
-      comment: '# Run in a container',
-      command: 'docker run -p 41295:41295 openpaw/openpaw:latest',
-    },
-    'Windows': {
-      comment: '# Run in a container',
-      command: 'docker run -p 41295:41295 openpaw/openpaw:latest',
-    },
-  },
-};
-
-const methodLabels: { key: InstallMethod; label: string }[] = [
-  { key: 'one-liner', label: 'One-liner' },
-  { key: 'npm', label: 'npm' },
-  { key: 'hackable', label: 'Hackable' },
-  { key: 'docker', label: 'Docker' },
-];
-
-function QuickStart() {
-  const [method, setMethod] = useState<InstallMethod>('one-liner');
-  const [platform, setPlatform] = useState<Platform>('macOS/Linux');
-  const [copied, setCopied] = useState(false);
-
-  const current = installCommands[method][platform];
-
-  const copyCommand = () => {
-    navigator.clipboard.writeText(current.command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="max-w-3xl mx-auto">
-      <h3 className="flex items-center gap-2 text-lg font-bold text-text-0 mb-3">
-        <ChevronRight className="w-5 h-5 text-accent-primary" />
-        Quick Start
-      </h3>
-      <div className="rounded-xl border border-border-1 bg-surface-1 overflow-hidden shadow-lg">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-0 bg-surface-1">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-red-500/80" />
-              <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
-              <span className="w-3 h-3 rounded-full bg-green-500/80" />
-            </div>
-            <div className="flex items-center">
-              {methodLabels.map(m => (
-                <button
-                  key={m.key}
-                  onClick={() => setMethod(m.key)}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                    method === m.key
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'text-text-3 hover:text-text-1'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-text-2">{platform}</span>
-            <button
-              onClick={() => setPlatform(p => p === 'macOS/Linux' ? 'Windows' : 'macOS/Linux')}
-              className="text-accent-primary hover:underline cursor-pointer text-xs"
-            >
-              change
-            </button>
-            <span className="px-2 py-0.5 rounded border border-border-1 text-text-3 text-[10px] font-mono">
-              BETA
-            </span>
-          </div>
-        </div>
-        <div className="px-5 py-4 font-mono text-sm bg-surface-0/50 relative">
-          <p className="text-emerald-400/60 mb-2">{current.comment}</p>
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-text-0">
-              <span className="text-accent-primary">$</span> {current.command}
-            </p>
-            <button
-              onClick={copyCommand}
-              className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
-              title="Copy command"
-            >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      </div>
-      <p className="text-xs text-text-3 text-center mt-2.5">
-        Works on macOS, Windows &amp; Linux. The one-liner installs Node.js and everything else for you.
-      </p>
-    </div>
-  );
-}
-
 const libraryTabs: { key: LibraryTab; label: string; icon: typeof Wrench }[] = [
   { key: 'tools', label: 'Tools', icon: Wrench },
   { key: 'agents', label: 'Agents', icon: Bot },
@@ -415,14 +284,7 @@ function ToolsPanel() {
     <>
       <div className="flex items-center gap-3 mb-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search tools..." className="flex-1" />
-        <select
-          value={category}
-          onChange={e => setCategory(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm bg-surface-1 border border-border-0 text-text-1 focus:outline-none focus:ring-1 focus:ring-accent-primary"
-        >
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter tools by category" />
       </div>
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -477,14 +339,7 @@ function AgentsPanel() {
     <>
       <div className="flex items-center gap-3 mb-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search agents..." className="flex-1" />
-        <select
-          value={category}
-          onChange={e => setCategory(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm bg-surface-1 border border-border-0 text-text-1 focus:outline-none focus:ring-1 focus:ring-accent-primary"
-        >
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter agents by category" />
       </div>
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -539,14 +394,7 @@ function SkillsPanel() {
     <>
       <div className="flex items-center gap-3 mb-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search skills..." className="flex-1" />
-        <select
-          value={category}
-          onChange={e => setCategory(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm bg-surface-1 border border-border-0 text-text-1 focus:outline-none focus:ring-1 focus:ring-accent-primary"
-        >
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter skills by category" />
       </div>
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -566,22 +414,27 @@ function SkillsPanel() {
 
 export function Library() {
   const [tab, setTab] = useState<LibraryTab>('tools');
+  const [counts, setCounts] = useState<Record<LibraryTab, number | null>>({ tools: null, agents: null, skills: null });
+
+  useEffect(() => {
+    Promise.all([
+      toolLibrary.list({}).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+      agentLibrary.list({}).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+      skillLibrary.list({}).then(d => Array.isArray(d) ? d.length : 0).catch(() => 0),
+    ]).then(([tools, agents, skills]) => setCounts({ tools, agents, skills }));
+  }, []);
+
+  const tabsWithCounts = useMemo(() => libraryTabs.map(t => ({
+    ...t,
+    count: counts[t.key],
+  })), [counts]);
 
   return (
     <div className="flex flex-col h-full">
       <Header title="Library" />
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
-        <div className="text-center mb-5">
-          <h2 className="text-2xl md:text-3xl font-bold text-text-0 mb-1">OpenPaw Library</h2>
-          <p className="text-sm text-text-2">Tools, agents, and skills for your agentic factory</p>
-        </div>
-
-        <div className="mb-5">
-          <QuickStart />
-        </div>
-
         <div className="flex items-center gap-2 mb-3 border-b border-border-0">
-          {libraryTabs.map(t => (
+          {tabsWithCounts.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
@@ -592,6 +445,15 @@ export function Library() {
               <span className="flex items-center gap-2">
                 <t.icon className="w-4 h-4" />
                 {t.label}
+                {t.count !== null && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-semibold leading-none ${
+                    tab === t.key
+                      ? 'bg-accent-primary/15 text-accent-primary'
+                      : 'bg-surface-3 text-text-3'
+                  }`}>
+                    {t.count}
+                  </span>
+                )}
               </span>
               {tab === t.key && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-primary rounded-t" />

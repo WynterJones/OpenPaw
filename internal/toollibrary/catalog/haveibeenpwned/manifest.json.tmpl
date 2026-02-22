@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/breaches",
+      "description": "Check if an email has been involved in data breaches",
+      "query_params": [
+        {"name": "email", "type": "string", "required": true, "description": "Email address to check"}
+      ],
+      "response": {"breaches": "Array of breaches with Name, Title, Domain, BreachDate, DataClasses"}
+    },
+    {
+      "method": "GET",
+      "path": "/breach",
+      "description": "Get details about a specific data breach",
+      "query_params": [
+        {"name": "name", "type": "string", "required": true, "description": "Breach name (e.g. Adobe)"}
+      ],
+      "response": {"name": "Breach name", "title": "Breach title", "domain": "Breached domain", "breach_date": "Date of breach", "pwn_count": "Number of accounts affected", "data_classes": "Types of data exposed"}
+    },
+    {
+      "method": "GET",
+      "path": "/pastes",
+      "description": "Check if an email has been found in paste sites",
+      "query_params": [
+        {"name": "email", "type": "string", "required": true, "description": "Email address to check"}
+      ],
+      "response": {"pastes": "Array of pastes with Source, Id, Title, Date, EmailCount"}
+    }
+  ],
+  "env": ["HIBP_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

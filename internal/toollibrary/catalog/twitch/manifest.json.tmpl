@@ -1,0 +1,42 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/streams",
+      "description": "Get live streams, optionally filtered by game",
+      "query_params": [
+        {"name": "game", "type": "string", "required": false, "description": "Filter by game name"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of streams (1-100, default 10)"}
+      ],
+      "response": {"streams": "Array of live streams with id, user_name, game_name, title, viewer_count, started_at, language"}
+    },
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for channels",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"}
+      ],
+      "response": {"channels": "Array of channels with id, display_name, game_name, is_live, title, started_at"}
+    },
+    {
+      "method": "GET",
+      "path": "/games",
+      "description": "Search for games/categories",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Game name to search for"}
+      ],
+      "response": {"games": "Array of games with id, name, box_art_url"}
+    }
+  ],
+  "env": ["TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}
