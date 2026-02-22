@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/invoices", "description": "List invoices"},
+    {"method": "GET", "path": "/transactions", "description": "List transactions for a date range"}
+  ],
+  "env": ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_ENV"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

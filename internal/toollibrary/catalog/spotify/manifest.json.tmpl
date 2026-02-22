@@ -1,0 +1,42 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for artists, tracks, or albums",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"},
+        {"name": "type", "type": "string", "required": false, "description": "Type: artist, track, or album (default: track)"}
+      ],
+      "response": {"results": "Array of matching items with id, name, and type-specific fields"}
+    },
+    {
+      "method": "GET",
+      "path": "/artist",
+      "description": "Get artist details",
+      "query_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Spotify artist ID"}
+      ],
+      "response": {"id": "Artist ID", "name": "Artist name", "genres": "Array of genres", "popularity": "Popularity score (0-100)", "followers": "Follower count"}
+    },
+    {
+      "method": "GET",
+      "path": "/album",
+      "description": "Get album details",
+      "query_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Spotify album ID"}
+      ],
+      "response": {"id": "Album ID", "name": "Album name", "artists": "Array of artists", "release_date": "Release date", "total_tracks": "Number of tracks", "tracks": "Array of track names"}
+    }
+  ],
+  "env": ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/snapshot", "description": "Get stock snapshot by ticker"},
+    {"method": "GET", "path": "/aggs", "description": "Get daily aggregate bars in a date range"}
+  ],
+  "env": ["POLYGON_API_KEY"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

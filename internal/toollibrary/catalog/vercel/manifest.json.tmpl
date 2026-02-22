@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/projects", "description": "List Vercel projects"},
+    {"method": "GET", "path": "/deployments", "description": "List Vercel deployments"}
+  ],
+  "env": ["VERCEL_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

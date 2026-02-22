@@ -1,0 +1,34 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/tts",
+      "description": "Convert text to speech using MiniMax T2A v2",
+      "body": {
+        "text": "Text to convert to speech (required)",
+        "voice_id": "Voice ID (default: male-qn-qingse)",
+        "speed": "Speech speed 0.5-2.0 (default: 1.0)",
+        "pitch": "Pitch adjustment (default: 0)",
+        "vol": "Volume 0.1-10.0 (default: 1.0)",
+        "audio_sample_rate": "Sample rate in Hz (default: 32000)"
+      },
+      "response": {"audio_file": "Filename of generated audio", "voice_id": "Voice used", "content_type": "audio/mpeg", "text": "Truncated input text"}
+    },
+    {
+      "method": "GET",
+      "path": "/voices",
+      "description": "List available MiniMax voice options",
+      "response": {"voices": "Array of voices with voice_id and description"}
+    }
+  ],
+  "env": ["MINIMAX_API_KEY", "MINIMAX_GROUP_ID"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

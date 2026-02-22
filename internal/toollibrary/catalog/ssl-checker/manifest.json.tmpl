@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/check",
+      "description": "Check SSL certificate for a domain",
+      "query_params": [
+        {"name": "domain", "type": "string", "required": true, "description": "Domain to check"},
+        {"name": "port", "type": "string", "required": false, "description": "Port number (default 443)"}
+      ],
+      "response": {"valid": "Boolean", "issuer": "Certificate issuer", "days_until_expiry": "Days until expiry", "protocol": "TLS version"}
+    },
+    {
+      "method": "GET",
+      "path": "/check-multi",
+      "description": "Check SSL certificates for multiple domains",
+      "query_params": [
+        {"name": "domains", "type": "string", "required": true, "description": "Comma-separated list of domains"}
+      ],
+      "response": {"results": "Array of certificate check results"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

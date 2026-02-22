@@ -1,0 +1,39 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/voices",
+      "description": "List available ElevenLabs voices",
+      "response": {"voices": "Array of voices with voice_id, name, category, labels"}
+    },
+    {
+      "method": "POST",
+      "path": "/tts",
+      "description": "Convert text to speech audio",
+      "body": {
+        "text": "Text to convert to speech (required)",
+        "voice_id": "Voice ID (default: 21m00Tcm4TlvDq8ikWAM / Rachel)",
+        "model_id": "Model ID (default: eleven_monolingual_v1)",
+        "stability": "Voice stability 0.0-1.0 (default: 0.5)",
+        "similarity_boost": "Similarity boost 0.0-1.0 (default: 0.75)"
+      },
+      "response": {"file_path": "Path to generated audio file", "voice_id": "Voice used", "characters": "Character count", "content_type": "audio/mpeg"}
+    },
+    {
+      "method": "GET",
+      "path": "/models",
+      "description": "List available ElevenLabs models",
+      "response": {"models": "Array of models with model_id, name, description, languages"}
+    }
+  ],
+  "env": ["ELEVENLABS_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

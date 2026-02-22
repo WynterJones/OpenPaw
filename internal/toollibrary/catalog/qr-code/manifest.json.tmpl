@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/generate",
+      "description": "Generate a QR code image URL for given data",
+      "query_params": [
+        {"name": "data", "type": "string", "required": true, "description": "Data to encode in the QR code (text, URL, etc.)"},
+        {"name": "size", "type": "integer", "required": false, "description": "Size of the QR code image in pixels (default 300)"}
+      ],
+      "response": {"url": "URL of the generated QR code image", "data": "Encoded data", "size": "Image size in pixels"}
+    },
+    {
+      "method": "GET",
+      "path": "/read",
+      "description": "Read and decode a QR code from an image URL",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL of a QR code image to decode"}
+      ],
+      "response": {"data": "Decoded data from the QR code", "type": "Type of data detected"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

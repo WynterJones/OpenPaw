@@ -1,0 +1,24 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/generate",
+      "description": "Generate random user profiles",
+      "query_params": [
+        {"name": "count", "type": "integer", "required": false, "description": "Number of users to generate (1-50, default 1)"},
+        {"name": "nat", "type": "string", "required": false, "description": "Nationality filter (e.g. us, gb, fr, de)"}
+      ],
+      "response": {"users": "Array of random users with name, email, gender, phone, location, picture, login, dob, nat"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

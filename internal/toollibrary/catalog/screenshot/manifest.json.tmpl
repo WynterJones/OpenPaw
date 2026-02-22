@@ -1,0 +1,34 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/capture",
+      "description": "Take a screenshot of a URL",
+      "query_params": [
+        {"name": "url", "type": "string", "required": true, "description": "URL to screenshot"},
+        {"name": "width", "type": "integer", "required": false, "description": "Viewport width (default 1280)"},
+        {"name": "height", "type": "integer", "required": false, "description": "Viewport height (default 720)"},
+        {"name": "full_page", "type": "boolean", "required": false, "description": "Capture full scrollable page (default false)"},
+        {"name": "format", "type": "string", "required": false, "description": "Image format: png or jpeg (default png)"},
+        {"name": "quality", "type": "integer", "required": false, "description": "JPEG quality 1-100 (default 90)"}
+      ],
+      "response": {"image_base64": "Base64 encoded screenshot", "format": "png or jpeg", "size_bytes": "Image size"}
+    },
+    {
+      "method": "GET",
+      "path": "/status",
+      "description": "Check if Chrome/Chromium is available",
+      "response": {"available": "Boolean", "chrome_path": "Path to Chrome binary"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

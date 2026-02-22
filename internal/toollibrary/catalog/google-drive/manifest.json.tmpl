@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/files", "description": "List files with optional Drive query"},
+    {"method": "GET", "path": "/files/{id}", "description": "Get file metadata by id"}
+  ],
+  "env": ["GOOGLE_DRIVE_ACCESS_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

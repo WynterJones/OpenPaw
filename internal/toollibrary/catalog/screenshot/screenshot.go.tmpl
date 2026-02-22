@@ -1,0 +1,238 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chromedp/chromedp"
+	"github.com/go-chi/chi/v5"
+)
+
+var (
+	fileStore = &screenshotFileStore{files: make(map[string]string)}
+	dataDir   string
+)
+
+type screenshotFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *screenshotFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *screenshotFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
+
+func initDataDir() {
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		dataDir = filepath.Join(dir, "screenshot")
+	} else {
+		dataDir = filepath.Join(os.TempDir(), "screenshot")
+	}
+	os.MkdirAll(dataDir, 0755)
+
+	entries, _ := os.ReadDir(dataDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "screenshot-") {
+			fileStore.Add(e.Name(), filepath.Join(dataDir, e.Name()))
+		}
+	}
+}
+
+func registerRoutes(r chi.Router) {
+	r.Get("/capture", handleCapture)
+	r.Get("/status", handleStatus)
+	r.Get("/files/{filename}", handleServeFile)
+}
+
+func handleCapture(w http.ResponseWriter, r *http.Request) {
+	targetURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	if targetURL == "" {
+		writeError(w, http.StatusBadRequest, "url parameter is required")
+		return
+	}
+
+	width := 1280
+	if v := r.URL.Query().Get("width"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 7680 {
+			width = n
+		}
+	}
+
+	height := 720
+	if v := r.URL.Query().Get("height"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 4320 {
+			height = n
+		}
+	}
+
+	fullPage := false
+	if v := r.URL.Query().Get("full_page"); v == "true" || v == "1" {
+		fullPage = true
+	}
+
+	format := "png"
+	if v := strings.ToLower(r.URL.Query().Get("format")); v == "jpeg" || v == "jpg" {
+		format = "jpeg"
+	}
+
+	quality := 90
+	if v := r.URL.Query().Get("quality"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 100 {
+			quality = n
+		}
+	}
+
+	// Set up chromedp allocator with headless options
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-software-rasterizer", true),
+	)
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocCancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	// Set a timeout for the entire operation
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var buf []byte
+
+	// Build action list
+	actions := []chromedp.Action{
+		chromedp.EmulateViewport(int64(width), int64(height)),
+		chromedp.Navigate(targetURL),
+		chromedp.WaitReady("body"),
+	}
+
+	if fullPage {
+		// FullScreenshot captures the entire scrollable page
+		actions = append(actions, chromedp.FullScreenshot(&buf, quality))
+	} else {
+		if format == "jpeg" {
+			// For JPEG viewport screenshots, use FullScreenshot with viewport dimensions
+			// since CaptureScreenshot only produces PNG
+			actions = append(actions, chromedp.FullScreenshot(&buf, quality))
+		} else {
+			// PNG viewport screenshot
+			actions = append(actions, chromedp.CaptureScreenshot(&buf))
+		}
+	}
+
+	if err := chromedp.Run(ctx, actions...); err != nil {
+		writeError(w, http.StatusInternalServerError, "screenshot failed: "+err.Error())
+		return
+	}
+
+	ext := ".png"
+	if format == "jpeg" {
+		ext = ".jpeg"
+	}
+	filename := fmt.Sprintf("screenshot-%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save screenshot: "+err.Error())
+		return
+	}
+	fileStore.Add(filename, filePath)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"url":       targetURL,
+		"width":     width,
+		"height":    height,
+		"format":    format,
+		"size_bytes": len(buf),
+		"file_path": filename,
+		"__widget": map[string]string{
+			"type":  "image",
+			"title": "Screenshot",
+		},
+	})
+}
+
+func handleServeFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "screenshot-") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	fullPath, ok := fileStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	ext := filepath.Ext(fullPath)
+	contentTypes := map[string]string{
+		".png":  "image/png",
+		".jpeg": "image/jpeg",
+	}
+	if ct, ok := contentTypes[ext]; ok {
+		w.Header().Set("Content-Type", ct)
+	}
+	http.ServeFile(w, r, fullPath)
+}
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	// Try to find Chrome/Chromium binary
+	chromePath := findChromePath()
+
+	available := chromePath != ""
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"available":   available,
+		"chrome_path": chromePath,
+	})
+}
+
+func findChromePath() string {
+	// Check common Chrome/Chromium paths
+	candidates := []string{
+		"google-chrome",
+		"google-chrome-stable",
+		"chromium",
+		"chromium-browser",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"/usr/bin/google-chrome",
+		"/usr/bin/chromium",
+		"/usr/bin/chromium-browser",
+		"/snap/bin/chromium",
+	}
+
+	for _, candidate := range candidates {
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
+		}
+		// For absolute paths, check directly
+		if strings.HasPrefix(candidate, "/") {
+			if _, err := exec.LookPath(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+
+	return ""
+}

@@ -1,0 +1,57 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/issues",
+      "description": "List issues with optional filters",
+      "query_params": [
+        {"name": "team", "type": "string", "required": false, "description": "Team key to filter by"},
+        {"name": "status", "type": "string", "required": false, "description": "Status name to filter by"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (default 25)"}
+      ],
+      "response": {"issues": "Array of issues with id, title, description, state, assignee, priority, createdAt"}
+    },
+    {
+      "method": "GET",
+      "path": "/issue/{id}",
+      "description": "Get a single issue by ID",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Issue ID"}
+      ],
+      "response": {"issue": "Issue with full details including comments"}
+    },
+    {
+      "method": "POST",
+      "path": "/issue",
+      "description": "Create a new issue",
+      "body": {"title": "Issue title (required)", "description": "Issue description", "teamId": "Team ID (required)", "priority": "Priority 0-4"},
+      "response": {"issue": "Created issue with id, title, url"}
+    },
+    {
+      "method": "PUT",
+      "path": "/issue/{id}",
+      "description": "Update an existing issue",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Issue ID"}
+      ],
+      "body": {"title": "New title", "description": "New description", "stateId": "New state ID", "priority": "New priority 0-4"},
+      "response": {"issue": "Updated issue with id, title, url"}
+    },
+    {
+      "method": "GET",
+      "path": "/teams",
+      "description": "List all teams",
+      "response": {"teams": "Array of teams with id, name, key"}
+    }
+  ],
+  "env": ["LINEAR_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

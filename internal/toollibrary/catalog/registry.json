@@ -1,0 +1,1125 @@
+[
+  {
+    "slug": "weather",
+    "name": "Weather",
+    "description": "Current weather and forecasts via Open-Meteo API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "cloud-sun",
+    "tags": [
+      "weather",
+      "forecast",
+      "temperature",
+      "free"
+    ]
+  },
+  {
+    "slug": "claude-code",
+    "name": "Claude Code",
+    "description": "Delegate coding tasks to the Claude CLI. Analyze, plan, and implement in external codebases.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "terminal",
+    "tags": [
+      "ai",
+      "coding",
+      "claude",
+      "cli"
+    ]
+  },
+  {
+    "slug": "github",
+    "name": "GitHub",
+    "description": "GitHub API integration. Manage issues, PRs, repos, and commits.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "github",
+    "tags": [
+      "github",
+      "git",
+      "issues",
+      "pull-requests"
+    ],
+    "env": [
+      "GITHUB_TOKEN"
+    ]
+  },
+  {
+    "slug": "gmail",
+    "name": "Gmail",
+    "description": "Send, read, and search emails via the Gmail API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "mail",
+    "tags": [
+      "email",
+      "gmail",
+      "google",
+      "communication"
+    ],
+    "env": [
+      "GOOGLE_API_KEY"
+    ]
+  },
+  {
+    "slug": "slack",
+    "name": "Slack",
+    "description": "Send messages, read channels, and list users via the Slack API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "message-square",
+    "tags": [
+      "slack",
+      "messaging",
+      "channels",
+      "communication"
+    ],
+    "env": [
+      "SLACK_BOT_TOKEN"
+    ]
+  },
+  {
+    "slug": "currency",
+    "name": "Currency",
+    "description": "Currency conversion using free exchange rate API. No API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "coins",
+    "tags": [
+      "currency",
+      "exchange",
+      "conversion",
+      "finance",
+      "free"
+    ]
+  },
+  {
+    "slug": "google-sheets",
+    "name": "Google Sheets",
+    "description": "Read and write spreadsheet cells via the Google Sheets API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "table",
+    "tags": [
+      "google",
+      "sheets",
+      "spreadsheet",
+      "data"
+    ],
+    "env": [
+      "GOOGLE_API_KEY"
+    ]
+  },
+  {
+    "slug": "google-search",
+    "name": "Google Search",
+    "description": "Web, news, and image search via SerpAPI. Requires a SerpAPI key.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "search",
+    "tags": [
+      "google",
+      "search",
+      "news",
+      "images",
+      "serpapi"
+    ],
+    "env": [
+      "SERPAPI_KEY"
+    ]
+  },
+  {
+    "slug": "linear",
+    "name": "Linear",
+    "description": "Manage issues, teams, and projects via the Linear GraphQL API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "square-kanban",
+    "tags": [
+      "linear",
+      "issues",
+      "project-management",
+      "kanban"
+    ],
+    "env": [
+      "LINEAR_API_KEY"
+    ]
+  },
+  {
+    "slug": "air-quality",
+    "name": "Air Quality",
+    "description": "Current air quality and AQI forecasts via Open-Meteo. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "wind",
+    "tags": [
+      "air-quality",
+      "aqi",
+      "pollution",
+      "environment",
+      "free"
+    ]
+  },
+  {
+    "slug": "discord",
+    "name": "Discord",
+    "description": "Send messages, read channels, and manage guilds via the Discord Bot API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "message-circle",
+    "tags": [
+      "discord",
+      "messaging",
+      "guilds",
+      "channels",
+      "bot"
+    ],
+    "env": [
+      "DISCORD_BOT_TOKEN"
+    ]
+  },
+  {
+    "slug": "notion",
+    "name": "Notion",
+    "description": "Search, read, and create pages and databases via the Notion API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "notebook",
+    "tags": [
+      "notion",
+      "wiki",
+      "pages",
+      "databases",
+      "knowledge-base"
+    ],
+    "env": [
+      "NOTION_API_KEY"
+    ]
+  },
+  {
+    "slug": "sentry",
+    "name": "Sentry",
+    "description": "Monitor errors and issues via the Sentry API. List projects, track issues, and manage events.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "shield-alert",
+    "tags": [
+      "sentry",
+      "errors",
+      "monitoring",
+      "issues",
+      "debugging"
+    ],
+    "env": [
+      "SENTRY_AUTH_TOKEN",
+      "SENTRY_ORG"
+    ]
+  },
+  {
+    "slug": "elevenlabs",
+    "name": "ElevenLabs",
+    "description": "Text-to-speech with lifelike voices via the ElevenLabs API. List voices, models, and generate audio.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "audio-lines",
+    "tags": [
+      "tts",
+      "text-to-speech",
+      "voice",
+      "audio",
+      "elevenlabs"
+    ],
+    "env": [
+      "ELEVENLABS_API_KEY"
+    ]
+  },
+  {
+    "slug": "minimax-tts",
+    "name": "MiniMax TTS",
+    "description": "Text-to-speech via the MiniMax T2A v2 API. Multiple voice styles with speed, pitch, and volume control.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "mic",
+    "tags": [
+      "tts",
+      "text-to-speech",
+      "voice",
+      "audio",
+      "minimax"
+    ],
+    "env": [
+      "MINIMAX_API_KEY",
+      "MINIMAX_GROUP_ID"
+    ]
+  },
+  {
+    "slug": "openai-tts",
+    "name": "OpenAI TTS",
+    "description": "Text-to-speech via the OpenAI Audio API. Six voices, two models, multiple output formats.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "volume-2",
+    "tags": [
+      "tts",
+      "text-to-speech",
+      "voice",
+      "audio",
+      "openai"
+    ],
+    "env": [
+      "OPENAI_API_KEY"
+    ]
+  },
+  {
+    "slug": "railway",
+    "name": "Railway",
+    "description": "Deploy and manage projects, services, and deployments via the Railway GraphQL API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "train-front",
+    "tags": [
+      "railway",
+      "deploy",
+      "hosting",
+      "infrastructure",
+      "paas"
+    ],
+    "env": [
+      "RAILWAY_API_TOKEN"
+    ]
+  },
+  {
+    "slug": "unsplash",
+    "name": "Unsplash",
+    "description": "Search and download high-quality photos via the Unsplash API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "image",
+    "tags": [
+      "unsplash",
+      "photos",
+      "images",
+      "stock-photography"
+    ],
+    "env": [
+      "UNSPLASH_ACCESS_KEY"
+    ]
+  },
+  {
+    "slug": "youtube",
+    "name": "YouTube",
+    "description": "Search videos, get channel info, and list captions via the YouTube Data API v3.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "youtube",
+    "tags": [
+      "youtube",
+      "videos",
+      "channels",
+      "captions",
+      "google"
+    ],
+    "env": [
+      "YOUTUBE_API_KEY"
+    ]
+  },
+  {
+    "slug": "stripe",
+    "name": "Stripe",
+    "description": "Manage customers, charges, invoices, and balances via the Stripe API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "credit-card",
+    "tags": [
+      "stripe",
+      "payments",
+      "billing",
+      "invoices",
+      "customers"
+    ],
+    "env": [
+      "STRIPE_SECRET_KEY"
+    ]
+  },
+  {
+    "slug": "wikipedia",
+    "name": "Wikipedia",
+    "description": "Search Wikipedia and fetch concise page summaries.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "book-open",
+    "tags": [
+      "wikipedia",
+      "knowledge",
+      "encyclopedia",
+      "search",
+      "summary"
+    ]
+  },
+  {
+    "slug": "news-api",
+    "name": "News API",
+    "description": "Top headlines and article search via NewsAPI.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "newspaper",
+    "tags": [
+      "news",
+      "headlines",
+      "articles",
+      "search"
+    ],
+    "env": [
+      "NEWS_API_KEY"
+    ]
+  },
+  {
+    "slug": "arxiv",
+    "name": "arXiv",
+    "description": "Search arXiv research papers and metadata.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "graduation-cap",
+    "tags": [
+      "arxiv",
+      "research",
+      "papers",
+      "academic",
+      "search"
+    ]
+  },
+  {
+    "slug": "openlibrary",
+    "name": "Open Library",
+    "description": "Search books, works, and editions via Open Library.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "library",
+    "tags": [
+      "books",
+      "openlibrary",
+      "library",
+      "search",
+      "editions"
+    ]
+  },
+  {
+    "slug": "brave-search",
+    "name": "Brave Search",
+    "description": "Web, news, and image search via Brave Search API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "search",
+    "tags": [
+      "brave",
+      "search",
+      "web",
+      "news",
+      "images"
+    ],
+    "env": [
+      "BRAVE_SEARCH_API_KEY"
+    ]
+  },
+  {
+    "slug": "bing-search",
+    "name": "Bing Search",
+    "description": "Web and news search via Bing Web Search API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "search",
+    "tags": [
+      "bing",
+      "search",
+      "web",
+      "news",
+      "microsoft"
+    ],
+    "env": [
+      "BING_API_KEY"
+    ]
+  },
+  {
+    "slug": "semantic-scholar",
+    "name": "Semantic Scholar",
+    "description": "Academic paper search and metadata via Semantic Scholar API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "graduation-cap",
+    "tags": [
+      "semantic-scholar",
+      "research",
+      "papers",
+      "citations",
+      "academic"
+    ]
+  },
+  {
+    "slug": "crossref",
+    "name": "Crossref",
+    "description": "DOI metadata and works lookup via Crossref API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "book-copy",
+    "tags": [
+      "crossref",
+      "doi",
+      "metadata",
+      "research",
+      "citations"
+    ]
+  },
+  {
+    "slug": "openalex",
+    "name": "OpenAlex",
+    "description": "Scholarly works, authors, and institutions via OpenAlex API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "library",
+    "tags": [
+      "openalex",
+      "research",
+      "works",
+      "authors",
+      "institutions"
+    ]
+  },
+  {
+    "slug": "gitlab",
+    "name": "GitLab",
+    "description": "Projects, issues, merge requests, and pipelines via GitLab API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "git-branch",
+    "tags": [
+      "gitlab",
+      "issues",
+      "merge-requests",
+      "pipelines",
+      "devops"
+    ],
+    "env": [
+      "GITLAB_TOKEN"
+    ]
+  },
+  {
+    "slug": "vercel",
+    "name": "Vercel",
+    "description": "Projects and deployments via Vercel API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "rocket",
+    "tags": [
+      "vercel",
+      "deployments",
+      "projects",
+      "hosting",
+      "devops"
+    ],
+    "env": [
+      "VERCEL_TOKEN"
+    ]
+  },
+  {
+    "slug": "netlify",
+    "name": "Netlify",
+    "description": "Sites and deploy status via Netlify API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "globe",
+    "tags": [
+      "netlify",
+      "sites",
+      "deploys",
+      "hosting",
+      "devops"
+    ],
+    "env": [
+      "NETLIFY_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "docker-hub",
+    "name": "Docker Hub",
+    "description": "Image search and repository tags via Docker Hub API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "package",
+    "tags": [
+      "docker",
+      "hub",
+      "containers",
+      "images",
+      "tags"
+    ]
+  },
+  {
+    "slug": "alpha-vantage",
+    "name": "Alpha Vantage",
+    "description": "Stocks, FX, and market data via Alpha Vantage API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "line-chart",
+    "tags": [
+      "alpha-vantage",
+      "stocks",
+      "forex",
+      "market-data",
+      "finance"
+    ],
+    "env": [
+      "ALPHA_VANTAGE_API_KEY"
+    ]
+  },
+  {
+    "slug": "polygon",
+    "name": "Polygon",
+    "description": "Stocks, forex, and crypto market data via Polygon API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "activity",
+    "tags": [
+      "polygon",
+      "stocks",
+      "forex",
+      "crypto",
+      "market-data"
+    ],
+    "env": [
+      "POLYGON_API_KEY"
+    ]
+  },
+  {
+    "slug": "coinbase",
+    "name": "Coinbase",
+    "description": "Crypto prices and exchange rates via Coinbase API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "bitcoin",
+    "tags": [
+      "coinbase",
+      "crypto",
+      "prices",
+      "exchange-rates",
+      "finance"
+    ]
+  },
+  {
+    "slug": "plaid",
+    "name": "Plaid",
+    "description": "Bank accounts and transactions via Plaid API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "wallet",
+    "tags": [
+      "plaid",
+      "banking",
+      "accounts",
+      "transactions",
+      "finance"
+    ],
+    "env": [
+      "PLAID_CLIENT_ID",
+      "PLAID_SECRET",
+      "PLAID_ENV"
+    ]
+  },
+  {
+    "slug": "paypal",
+    "name": "PayPal",
+    "description": "Payments and invoices via PayPal API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "credit-card",
+    "tags": [
+      "paypal",
+      "payments",
+      "transactions",
+      "invoices",
+      "finance"
+    ],
+    "env": [
+      "PAYPAL_CLIENT_ID",
+      "PAYPAL_CLIENT_SECRET",
+      "PAYPAL_ENV"
+    ]
+  },
+  {
+    "slug": "square",
+    "name": "Square",
+    "description": "Payments and locations via Square API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "receipt",
+    "tags": [
+      "square",
+      "payments",
+      "commerce",
+      "locations",
+      "finance"
+    ],
+    "env": [
+      "SQUARE_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "google-drive",
+    "name": "Google Drive",
+    "description": "File listing and metadata via Google Drive API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "folder",
+    "tags": [
+      "google-drive",
+      "files",
+      "storage",
+      "documents",
+      "google"
+    ],
+    "env": [
+      "GOOGLE_DRIVE_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "dropbox",
+    "name": "Dropbox",
+    "description": "File search and folder listing via Dropbox API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "folder-open",
+    "tags": [
+      "dropbox",
+      "files",
+      "storage",
+      "search",
+      "folders"
+    ],
+    "env": [
+      "DROPBOX_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "airtable",
+    "name": "Airtable",
+    "description": "Bases, tables, and records via Airtable API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "table",
+    "tags": [
+      "airtable",
+      "tables",
+      "records",
+      "database",
+      "spreadsheets"
+    ],
+    "env": [
+      "AIRTABLE_API_KEY",
+      "AIRTABLE_BASE_ID"
+    ]
+  },
+  {
+    "slug": "ip-geolocation",
+    "name": "IP Geolocation",
+    "description": "Look up any IP address for location, ISP, timezone, and org. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "map-pin",
+    "tags": [
+      "ip",
+      "geolocation",
+      "location",
+      "isp",
+      "free"
+    ]
+  },
+  {
+    "slug": "hacker-news",
+    "name": "Hacker News",
+    "description": "Top stories, comments, and user profiles via the Hacker News API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "flame",
+    "tags": [
+      "hacker-news",
+      "tech",
+      "stories",
+      "comments",
+      "free"
+    ]
+  },
+  {
+    "slug": "public-holidays",
+    "name": "Public Holidays",
+    "description": "Public holidays by country and year via Nager.Date API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "calendar",
+    "tags": [
+      "holidays",
+      "calendar",
+      "countries",
+      "dates",
+      "free"
+    ]
+  },
+  {
+    "slug": "qr-code",
+    "name": "QR Code",
+    "description": "Generate and read QR codes via goqr.me API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "qr-code",
+    "tags": [
+      "qr-code",
+      "generate",
+      "scan",
+      "barcode",
+      "free"
+    ]
+  },
+  {
+    "slug": "internet-archive",
+    "name": "Internet Archive",
+    "description": "Check archived pages and browse snapshots via the Wayback Machine API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "archive",
+    "tags": [
+      "archive",
+      "wayback",
+      "snapshots",
+      "history",
+      "free"
+    ]
+  },
+  {
+    "slug": "dns-lookup",
+    "name": "DNS Lookup",
+    "description": "Query DNS records via Google DNS API. Supports A, AAAA, MX, CNAME, TXT, NS, SOA. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "server",
+    "tags": [
+      "dns",
+      "lookup",
+      "records",
+      "networking",
+      "free"
+    ]
+  },
+  {
+    "slug": "world-clock",
+    "name": "World Clock",
+    "description": "Current time in any timezone via World Time API. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "clock",
+    "tags": [
+      "time",
+      "timezone",
+      "clock",
+      "utc",
+      "free"
+    ]
+  },
+  {
+    "slug": "random-user",
+    "name": "Random User",
+    "description": "Generate realistic fake user profiles for testing via randomuser.me. Free, no API key required.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "user",
+    "tags": [
+      "random",
+      "users",
+      "testing",
+      "mock-data",
+      "free"
+    ]
+  },
+  {
+    "slug": "tmdb",
+    "name": "TMDB",
+    "description": "Search movies and TV shows, get details, and browse trending via The Movie Database API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "film",
+    "tags": [
+      "movies",
+      "tv-shows",
+      "trending",
+      "ratings",
+      "entertainment"
+    ],
+    "env": [
+      "TMDB_API_KEY"
+    ]
+  },
+  {
+    "slug": "giphy",
+    "name": "Giphy",
+    "description": "Search, trending, and random GIFs via the Giphy API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "image-play",
+    "tags": [
+      "giphy",
+      "gifs",
+      "trending",
+      "search",
+      "media"
+    ],
+    "env": [
+      "GIPHY_API_KEY"
+    ]
+  },
+  {
+    "slug": "todoist",
+    "name": "Todoist",
+    "description": "Create, list, and manage tasks and projects via the Todoist API.",
+    "version": "1.0.0",
+    "category": "Productivity",
+    "icon": "check-square",
+    "tags": [
+      "todoist",
+      "tasks",
+      "projects",
+      "todo",
+      "productivity"
+    ],
+    "env": [
+      "TODOIST_API_KEY"
+    ]
+  },
+  {
+    "slug": "virustotal",
+    "name": "VirusTotal",
+    "description": "Scan URLs and check domains/IPs for malware via the VirusTotal API.",
+    "version": "1.0.0",
+    "category": "Security",
+    "icon": "shield-check",
+    "tags": [
+      "virustotal",
+      "malware",
+      "security",
+      "scanning",
+      "threat-detection"
+    ],
+    "env": [
+      "VIRUSTOTAL_API_KEY"
+    ]
+  },
+  {
+    "slug": "haveibeenpwned",
+    "name": "Have I Been Pwned",
+    "description": "Check if emails or passwords appear in data breaches via the HIBP API.",
+    "version": "1.0.0",
+    "category": "Security",
+    "icon": "lock",
+    "tags": [
+      "hibp",
+      "breaches",
+      "security",
+      "passwords",
+      "email"
+    ],
+    "env": [
+      "HIBP_API_KEY"
+    ]
+  },
+  {
+    "slug": "mapbox",
+    "name": "Mapbox",
+    "description": "Geocoding, reverse geocoding, and directions via the Mapbox API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "map",
+    "tags": [
+      "mapbox",
+      "geocoding",
+      "directions",
+      "maps",
+      "navigation"
+    ],
+    "env": [
+      "MAPBOX_ACCESS_TOKEN"
+    ]
+  },
+  {
+    "slug": "sendgrid",
+    "name": "SendGrid",
+    "description": "Send transactional emails and view delivery stats via the SendGrid API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "send",
+    "tags": [
+      "sendgrid",
+      "email",
+      "transactional",
+      "delivery",
+      "marketing"
+    ],
+    "env": [
+      "SENDGRID_API_KEY"
+    ]
+  },
+  {
+    "slug": "twilio",
+    "name": "Twilio",
+    "description": "Send SMS messages, list messages, and check account info via the Twilio API.",
+    "version": "1.0.0",
+    "category": "Comms",
+    "icon": "phone",
+    "tags": [
+      "twilio",
+      "sms",
+      "messaging",
+      "phone",
+      "communication"
+    ],
+    "env": [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN"
+    ]
+  },
+  {
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "description": "Manage DNS zones, records, and view analytics via the Cloudflare API.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "cloud",
+    "tags": [
+      "cloudflare",
+      "dns",
+      "cdn",
+      "zones",
+      "analytics"
+    ],
+    "env": [
+      "CLOUDFLARE_API_TOKEN"
+    ]
+  },
+  {
+    "slug": "spotify",
+    "name": "Spotify",
+    "description": "Search music, artists, and albums via the Spotify Web API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "music",
+    "tags": [
+      "spotify",
+      "music",
+      "artists",
+      "albums",
+      "search"
+    ],
+    "env": [
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "reddit",
+    "name": "Reddit",
+    "description": "Search posts, browse subreddits, and get trending content via the Reddit API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "message-square-text",
+    "tags": [
+      "reddit",
+      "posts",
+      "subreddits",
+      "trending",
+      "social"
+    ],
+    "env": [
+      "REDDIT_CLIENT_ID",
+      "REDDIT_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "twitch",
+    "name": "Twitch",
+    "description": "Browse live streams, search channels, and discover games via the Twitch API.",
+    "version": "1.0.0",
+    "category": "Data",
+    "icon": "tv",
+    "tags": [
+      "twitch",
+      "streams",
+      "channels",
+      "games",
+      "live"
+    ],
+    "env": [
+      "TWITCH_CLIENT_ID",
+      "TWITCH_CLIENT_SECRET"
+    ]
+  },
+  {
+    "slug": "screenshot",
+    "name": "Screenshot",
+    "description": "Capture website screenshots using headless Chrome. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "camera",
+    "tags": [
+      "screenshot",
+      "capture",
+      "website",
+      "chrome",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "pdf-generator",
+    "name": "PDF Generator",
+    "description": "Convert HTML or web pages to PDF using headless Chrome. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "file-text",
+    "tags": [
+      "pdf",
+      "html",
+      "convert",
+      "chrome",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "ssl-checker",
+    "name": "SSL Checker",
+    "description": "Check SSL certificates for any domain — expiry, issuer, protocol, SANs. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Dev",
+    "icon": "shield",
+    "tags": [
+      "ssl",
+      "tls",
+      "certificate",
+      "security",
+      "local",
+      "free"
+    ]
+  },
+  {
+    "slug": "image-resizer",
+    "name": "Image Resizer",
+    "description": "Resize images with contain, cover, and fill modes. Supports PNG and JPEG. No API key required — runs locally.",
+    "version": "1.0.0",
+    "category": "Utilities",
+    "icon": "image",
+    "tags": [
+      "image",
+      "resize",
+      "crop",
+      "png",
+      "jpeg",
+      "local",
+      "free"
+    ]
+  }
+]

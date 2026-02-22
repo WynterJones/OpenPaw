@@ -1,0 +1,41 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/top",
+      "description": "Get top stories from Hacker News",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of stories to return (1-30, default 10)"}
+      ],
+      "response": {"stories": "Array of top stories with id, title, url, score, by, time, descendants"}
+    },
+    {
+      "method": "GET",
+      "path": "/item",
+      "description": "Get a single item (story or comment) by ID",
+      "query_params": [
+        {"name": "id", "type": "integer", "required": true, "description": "Item ID"}
+      ],
+      "response": {"id": "Item ID", "type": "Item type", "title": "Title (if story)", "text": "Text content (if comment)", "by": "Author", "score": "Score", "url": "URL"}
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "description": "Get a user profile",
+      "query_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Username"}
+      ],
+      "response": {"id": "Username", "karma": "User karma", "about": "User bio", "created": "Account creation timestamp"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

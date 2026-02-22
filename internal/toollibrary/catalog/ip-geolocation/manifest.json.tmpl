@@ -1,0 +1,29 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/lookup",
+      "description": "Look up geographic location of an IP address",
+      "query_params": [
+        {"name": "ip", "type": "string", "required": true, "description": "IP address to look up (e.g. 8.8.8.8)"}
+      ],
+      "response": {"ip": "IP address", "country": "Country name", "regionName": "Region/state name", "city": "City name", "zip": "ZIP/postal code", "lat": "Latitude", "lon": "Longitude", "timezone": "Timezone", "isp": "ISP name", "org": "Organization"}
+    },
+    {
+      "method": "GET",
+      "path": "/me",
+      "description": "Look up the server's own IP address and location",
+      "response": {"ip": "Server IP address", "country": "Country name", "regionName": "Region/state name", "city": "City name", "lat": "Latitude", "lon": "Longitude", "timezone": "Timezone"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

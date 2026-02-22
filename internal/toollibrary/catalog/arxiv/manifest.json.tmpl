@@ -1,0 +1,25 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search arXiv papers",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "start", "type": "integer", "required": false, "description": "Result offset (default 0)"},
+        {"name": "max_results", "type": "integer", "required": false, "description": "Number of papers (1-50, default 10)"}
+      ],
+      "response": {"results": "Array of papers with title, authors, summary, URLs"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

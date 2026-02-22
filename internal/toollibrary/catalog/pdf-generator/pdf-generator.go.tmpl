@@ -1,0 +1,328 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
+	"github.com/go-chi/chi/v5"
+)
+
+var (
+	pdfStore = &pdfFileStore{files: make(map[string]string)}
+	dataDir  string
+)
+
+type pdfFileStore struct {
+	mu    sync.RWMutex
+	files map[string]string
+}
+
+func (s *pdfFileStore) Add(filename, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[filename] = path
+}
+
+func (s *pdfFileStore) Get(filename string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.files[filename]
+	return p, ok
+}
+
+func initDataDir() {
+	if dir := os.Getenv("TOOL_DATA_DIR"); dir != "" {
+		dataDir = filepath.Join(dir, "pdf-generator")
+	} else {
+		dataDir = filepath.Join(os.TempDir(), "pdf-generator")
+	}
+	os.MkdirAll(dataDir, 0755)
+
+	entries, _ := os.ReadDir(dataDir)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "pdf-") {
+			pdfStore.Add(e.Name(), filepath.Join(dataDir, e.Name()))
+		}
+	}
+}
+
+// Paper sizes in inches
+var paperSizes = map[string][2]float64{
+	"a4":     {8.27, 11.69},
+	"letter": {8.5, 11.0},
+	"legal":  {8.5, 14.0},
+}
+
+func registerRoutes(r chi.Router) {
+	r.Post("/from-html", handleFromHTML)
+	r.Get("/from-url", handleFromURL)
+	r.Get("/files/{filename}", handleServeFile)
+}
+
+func handleFromHTML(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HTML      string `json:"html"`
+		Landscape bool   `json:"landscape"`
+		PaperSize string `json:"paper_size"`
+		Margin    string `json:"margin"`
+	}
+
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+
+	if strings.TrimSpace(req.HTML) == "" {
+		writeError(w, http.StatusBadRequest, "html field is required")
+		return
+	}
+
+	landscape := req.Landscape
+	paperWidth, paperHeight := getPaperDimensions(req.PaperSize)
+	marginInches := parseMarginCM(req.Margin)
+
+	buf, err := generatePDFFromHTML(req.HTML, landscape, paperWidth, paperHeight, marginInches)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PDF generation failed: "+err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("pdf-%d.pdf", time.Now().UnixNano())
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save PDF: "+err.Error())
+		return
+	}
+	pdfStore.Add(filename, filePath)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"format":     "pdf",
+		"size_bytes": len(buf),
+		"file_path":  filename,
+		"__widget": map[string]string{
+			"type":  "file-preview",
+			"title": "PDF",
+		},
+	})
+}
+
+func handleFromURL(w http.ResponseWriter, r *http.Request) {
+	targetURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	if targetURL == "" {
+		writeError(w, http.StatusBadRequest, "url parameter is required")
+		return
+	}
+
+	landscape := false
+	if v := r.URL.Query().Get("landscape"); v == "true" || v == "1" {
+		landscape = true
+	}
+
+	paperWidth, paperHeight := getPaperDimensions(r.URL.Query().Get("paper_size"))
+	marginInches := parseMarginCM(r.URL.Query().Get("margin"))
+
+	buf, err := generatePDFFromURL(targetURL, landscape, paperWidth, paperHeight, marginInches)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PDF generation failed: "+err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("pdf-%d.pdf", time.Now().UnixNano())
+	filePath := filepath.Join(dataDir, filename)
+	if err := os.WriteFile(filePath, buf, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save PDF: "+err.Error())
+		return
+	}
+	pdfStore.Add(filename, filePath)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"format":     "pdf",
+		"size_bytes": len(buf),
+		"file_path":  filename,
+		"__widget": map[string]string{
+			"type":  "file-preview",
+			"title": "PDF",
+		},
+	})
+}
+
+func handleServeFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	filename = filepath.Base(filename)
+	if !strings.HasPrefix(filename, "pdf-") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	fullPath, ok := pdfStore.Get(filename)
+	if !ok {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	http.ServeFile(w, r, fullPath)
+}
+
+func generatePDFFromHTML(html string, landscape bool, paperWidth, paperHeight, margin float64) ([]byte, error) {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-software-rasterizer", true),
+	)
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocCancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var buf []byte
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate("about:blank"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Set the page HTML content using JavaScript
+			script := `document.open(); document.write(` + jsStringLiteral(html) + `); document.close();`
+			var res interface{}
+			return chromedp.Evaluate(script, &res).Do(ctx)
+		}),
+		chromedp.WaitReady("body"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var err error
+			buf, _, err = page.PrintToPDF().
+				WithLandscape(landscape).
+				WithPaperWidth(paperWidth).
+				WithPaperHeight(paperHeight).
+				WithMarginTop(margin).
+				WithMarginBottom(margin).
+				WithMarginLeft(margin).
+				WithMarginRight(margin).
+				WithPrintBackground(true).
+				Do(ctx)
+			return err
+		}),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+func generatePDFFromURL(targetURL string, landscape bool, paperWidth, paperHeight, margin float64) ([]byte, error) {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-software-rasterizer", true),
+	)
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocCancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var buf []byte
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(targetURL),
+		chromedp.WaitReady("body"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			var err error
+			buf, _, err = page.PrintToPDF().
+				WithLandscape(landscape).
+				WithPaperWidth(paperWidth).
+				WithPaperHeight(paperHeight).
+				WithMarginTop(margin).
+				WithMarginBottom(margin).
+				WithMarginLeft(margin).
+				WithMarginRight(margin).
+				WithPrintBackground(true).
+				Do(ctx)
+			return err
+		}),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+func getPaperDimensions(paperSize string) (float64, float64) {
+	key := strings.ToLower(strings.TrimSpace(paperSize))
+	if dims, ok := paperSizes[key]; ok {
+		return dims[0], dims[1]
+	}
+	// Default to A4
+	return paperSizes["a4"][0], paperSizes["a4"][1]
+}
+
+func parseMarginCM(marginStr string) float64 {
+	marginStr = strings.TrimSpace(marginStr)
+	if marginStr == "" {
+		// Default 1cm in inches
+		return 1.0 / 2.54
+	}
+
+	// Strip "cm" suffix if present
+	marginStr = strings.TrimSuffix(marginStr, "cm")
+	marginStr = strings.TrimSpace(marginStr)
+
+	cm, err := strconv.ParseFloat(marginStr, 64)
+	if err != nil || cm < 0 {
+		// Default 1cm in inches
+		return 1.0 / 2.54
+	}
+
+	// Convert cm to inches
+	return cm / 2.54
+}
+
+// jsStringLiteral converts a Go string to a JavaScript string literal,
+// properly escaping special characters.
+func jsStringLiteral(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '<':
+			// Escape to prevent </script> breaking
+			b.WriteString(`\x3c`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}

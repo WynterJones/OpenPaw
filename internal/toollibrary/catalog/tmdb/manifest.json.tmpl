@@ -1,0 +1,43 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for movies or TV shows",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"},
+        {"name": "type", "type": "string", "required": false, "description": "Type: movie or tv (default: movie)"}
+      ],
+      "response": {"total_results": "Total number of results", "results": "Array of results with id, title, overview, release_date, vote_average, poster_path"}
+    },
+    {
+      "method": "GET",
+      "path": "/movie",
+      "description": "Get detailed information about a specific movie",
+      "query_params": [
+        {"name": "id", "type": "integer", "required": true, "description": "TMDB movie ID"}
+      ],
+      "response": {"movie": "Movie details with id, title, overview, release_date, runtime, genres, vote_average, vote_count, budget, revenue, poster_path, backdrop_path"}
+    },
+    {
+      "method": "GET",
+      "path": "/trending",
+      "description": "Get trending movies or TV shows",
+      "query_params": [
+        {"name": "type", "type": "string", "required": false, "description": "Type: movie or tv (default: movie)"},
+        {"name": "window", "type": "string", "required": false, "description": "Time window: day or week (default: week)"}
+      ],
+      "response": {"results": "Array of trending items with id, title, overview, release_date, vote_average, poster_path"}
+    }
+  ],
+  "env": ["TMDB_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/messages",
+      "description": "Search and list email messages",
+      "query_params": [
+        {"name": "q", "type": "string", "required": false, "description": "Gmail search query (e.g. 'from:user@example.com')"},
+        {"name": "max", "type": "integer", "required": false, "description": "Maximum messages to return (1-100, default 10)"}
+      ],
+      "response": {"messages": "Array of messages with id, from, to, subject, snippet"}
+    },
+    {
+      "method": "GET",
+      "path": "/messages/{id}",
+      "description": "Get full message details by ID",
+      "query_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Message ID"}
+      ],
+      "response": {"id": "Message ID", "snippet": "Message preview", "payload": "Full message payload"}
+    },
+    {
+      "method": "POST",
+      "path": "/send",
+      "description": "Send an email",
+      "body": {"to": "Recipient email address", "subject": "Email subject", "body": "Email body text"},
+      "response": {"success": "boolean", "message_id": "Sent message ID"}
+    }
+  ],
+  "env": ["GOOGLE_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/sms",
+      "description": "Send an SMS message",
+      "body": {"to": "Recipient phone number (E.164 format, e.g. +1234567890)", "from": "Sender phone number (must be a Twilio number)", "body": "Message text"},
+      "response": {"sid": "Message SID", "to": "Recipient", "from": "Sender", "status": "Message status", "date_created": "ISO timestamp"}
+    },
+    {
+      "method": "GET",
+      "path": "/messages",
+      "description": "List recent messages",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of messages to return (1-100, default 20)"}
+      ],
+      "response": {"messages": "Array of messages with sid, to, from, body, status, direction, date_sent"}
+    },
+    {
+      "method": "GET",
+      "path": "/account",
+      "description": "Get account information",
+      "response": {"sid": "Account SID", "friendly_name": "Account name", "status": "Account status", "type": "Account type", "date_created": "Creation date"}
+    }
+  ],
+  "env": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

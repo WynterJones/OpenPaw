@@ -1,0 +1,44 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search Reddit posts",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"},
+        {"name": "subreddit", "type": "string", "required": false, "description": "Restrict search to a specific subreddit"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-100, default 10)"}
+      ],
+      "response": {"posts": "Array of posts with id, title, subreddit, author, score, num_comments, url, created_utc"}
+    },
+    {
+      "method": "GET",
+      "path": "/hot",
+      "description": "Get hot posts from a subreddit",
+      "query_params": [
+        {"name": "subreddit", "type": "string", "required": true, "description": "Subreddit name (without r/)"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of posts (1-100, default 10)"}
+      ],
+      "response": {"posts": "Array of hot posts with id, title, author, score, num_comments, url, created_utc"}
+    },
+    {
+      "method": "GET",
+      "path": "/subreddit",
+      "description": "Get subreddit information",
+      "query_params": [
+        {"name": "name", "type": "string", "required": true, "description": "Subreddit name (without r/)"}
+      ],
+      "response": {"name": "Subreddit name", "title": "Subreddit title", "description": "Public description", "subscribers": "Subscriber count", "active_accounts": "Active users", "created_utc": "Creation timestamp"}
+    }
+  ],
+  "env": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

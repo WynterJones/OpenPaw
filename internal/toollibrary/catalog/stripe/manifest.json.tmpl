@@ -1,0 +1,58 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/customers",
+      "description": "List customers",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-100, default 10)"},
+        {"name": "email", "type": "string", "required": false, "description": "Filter by customer email"}
+      ],
+      "response": {"customers": "Array of customers with id, email, name, created, currency, balance"}
+    },
+    {
+      "method": "POST",
+      "path": "/customer",
+      "description": "Create a new customer",
+      "body": {"email": "Customer email (required)", "name": "Customer name (optional)", "description": "Customer description (optional)"},
+      "response": {"id": "Customer ID", "email": "Email", "name": "Name"}
+    },
+    {
+      "method": "GET",
+      "path": "/charges",
+      "description": "List charges",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-100, default 10)"},
+        {"name": "customer", "type": "string", "required": false, "description": "Filter by customer ID"}
+      ],
+      "response": {"charges": "Array of charges with id, amount (in dollars), currency, status, description, customer, created"}
+    },
+    {
+      "method": "GET",
+      "path": "/balance",
+      "description": "Get account balance",
+      "response": {"available": "Array of available balances with amount and currency", "pending": "Array of pending balances with amount and currency"}
+    },
+    {
+      "method": "GET",
+      "path": "/invoices",
+      "description": "List invoices",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-100, default 10)"},
+        {"name": "customer", "type": "string", "required": false, "description": "Filter by customer ID"},
+        {"name": "status", "type": "string", "required": false, "description": "Filter by status: draft, open, paid, or void"}
+      ],
+      "response": {"invoices": "Array of invoices with id, customer, amount_due, amount_paid, currency, status, created, due_date"}
+    }
+  ],
+  "env": ["STRIPE_SECRET_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

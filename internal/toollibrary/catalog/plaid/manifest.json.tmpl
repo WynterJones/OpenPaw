@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "POST", "path": "/accounts/balance", "description": "Get account balances using an access token"},
+    {"method": "POST", "path": "/transactions/get", "description": "Get transactions in a date range"}
+  ],
+  "env": ["PLAID_CLIENT_ID", "PLAID_SECRET", "PLAID_ENV"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

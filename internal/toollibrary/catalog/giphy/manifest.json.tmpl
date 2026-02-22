@@ -1,0 +1,42 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search for GIFs by keyword",
+      "query_params": [
+        {"name": "query", "type": "string", "required": true, "description": "Search query"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-25, default 10)"}
+      ],
+      "response": {"gifs": "Array of GIFs with id, title, url, images.original.url, images.fixed_height.url"}
+    },
+    {
+      "method": "GET",
+      "path": "/trending",
+      "description": "Get trending GIFs",
+      "query_params": [
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-25, default 10)"}
+      ],
+      "response": {"gifs": "Array of trending GIFs with id, title, url, images.original.url, images.fixed_height.url"}
+    },
+    {
+      "method": "GET",
+      "path": "/random",
+      "description": "Get a random GIF, optionally filtered by tag",
+      "query_params": [
+        {"name": "tag", "type": "string", "required": false, "description": "Tag to filter random GIF (e.g. cats)"}
+      ],
+      "response": {"gif": "Random GIF with id, title, url, images.original.url, images.fixed_height.url"}
+    }
+  ],
+  "env": ["GIPHY_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

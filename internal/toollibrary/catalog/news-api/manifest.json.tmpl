@@ -1,0 +1,40 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/top-headlines",
+      "description": "Fetch top headlines by country and optional category/query",
+      "query_params": [
+        {"name": "country", "type": "string", "required": false, "description": "2-letter country code (default us)"},
+        {"name": "category", "type": "string", "required": false, "description": "Category filter"},
+        {"name": "q", "type": "string", "required": false, "description": "Keyword filter"},
+        {"name": "page_size", "type": "integer", "required": false, "description": "Results per page (1-100, default 20)"}
+      ],
+      "response": {"articles": "Array of headline articles"}
+    },
+    {
+      "method": "GET",
+      "path": "/everything",
+      "description": "Search all indexed news articles",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "sort_by", "type": "string", "required": false, "description": "Sort order: relevancy, popularity, publishedAt"},
+        {"name": "language", "type": "string", "required": false, "description": "Language code"},
+        {"name": "from", "type": "string", "required": false, "description": "Start date (YYYY-MM-DD)"},
+        {"name": "to", "type": "string", "required": false, "description": "End date (YYYY-MM-DD)"},
+        {"name": "page_size", "type": "integer", "required": false, "description": "Results per page (1-100, default 20)"}
+      ],
+      "response": {"articles": "Array of matching articles"}
+    }
+  ],
+  "env": ["NEWS_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

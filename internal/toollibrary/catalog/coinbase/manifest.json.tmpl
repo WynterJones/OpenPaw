@@ -1,0 +1,13 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/spot", "description": "Get spot price for crypto pair (default BTC-USD)"},
+    {"method": "GET", "path": "/exchange-rates", "description": "Get exchange rates relative to a currency"}
+  ],
+  "env": [],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

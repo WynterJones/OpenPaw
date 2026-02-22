@@ -1,0 +1,31 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/works",
+      "description": "Search Crossref works",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "rows", "type": "integer", "required": false, "description": "Results count (1-50, default 10)"}
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/works/{doi}",
+      "description": "Get a Crossref record by DOI",
+      "path_params": [
+        {"name": "doi", "type": "string", "required": true, "description": "DOI value"}
+      ]
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

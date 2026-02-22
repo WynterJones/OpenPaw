@@ -1,0 +1,33 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/tts",
+      "description": "Convert text to speech using OpenAI TTS",
+      "body": {
+        "text": "Text to convert to speech (required)",
+        "voice": "Voice: alloy, echo, fable, onyx, nova, shimmer (default: alloy)",
+        "model": "Model: tts-1 or tts-1-hd (default: tts-1)",
+        "speed": "Speed 0.25-4.0 (default: 1.0)",
+        "response_format": "Format: mp3, opus, aac, flac (default: mp3)"
+      },
+      "response": {"audio_file": "Filename of generated audio", "voice": "Voice used", "model": "Model used", "content_type": "Audio MIME type", "text": "Truncated input text"}
+    },
+    {
+      "method": "GET",
+      "path": "/voices",
+      "description": "List available OpenAI TTS voices",
+      "response": {"voices": "Array of voices with voice_id and description"}
+    }
+  ],
+  "env": ["OPENAI_API_KEY"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

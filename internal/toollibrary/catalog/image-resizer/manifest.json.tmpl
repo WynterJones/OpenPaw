@@ -1,0 +1,28 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/resize",
+      "description": "Resize an uploaded image",
+      "body": {"image": "Image file (multipart)", "width": "Target width", "height": "Target height", "fit": "contain, cover, or fill", "format": "png or jpeg", "quality": "JPEG quality 1-100"},
+      "response": {"image_base64": "Base64 encoded resized image", "width": "Actual width", "height": "Actual height", "size_bytes": "Image size"}
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "description": "Get image dimensions and format",
+      "body": {"image": "Image file (multipart)"},
+      "response": {"width": "Image width", "height": "Image height", "format": "Image format"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

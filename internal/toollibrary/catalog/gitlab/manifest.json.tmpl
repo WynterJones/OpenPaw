@@ -1,0 +1,15 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {"method": "GET", "path": "/projects", "description": "List GitLab projects"},
+    {"method": "GET", "path": "/projects/{id}/issues", "description": "List project issues"},
+    {"method": "GET", "path": "/projects/{id}/merge-requests", "description": "List project merge requests"},
+    {"method": "GET", "path": "/projects/{id}/pipelines", "description": "List project pipelines"}
+  ],
+  "env": ["GITLAB_TOKEN"],
+  "widget": {"enabled": true, "types": ["auto"]}
+}

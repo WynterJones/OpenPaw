@@ -1,0 +1,43 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "description": "Search books in Open Library",
+      "query_params": [
+        {"name": "q", "type": "string", "required": true, "description": "Search query"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of results (1-50, default 10)"}
+      ],
+      "response": {"results": "Array of books with title, authors, and identifiers"}
+    },
+    {
+      "method": "GET",
+      "path": "/work/{id}",
+      "description": "Get Open Library work details",
+      "path_params": [
+        {"name": "id", "type": "string", "required": true, "description": "Work ID (e.g. OL45883W)"}
+      ],
+      "response": {"title": "Work title", "description": "Work description", "subjects": "Array of subjects"}
+    },
+    {
+      "method": "GET",
+      "path": "/editions",
+      "description": "List editions for a work",
+      "query_params": [
+        {"name": "work_id", "type": "string", "required": true, "description": "Work ID (e.g. OL45883W)"},
+        {"name": "limit", "type": "integer", "required": false, "description": "Number of editions (1-50, default 10)"}
+      ],
+      "response": {"results": "Array of editions with title and publication details"}
+    }
+  ],
+  "env": [],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

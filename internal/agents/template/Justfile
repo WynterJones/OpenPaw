@@ -1,0 +1,17 @@
+default:
+    @just --list
+
+build:
+    CGO_ENABLED=0 go build -o tool .
+
+run: build
+    ./tool
+
+dev:
+    go run .
+
+test:
+    go test ./...
+
+health:
+    curl -s http://localhost:9000/health | jq .

@@ -1,0 +1,45 @@
+{
+  "id": "{{.ToolID}}",
+  "name": "{{.Name | jsonEscape}}",
+  "description": "{{.Description | jsonEscape}}",
+  "version": "1.0.0",
+  "health_check": "/health",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/zones",
+      "description": "List DNS zones",
+      "response": {"zones": "Array of zones with id, name, status, paused, type, name_servers"}
+    },
+    {
+      "method": "GET",
+      "path": "/dns",
+      "description": "List DNS records for a zone",
+      "query_params": [
+        {"name": "zone_id", "type": "string", "required": true, "description": "Zone ID"}
+      ],
+      "response": {"records": "Array of DNS records with id, type, name, content, ttl, proxied"}
+    },
+    {
+      "method": "POST",
+      "path": "/dns",
+      "description": "Create a DNS record",
+      "body": {"zone_id": "Zone ID (required)", "type": "Record type (A, AAAA, CNAME, etc.)", "name": "DNS record name", "content": "Record content (IP address, hostname, etc.)", "ttl": "TTL in seconds (1 = auto)"},
+      "response": {"id": "Record ID", "type": "Record type", "name": "Record name", "content": "Record content", "ttl": "TTL"}
+    },
+    {
+      "method": "GET",
+      "path": "/analytics",
+      "description": "Get zone analytics for the last 24 hours",
+      "query_params": [
+        {"name": "zone_id", "type": "string", "required": true, "description": "Zone ID"}
+      ],
+      "response": {"totals": "Analytics totals including requests, bandwidth, threats, pageviews"}
+    }
+  ],
+  "env": ["CLOUDFLARE_API_TOKEN"],
+  "widget": {
+    "enabled": true,
+    "types": ["auto"]
+  }
+}

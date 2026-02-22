@@ -1,0 +1,24 @@
+{
+  "name": "@openpaw-ai/openpaw",
+  "version": "0.1.1",
+  "description": "AI-powered agent management platform",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WynterJones/OpenPaw"
+  },
+  "license": "MIT",
+  "bin": {
+    "openpaw": "bin/openpaw"
+  },
+  "files": ["bin/"],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@openpaw-ai/darwin-arm64": "0.1.1",
+    "@openpaw-ai/darwin-x64": "0.1.1",
+    "@openpaw-ai/linux-x64": "0.1.1",
+    "@openpaw-ai/linux-arm64": "0.1.1",
+    "@openpaw-ai/win32-x64": "0.1.1"
+  }
+}
