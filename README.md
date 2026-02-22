@@ -29,6 +29,16 @@ The app and everything it builds runs locally. AI chat is handled through [OpenR
     <td align="center"><img src="assets/chat.webp" alt="Chat" width="100%" /><br><sub><b>Chat</b></sub></td>
     <td align="center"><img src="assets/agents.webp" alt="Agents" width="100%" /><br><sub><b>Agents</b></sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="assets/library.webp" alt="Library" width="100%" /><br><sub><b>Library</b></sub></td>
+    <td align="center"><img src="assets/heartbeat.webp" alt="Heartbeat" width="100%" /><br><sub><b>Heartbeat</b></sub></td>
+    <td align="center"><img src="assets/browsers.webp" alt="Browsers" width="100%" /><br><sub><b>Browsers</b></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/design.webp" alt="Design" width="100%" /><br><sub><b>Design</b></sub></td>
+    <td align="center"><img src="assets/network.webp" alt="Network" width="100%" /><br><sub><b>Network</b></sub></td>
+    <td></td>
+  </tr>
 </table>
 
 ---
