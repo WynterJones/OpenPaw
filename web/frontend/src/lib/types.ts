@@ -79,17 +79,18 @@ export interface ToolIntegrityInfo {
 export interface Secret {
   id: string;
   name: string;
-  tool_id: string | null;
-  tool_name: string | null;
-  scope: string;
+  description: string;
+  tool_id: string;
+  tool_name: string;
   created_at: string;
-  last_rotated: string | null;
+  updated_at: string;
 }
 
 export interface ChatThread {
   id: string;
   title: string;
   agent: string;
+  total_cost_usd: number;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -126,6 +127,8 @@ export interface ThreadStats {
   message_count: number;
   context_used_tokens: number;
   context_limit_tokens: number;
+  auto_compact_enabled: boolean;
+  auto_compact_threshold: number;
 }
 
 export interface AgentRole {
@@ -541,6 +544,24 @@ export interface HeartbeatConfig {
 export interface HeartbeatExecutionPage {
   items: HeartbeatExecution[];
   total: number;
+}
+
+export interface TerminalSession {
+  id: string;
+  title: string;
+  shell: string;
+  cols: number;
+  rows: number;
+  color: string;
+  workbench_id: string;
+  created_at: string;
+}
+
+export interface Workbench {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface SubAgentTask {

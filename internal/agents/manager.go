@@ -71,11 +71,14 @@ type Manager struct {
 	BuilderModel    string
 	MaxTurns        int
 	AgentTimeoutMin int
-	ToolMgr         ToolManager
-	MemoryMgr       MemoryManager
-	BrowserMgr      BrowserManager
-	NotifyFn        func(title, body, priority, sourceAgentSlug, sourceType, link string)
-	manifestCache   sync.Map // map[toolID][]byte
+	AutoCompactEnabled   bool
+	AutoCompactThreshold int  // percentage (0-100), default 85
+	ContextLimitOverride int  // 0 = use model default
+	ToolMgr              ToolManager
+	MemoryMgr            MemoryManager
+	BrowserMgr           BrowserManager
+	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
+	manifestCache        sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState
 	activeSubAgents int32    // atomic counter for concurrent sub-agents
 }
@@ -88,15 +91,18 @@ type runningAgent struct {
 
 func NewManager(db *database.DB, toolsDir string, broadcast BroadcastFunc, client *llm.Client) *Manager {
 	return &Manager{
-		db:              db,
-		toolsDir:        toolsDir,
-		agents:          make(map[string]*runningAgent),
-		broadcast:       broadcast,
-		client:          client,
-		GatewayModel:    llm.ModelHaiku,
-		BuilderModel:    llm.ModelSonnet,
-		MaxTurns:        300,
-		AgentTimeoutMin: 60,
+		db:                   db,
+		toolsDir:             toolsDir,
+		agents:               make(map[string]*runningAgent),
+		broadcast:            broadcast,
+		client:               client,
+		GatewayModel:         llm.ModelHaiku,
+		BuilderModel:         llm.ModelSonnet,
+		MaxTurns:             300,
+		AgentTimeoutMin:      60,
+		AutoCompactEnabled:   true,
+		AutoCompactThreshold: 85,
+		ContextLimitOverride: 0,
 	}
 }
 

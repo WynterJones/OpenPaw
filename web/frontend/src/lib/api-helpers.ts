@@ -26,6 +26,8 @@ import type {
   ConfirmationCard,
   ToolSummaryCard,
   WidgetPayload,
+  TerminalSession,
+  Workbench,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -275,6 +277,24 @@ export const toolExtra = {
     return res.json();
   },
   integrity: (id: string) => api.get<ToolIntegrityInfo>(`/tools/${id}/integrity`),
+};
+
+// Terminal API helpers
+export const terminalApi = {
+  list: (workbenchId?: string) => {
+    const qs = workbenchId ? `?workbench_id=${encodeURIComponent(workbenchId)}` : '';
+    return api.get<TerminalSession[]>(`/terminal/sessions${qs}`);
+  },
+  create: (body: { title?: string; cols?: number; rows?: number; color?: string; workbench_id?: string }) =>
+    api.post<TerminalSession>('/terminal/sessions', body),
+  get: (id: string) => api.get<TerminalSession>(`/terminal/sessions/${id}`),
+  update: (id: string, data: { title?: string; color?: string }) =>
+    api.put<TerminalSession>(`/terminal/sessions/${id}`, data),
+  delete: (id: string) => api.delete<void>(`/terminal/sessions/${id}`),
+  listWorkbenches: () => api.get<Workbench[]>('/terminal/workbenches'),
+  createWorkbench: (name: string) => api.post<Workbench>('/terminal/workbenches', { name }),
+  updateWorkbench: (id: string, name: string) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, { name }),
+  deleteWorkbench: (id: string) => api.delete<{ status: string }>(`/terminal/workbenches/${id}`),
 };
 
 // Secrets API helpers

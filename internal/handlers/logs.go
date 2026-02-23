@@ -92,49 +92,26 @@ func (h *LogsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogsHandler) Stats(w http.ResponseWriter, r *http.Request) {
-	// Backfill live counters if they are zero but chat_messages exist
-	h.backfillLiveCounters()
-
+	// Archived counters preserve costs from deleted threads/messages
 	var archivedCost, archivedInTok, archivedOutTok, archivedActivity float64
 	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='archived_cost_usd'").Scan(&archivedCost)
 	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='archived_input_tokens'").Scan(&archivedInTok)
 	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='archived_output_tokens'").Scan(&archivedOutTok)
 	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='archived_activity_count'").Scan(&archivedActivity)
 
-	var liveCost, liveInTok, liveOutTok float64
-	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='live_cost_usd'").Scan(&liveCost)
-	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='live_input_tokens'").Scan(&liveInTok)
-	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='live_output_tokens'").Scan(&liveOutTok)
+	// Live totals: always compute from chat_messages (source of truth)
+	var liveCost float64
+	var liveInTok, liveOutTok int
+	h.db.QueryRow("SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM chat_messages").Scan(&liveCost, &liveInTok, &liveOutTok)
 
 	var liveActivity int
 	h.db.QueryRow("SELECT COUNT(*) FROM audit_logs").Scan(&liveActivity)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"total_cost_usd": archivedCost + liveCost,
-		"total_tokens":   int(archivedInTok) + int(archivedOutTok) + int(liveInTok) + int(liveOutTok),
+		"total_tokens":   int(archivedInTok) + int(archivedOutTok) + liveInTok + liveOutTok,
 		"total_activity": int(archivedActivity) + liveActivity,
 	})
-}
-
-// backfillLiveCounters does a one-time scan of chat_messages to populate live counters
-// when the counters are zero but messages with costs exist (upgrade from pre-counter schema).
-func (h *LogsHandler) backfillLiveCounters() {
-	var liveCost float64
-	h.db.QueryRow("SELECT COALESCE(value,0) FROM system_stats WHERE key='live_cost_usd'").Scan(&liveCost)
-	if liveCost > 0 {
-		return // already populated
-	}
-
-	var scanCost float64
-	var scanIn, scanOut int
-	h.db.QueryRow("SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM chat_messages").Scan(&scanCost, &scanIn, &scanOut)
-	if scanCost == 0 && scanIn == 0 && scanOut == 0 {
-		return // no data to backfill
-	}
-
-	h.db.Exec("UPDATE system_stats SET value = ? WHERE key = 'live_cost_usd'", scanCost)
-	h.db.Exec("UPDATE system_stats SET value = ? WHERE key = 'live_input_tokens'", float64(scanIn))
-	h.db.Exec("UPDATE system_stats SET value = ? WHERE key = 'live_output_tokens'", float64(scanOut))
 }
 
 func (h *LogsHandler) ToolLogs(w http.ResponseWriter, r *http.Request) {

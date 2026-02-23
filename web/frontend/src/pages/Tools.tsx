@@ -902,6 +902,7 @@ export function Tools() {
               totalCount={folderGrouping.totalCount}
               selectedFolder={folderGrouping.selectedFolder}
               onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
+              onAddFolder={() => {}}
             />
             {loading ? (
               <div className="flex items-center justify-center py-16">

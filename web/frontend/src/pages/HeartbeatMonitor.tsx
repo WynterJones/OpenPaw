@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Heart, Play, Clock, CheckCircle, XCircle, Loader2, RefreshCw, Settings2, Search } from 'lucide-react';
+import { Heart, Play, Clock, CheckCircle, XCircle, Loader2, RefreshCw, Settings2, Bot } from 'lucide-react';
 import { Toggle } from '../components/Toggle';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
@@ -10,6 +10,7 @@ import { Pagination } from '../components/Pagination';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { SearchBar } from '../components/SearchBar';
 import { useToast } from '../components/Toast';
 import { useWebSocket } from '../lib/useWebSocket';
 import {
@@ -148,6 +149,8 @@ const TIMEZONE_OPTIONS = [
   'Asia/Kolkata', 'Australia/Sydney', 'Pacific/Auckland',
 ];
 
+type Tab = 'agents' | 'executions';
+
 const PAGE_SIZE = 10;
 
 export function HeartbeatMonitor() {
@@ -159,6 +162,7 @@ export function HeartbeatMonitor() {
   const [agents, setAgents] = useState<AgentRole[]>([]);
   const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [tab, setTab] = useState<Tab>('agents');
 
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
@@ -284,9 +288,15 @@ export function HeartbeatMonitor() {
   const isEnabled = config?.heartbeat_enabled === 'true';
   const activeExecutions = executions.filter(e => e.status === 'running');
   const pastExecutions = executions.filter(e => e.status !== 'running');
+  const allExecutions = [...activeExecutions, ...pastExecutions];
   const enabledAgents = agents.filter(a => a.enabled && a.heartbeat_enabled);
   const intervalLabel = config?.heartbeat_interval_sec ? formatInterval(Number(config.heartbeat_interval_sec)) : '—';
   const totalPages = Math.ceil(totalExecs / PAGE_SIZE);
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { key: 'agents', label: 'Agents', icon: <Bot className="w-3.5 h-3.5" />, count: agents.filter(a => a.enabled).length },
+    { key: 'executions', label: 'Executions', icon: <Clock className="w-3.5 h-3.5" />, count: totalExecs },
+  ];
 
   return (
     <div className="flex flex-col h-full">
@@ -295,7 +305,7 @@ export function HeartbeatMonitor() {
         actions={
           <div className="flex items-center gap-2">
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
               onClick={() => setShowSettings(!showSettings)}
               icon={<Settings2 className="w-3.5 h-3.5" />}
@@ -316,7 +326,7 @@ export function HeartbeatMonitor() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
 
           <Card>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -376,147 +386,134 @@ export function HeartbeatMonitor() {
             </Card>
           )}
 
-          {activeExecutions.length > 0 && (
+          <div className="flex items-center gap-1 border-b border-border-0" role="tablist">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                  tab === t.key
+                    ? 'border-accent-primary text-accent-primary'
+                    : 'border-transparent text-text-3 hover:text-text-1'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+                {t.count !== undefined && t.count > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                    tab === t.key ? 'bg-accent-primary/10 text-accent-primary' : 'bg-surface-3 text-text-3'
+                  }`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'agents' && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3 flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-primary" />
-                Active
-              </h3>
-              <div className="space-y-2">
-                {activeExecutions.map(exec => {
-                  const agent = agents.find(a => a.slug === exec.agent_role_slug);
-                  return (
-                    <Card key={exec.id}>
-                      <div className="flex items-center gap-3">
-                        {agent?.avatar_path && (
-                          <img src={agent.avatar_path} alt="" className="w-8 h-8 rounded-lg flex-shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-text-0">{agent?.name || exec.agent_role_slug}</p>
-                          <p className="text-xs text-text-3">Running since {timeAgo(exec.started_at)}</p>
-                        </div>
-                        <StatusBadge status="running" />
+              {agents.filter(a => a.enabled).length === 0 ? (
+                <EmptyState icon={<Heart className="w-8 h-8" />} title="No agents" description="Create agents to enable heartbeat." />
+              ) : (
+                <div className="space-y-1.5">
+                  {agents.filter(a => a.enabled).map(agent => (
+                    <div key={agent.slug} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-surface-1 border border-border-0">
+                      {agent.avatar_path && (
+                        <img src={agent.avatar_path} alt="" className="w-7 h-7 rounded-lg flex-shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-0 truncate">{agent.name}</p>
+                        <p className="text-[11px] text-text-3 truncate">{agent.description || agent.slug}</p>
                       </div>
-                    </Card>
-                  );
-                })}
-              </div>
+                      <Toggle enabled={agent.heartbeat_enabled} onChange={() => handleToggleAgent(agent.slug, agent.heartbeat_enabled)} label={`Enable heartbeat for ${agent.name}`} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3 flex items-center gap-2">
-              <Heart className="w-3.5 h-3.5" />
-              Agents
-            </h3>
-            {agents.filter(a => a.enabled).length === 0 ? (
-              <EmptyState icon={<Heart className="w-8 h-8" />} title="No agents" description="Create agents to enable heartbeat." />
-            ) : (
-              <div className="space-y-1.5">
-                {agents.filter(a => a.enabled).map(agent => (
-                  <div key={agent.slug} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-surface-1 border border-border-0">
-                    {agent.avatar_path && (
-                      <img src={agent.avatar_path} alt="" className="w-7 h-7 rounded-lg flex-shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-text-0 truncate">{agent.name}</p>
-                      <p className="text-[11px] text-text-3 truncate">{agent.description || agent.slug}</p>
-                    </div>
-                    <Toggle enabled={agent.heartbeat_enabled} onChange={() => handleToggleAgent(agent.slug, agent.heartbeat_enabled)} label={`Enable heartbeat for ${agent.name}`} />
-                  </div>
-                ))}
+          {tab === 'executions' && (
+            <div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 mb-4">
+                <SearchBar
+                  value={search}
+                  onChange={handleSearchChange}
+                  placeholder="Search executions..."
+                  className="flex-1 sm:max-w-sm"
+                />
+                <Button variant="secondary" size="sm" onClick={() => fetchExecutions(page, debouncedSearch)} icon={<RefreshCw className="w-4 h-4" />}>
+                  <span className="hidden sm:inline">Refresh</span>
+                </Button>
               </div>
-            )}
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3 flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5" />
-                Executions
-              </h3>
-              <button
-                onClick={() => fetchExecutions(page, debouncedSearch)}
-                aria-label="Refresh executions"
-                className="p-1 rounded text-text-3 hover:text-text-1 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="relative mb-3">
-              <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-3 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search executions..."
-                value={search}
-                onChange={e => handleSearchChange(e.target.value)}
-                aria-label="Search executions"
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-border-1 bg-surface-0 text-sm text-text-1 placeholder:text-text-3"
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                total={totalExecs}
+                onPageChange={setPage}
+                label="executions"
               />
-            </div>
 
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={totalExecs}
-              onPageChange={setPage}
-              label="executions"
-            />
-
-            {pastExecutions.length === 0 && activeExecutions.length === 0 ? (
-              <EmptyState
-                icon={<Clock className="w-8 h-8" />}
-                title={debouncedSearch ? 'No matching executions' : 'No executions yet'}
-                description={debouncedSearch ? 'Try a different search term.' : 'Heartbeat executions will appear here after the first cycle.'}
-              />
-            ) : (
-              <div className="space-y-1.5">
-                {pastExecutions.map(exec => {
-                  const agent = agents.find(a => a.slug === exec.agent_role_slug);
-                  const actions = parseActions(exec.actions_taken);
-                  return (
-                    <button
-                      key={exec.id}
-                      onClick={() => setSelectedExec(exec)}
-                      className="w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg bg-surface-1 border border-border-0 hover:border-border-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
-                    >
-                      <div className="mt-0.5 flex-shrink-0">
-                        {exec.status === 'completed' ? (
-                          <CheckCircle className="w-4 h-4 text-green-400" />
-                        ) : (
-                          <XCircle className="w-4 h-4 text-red-400" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {agent?.avatar_path && (
-                            <img src={agent.avatar_path} alt="" className="w-4 h-4 rounded" />
+              {allExecutions.length === 0 ? (
+                <EmptyState
+                  icon={<Clock className="w-8 h-8" />}
+                  title={debouncedSearch ? 'No matching executions' : 'No executions yet'}
+                  description={debouncedSearch ? 'Try a different search term.' : 'Heartbeat executions will appear here after the first cycle.'}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  {allExecutions.map(exec => {
+                    const agent = agents.find(a => a.slug === exec.agent_role_slug);
+                    const actions = parseActions(exec.actions_taken);
+                    const isRunning = exec.status === 'running';
+                    return (
+                      <button
+                        key={exec.id}
+                        onClick={() => setSelectedExec(exec)}
+                        className="w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg bg-surface-1 border border-border-0 hover:border-border-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
+                      >
+                        <div className="mt-0.5 flex-shrink-0">
+                          {isRunning ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-accent-primary" />
+                          ) : exec.status === 'completed' ? (
+                            <CheckCircle className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-400" />
                           )}
-                          <p className="text-xs font-medium text-text-0">{agent?.name || exec.agent_role_slug}</p>
-                          <span className="text-[10px] text-text-3">{timeAgo(exec.started_at)}</span>
-                          <span className="text-[10px] text-text-3">{formatDuration(exec.started_at, exec.finished_at)}</span>
                         </div>
-                        {actions.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {actions.map((a, i) => (
-                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-2 truncate max-w-[200px]">{a}</span>
-                            ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {agent?.avatar_path && (
+                              <img src={agent.avatar_path} alt="" className="w-4 h-4 rounded" />
+                            )}
+                            <p className="text-xs font-medium text-text-0">{agent?.name || exec.agent_role_slug}</p>
+                            <span className="text-[10px] text-text-3">{timeAgo(exec.started_at)}</span>
+                            <span className="text-[10px] text-text-3">{formatDuration(exec.started_at, exec.finished_at)}</span>
                           </div>
-                        )}
-                        {exec.error && (
-                          <p className="text-[10px] text-red-400 mt-1 truncate">{exec.error}</p>
-                        )}
-                        {exec.cost_usd > 0 && (
-                          <p className="text-[10px] text-text-3 mt-0.5">${exec.cost_usd.toFixed(4)} &middot; {exec.input_tokens + exec.output_tokens} tokens</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                          {actions.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {actions.map((a, i) => (
+                                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-2 truncate max-w-[200px]">{a}</span>
+                              ))}
+                            </div>
+                          )}
+                          {exec.error && (
+                            <p className="text-[10px] text-red-400 mt-1 truncate">{exec.error}</p>
+                          )}
+                          {exec.cost_usd > 0 && (
+                            <p className="text-[10px] text-text-3 mt-0.5">${exec.cost_usd.toFixed(4)} &middot; {exec.input_tokens + exec.output_tokens} tokens</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

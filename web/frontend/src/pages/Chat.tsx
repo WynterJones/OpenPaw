@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2, Trash2, Pencil, Check, X,
-  DollarSign, Zap, Minimize2, Square, Users,
+  Coins, Zap, Minimize2, Square, Users,
   Paperclip, FileText, FolderOpen,
 } from 'lucide-react';
 import { Header } from '../components/Header';
@@ -357,6 +357,11 @@ export function Chat() {
           setTimeout(() => setRoutingIndicator(null), 3000);
           break;
         }
+        case 'compacting':
+          setThinking(true);
+          setWorkStatus(message || 'Auto-compacting context...');
+          setRoutingIndicator(null);
+          break;
         case 'analyzing':
         case 'thinking':
         case 'spawning':
@@ -906,7 +911,10 @@ export function Chat() {
                       <p className="text-xs text-text-3 mt-0.5">
                         {activeThreadIds.has(thread.id)
                           ? <span className="text-accent-primary">Working...</span>
-                          : timeAgo(thread.updated_at)
+                          : <>
+                              {timeAgo(thread.updated_at)}
+                              {thread.total_cost_usd > 0 && <span className="ml-2 text-text-3/70">${thread.total_cost_usd < 0.01 ? thread.total_cost_usd.toFixed(4) : thread.total_cost_usd.toFixed(2)}</span>}
+                            </>
                         }
                       </p>
                     </button>
@@ -959,7 +967,7 @@ export function Chat() {
             <>
               {threadStats && threadStats.message_count > 0 && (
                 <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border-0 bg-surface-1/80 text-[11px] text-text-3">
-                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
+                  <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
                   <span className="flex items-center gap-1"><Zap className="w-3 h-3" aria-hidden="true" />{((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0)).toLocaleString()} tokens</span>
                   <div className="flex items-center gap-1.5 flex-1">
                     <div
@@ -981,20 +989,18 @@ export function Chat() {
                         style={{ width: `${Math.min(100, (threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}%` }}
                       />
                     </div>
-                    <span>{Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}% context</span>
+                    <span>{Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}% of {threadStats.context_limit_tokens >= 1000000 ? `${(threadStats.context_limit_tokens / 1000000).toFixed(1)}M` : `${Math.round(threadStats.context_limit_tokens / 1000)}k`}</span>
                   </div>
-                  {(threadStats.context_used_tokens / threadStats.context_limit_tokens) > 0.5 && (
-                    <button
-                      onClick={() => setShowCompactConfirm(true)}
-                      disabled={compacting}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50"
-                      title="Compact chat"
-                      aria-label="Compact chat"
-                    >
-                      {compacting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Minimize2 className="w-3 h-3" aria-hidden="true" />}
-                      Compact
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowCompactConfirm(true)}
+                    disabled={compacting}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Compact chat"
+                    aria-label="Compact chat"
+                  >
+                    {compacting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Minimize2 className="w-3 h-3" aria-hidden="true" />}
+                    Compact
+                  </button>
                   <button
                     onClick={() => setShowMembers(!showMembers)}
                     className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${showMembers ? 'text-accent-primary bg-accent-muted' : 'text-text-2 hover:text-text-1 hover:bg-surface-2'}`}

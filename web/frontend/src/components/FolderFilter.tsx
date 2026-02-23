@@ -1,4 +1,5 @@
-import { FolderOpen } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { FolderOpen, Plus } from 'lucide-react';
 
 interface FolderFilterProps {
   folders: string[];
@@ -7,6 +8,7 @@ interface FolderFilterProps {
   totalCount: number;
   selectedFolder: string | null;
   onSelect: (folder: string | null) => void;
+  onAddFolder?: (name: string) => void;
 }
 
 export function FolderFilter({
@@ -16,8 +18,26 @@ export function FolderFilter({
   totalCount,
   selectedFolder,
   onSelect,
+  onAddFolder,
 }: FolderFilterProps) {
-  if (folders.length === 0 && unfiledCount === totalCount) return null;
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (adding) inputRef.current?.focus();
+  }, [adding]);
+
+  const handleSubmit = () => {
+    const trimmed = newName.trim();
+    if (trimmed && !folders.includes(trimmed)) {
+      onAddFolder?.(trimmed);
+    }
+    setNewName('');
+    setAdding(false);
+  };
+
+  if (folders.length === 0 && unfiledCount === totalCount && !onAddFolder) return null;
 
   const pill = (
     label: string,
@@ -54,6 +74,30 @@ export function FolderFilter({
       {pill('All', totalCount, null, '_all')}
       {folders.map((f) => pill(f, folderCounts.get(f) || 0, f, f))}
       {unfiledCount > 0 && pill('Unfiled', unfiledCount, '', '_unfiled')}
+      {onAddFolder && (
+        adding ? (
+          <input
+            ref={inputRef}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSubmit();
+              if (e.key === 'Escape') { setNewName(''); setAdding(false); }
+            }}
+            onBlur={handleSubmit}
+            placeholder="Folder name..."
+            className="px-2.5 py-1 rounded-full text-xs bg-surface-2 border border-accent-primary/30 text-text-0 placeholder:text-text-3/50 focus:outline-none focus:ring-1 focus:ring-accent-primary w-32"
+          />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer bg-surface-2 text-text-3 border border-dashed border-border-1 hover:border-accent-primary/30 hover:text-accent-primary"
+          >
+            <Plus className="w-3 h-3" />
+            Add Folder
+          </button>
+        )
+      )}
     </div>
   );
 }

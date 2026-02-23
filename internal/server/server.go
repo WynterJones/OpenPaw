@@ -11,6 +11,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/openpaw/openpaw/internal/agents"
+	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -21,6 +22,7 @@ import (
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
+	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	ws "github.com/openpaw/openpaw/internal/websocket"
 )
@@ -36,7 +38,9 @@ type Server struct {
 	ToolMgr      *toolmgr.Manager
 	BrowserMgr   *browser.Manager
 	HeartbeatMgr *heartbeat.Manager
+	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	TerminalMgr  *terminal.Manager
 }
 
 type Config struct {
@@ -48,7 +52,9 @@ type Config struct {
 	ToolMgr      *toolmgr.Manager
 	BrowserMgr   *browser.Manager
 	HeartbeatMgr *heartbeat.Manager
+	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
 	FrontendFS   fs.FS
 	ToolsDir     string
@@ -68,7 +74,9 @@ func New(cfg Config) *Server {
 		ToolMgr:      cfg.ToolMgr,
 		BrowserMgr:   cfg.BrowserMgr,
 		HeartbeatMgr: cfg.HeartbeatMgr,
+		BackupMgr:    cfg.BackupMgr,
 		MemoryMgr:    cfg.MemoryMgr,
+		TerminalMgr:  cfg.TerminalMgr,
 	}
 
 	s.setupMiddleware()
@@ -91,7 +99,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
 	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
-	secretsHandler := handlers.NewSecretsHandler(s.DB, s.Secrets)
+	secretsHandler := handlers.NewSecretsHandler(s.DB, s.Secrets, toolMgr)
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
@@ -106,11 +114,13 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	browserHandler := handlers.NewBrowserHandler(s.DB, s.BrowserMgr)
 	notificationsHandler := handlers.NewNotificationsHandler(s.DB)
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
+	backupHandler := handlers.NewBackupHandler(s.DB, s.BackupMgr)
 	memoryHandler := handlers.NewMemoryHandler(s.MemoryMgr)
 	toolLibraryHandler := handlers.NewToolLibraryHandler(s.DB, toolMgr, toolsDir, secretsMgr)
 	agentLibraryHandler := handlers.NewAgentLibraryHandler(s.DB, dataDir)
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
 	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
+	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -151,6 +161,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
+
+		// Terminal WebSocket (auth handled internally)
+		r.Get("/terminal/ws/{sessionId}", terminalHandler.HandleWS)
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
@@ -386,6 +399,29 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/config", heartbeatHandler.UpdateConfig)
 				r.Get("/history", heartbeatHandler.ListExecutions)
 				r.Post("/run-now", heartbeatHandler.RunNow)
+			})
+
+			// Backup
+			r.Route("/settings/backup", func(r chi.Router) {
+				r.Get("/", backupHandler.GetConfig)
+				r.Put("/", backupHandler.UpdateConfig)
+				r.Post("/run", backupHandler.RunNow)
+				r.Post("/test", backupHandler.TestConnection)
+				r.Get("/history", backupHandler.ListHistory)
+				r.Get("/detect-git", backupHandler.DetectGit)
+			})
+
+			// Terminal
+			r.Route("/terminal", func(r chi.Router) {
+				r.Get("/sessions", terminalHandler.ListSessions)
+				r.Post("/sessions", terminalHandler.CreateSession)
+				r.Get("/sessions/{id}", terminalHandler.GetSession)
+				r.Put("/sessions/{id}", terminalHandler.UpdateSession)
+				r.Delete("/sessions/{id}", terminalHandler.DeleteSession)
+				r.Get("/workbenches", terminalHandler.ListWorkbenches)
+				r.Post("/workbenches", terminalHandler.CreateWorkbench)
+				r.Put("/workbenches/{id}", terminalHandler.UpdateWorkbench)
+				r.Delete("/workbenches/{id}", terminalHandler.DeleteWorkbench)
 			})
 
 			// Logs

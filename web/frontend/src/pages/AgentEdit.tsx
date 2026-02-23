@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search, FolderOpen } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { Toggle } from '../components/Toggle';
+import { FolderAssign } from '../components/FolderAssign';
 import { api, agentFiles, agentMemories, agentSkills, skills as skillsApi, type AgentRole, type Skill, type MemoryItem, type Tool } from '../lib/api';
 
 interface AgentTool extends Tool {
@@ -47,6 +48,8 @@ export function AgentEdit() {
   const [description, setDescription] = useState('');
   const [model, setModel] = useState('anthropic/claude-sonnet-4-6');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [folder, setFolder] = useState('');
+  const [allFolders, setAllFolders] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [modelSearch, setModelSearch] = useState('');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -126,6 +129,10 @@ export function AgentEdit() {
 
   useEffect(() => {
     if (!slug) return;
+    api.get<AgentRole[]>('/agent-roles').then(roles => {
+      const folders = [...new Set(roles.map(r => r.folder).filter(Boolean))].sort();
+      setAllFolders(folders);
+    }).catch(() => {});
     api.get<AgentRole>(`/agent-roles/${slug}`)
       .then(data => {
         setRole(data);
@@ -134,6 +141,7 @@ export function AgentEdit() {
         setModel(data.model);
         setSystemPrompt(data.system_prompt);
         setAvatarPath(data.avatar_path);
+        setFolder(data.folder || '');
 
         if (data.identity_initialized) {
           loadFiles(slug);
@@ -181,6 +189,19 @@ export function AgentEdit() {
     }
   };
 
+  const handleFolderChange = async (newFolder: string) => {
+    if (!slug) return;
+    setFolder(newFolder);
+    try {
+      await api.put<AgentRole>(`/agent-roles/${slug}`, { folder: newFolder });
+      if (newFolder && !allFolders.includes(newFolder)) {
+        setAllFolders(prev => [...prev, newFolder].sort());
+      }
+    } catch {
+      toast('error', 'Failed to update folder');
+    }
+  };
+
   const handleSave = async () => {
     if (!slug || !name.trim()) {
       toast('error', 'Name is required');
@@ -194,6 +215,7 @@ export function AgentEdit() {
         system_prompt: systemPrompt,
         model,
         avatar_path: avatarPath,
+        folder,
       });
       setRole(updated);
       toast('success', 'Agent saved');
@@ -351,7 +373,8 @@ export function AgentEdit() {
     description !== role.description ||
     model !== role.model ||
     systemPrompt !== role.system_prompt ||
-    avatarPath !== role.avatar_path
+    avatarPath !== role.avatar_path ||
+    folder !== (role.folder || '')
   );
 
   if (loading) {
@@ -460,6 +483,13 @@ export function AgentEdit() {
                 <div className="space-y-4">
                   <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="Agent name" />
                   <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="What does this agent do?" />
+                  <div>
+                    <label className="block text-xs font-medium text-text-2 mb-1.5 flex items-center gap-1.5">
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      Folder
+                    </label>
+                    <FolderAssign value={folder} folders={allFolders} onChange={handleFolderChange} />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-text-2 mb-1.5">Model</label>
                     <div className="relative">

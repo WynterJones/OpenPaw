@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/openpaw/openpaw/internal/agents"
+	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
 	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
@@ -28,6 +29,7 @@ import (
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
 	"github.com/openpaw/openpaw/internal/server"
+	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	"github.com/openpaw/openpaw/internal/updater"
 	ws "github.com/openpaw/openpaw/internal/websocket"
@@ -261,6 +263,14 @@ func main() {
 	heartbeatMgr := heartbeat.New(db, agentMgr, broadcastFn, cfg.DataDir)
 	heartbeatMgr.LoadConfig()
 
+	// Create terminal manager
+	workDir, _ := os.Getwd()
+	terminalMgr := terminal.NewManager(db, workDir)
+
+	// Create backup manager
+	backupMgr := backup.New(db, secretsMgr, cfg.DataDir, broadcastFn)
+	backupMgr.LoadConfig()
+
 	// Wire scheduler dependencies and load schedules
 	sched.SetPromptSender(agentMgr)
 	sched.SetNotifyFunc(notifyFn)
@@ -290,6 +300,25 @@ func main() {
 		}
 	}
 
+	// Load auto-compact settings
+	var autoCompactEnabled, autoCompactThreshold, contextLimitOverride string
+	db.QueryRow("SELECT value FROM settings WHERE key = 'auto_compact_enabled'").Scan(&autoCompactEnabled)
+	db.QueryRow("SELECT value FROM settings WHERE key = 'auto_compact_threshold'").Scan(&autoCompactThreshold)
+	db.QueryRow("SELECT value FROM settings WHERE key = 'context_limit_override'").Scan(&contextLimitOverride)
+	if autoCompactEnabled == "false" {
+		agentMgr.AutoCompactEnabled = false
+	}
+	if autoCompactThreshold != "" {
+		if v, err := strconv.Atoi(autoCompactThreshold); err == nil && v >= 50 && v <= 99 {
+			agentMgr.AutoCompactThreshold = v
+		}
+	}
+	if contextLimitOverride != "" {
+		if v, err := strconv.Atoi(contextLimitOverride); err == nil && v >= 0 {
+			agentMgr.ContextLimitOverride = v
+		}
+	}
+
 	// Create server
 	srv := server.New(server.Config{
 		DB:           db,
@@ -300,7 +329,9 @@ func main() {
 		ToolMgr:      toolMgr,
 		BrowserMgr:   browserMgr,
 		HeartbeatMgr: heartbeatMgr,
+		BackupMgr:    backupMgr,
 		MemoryMgr:    memoryMgr,
+		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
 		FrontendFS:   frontendFS,
 		ToolsDir:     toolsDir,
@@ -317,6 +348,9 @@ func main() {
 
 	// Start heartbeat manager
 	heartbeatMgr.Start()
+
+	// Start backup manager
+	backupMgr.Start()
 
 	// Check if setup is needed
 	hasAdmin, err := db.HasAdminUser()
@@ -359,6 +393,12 @@ func main() {
 
 	// Shut down heartbeat manager
 	heartbeatMgr.Stop()
+
+	// Shut down backup manager
+	backupMgr.Stop()
+
+	// Shut down terminal sessions
+	terminalMgr.Shutdown()
 
 	// Shut down browser sessions
 	browserMgr.Shutdown()

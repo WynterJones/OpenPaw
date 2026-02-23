@@ -243,6 +243,7 @@ export function Skills() {
                   totalCount={folderGrouping.totalCount}
                   selectedFolder={folderGrouping.selectedFolder}
                   onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
+                  onAddFolder={() => {}}
                 />
 
                 {searchFiltered.length === 0 ? (

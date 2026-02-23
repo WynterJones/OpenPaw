@@ -1,0 +1,1 @@
+ALTER TABLE secrets ADD COLUMN tool_id TEXT NOT NULL DEFAULT '';

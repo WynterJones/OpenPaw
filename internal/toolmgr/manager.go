@@ -747,6 +747,25 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 	return nil
 }
 
+func (m *Manager) FindToolsUsingSecret(secretName string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var ids []string
+	for toolID, rt := range m.tools {
+		if rt.Status != "running" && rt.Status != "starting" {
+			continue
+		}
+		for _, ev := range m.resolveToolEnvDefs(toolID) {
+			if ev.Name == secretName {
+				ids = append(ids, toolID)
+				break
+			}
+		}
+	}
+	return ids
+}
+
 func (m *Manager) setToolError(toolID, errMsg string) {
 	now := time.Now().UTC()
 	m.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID)

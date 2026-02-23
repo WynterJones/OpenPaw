@@ -12,6 +12,7 @@ import {
   BookOpen,
   Monitor,
   Heart,
+  TerminalSquare,
   ChevronRight,
   PanelLeftClose,
 } from "lucide-react";
@@ -38,7 +39,7 @@ const navGroups: NavGroup[] = [
   {
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
-      { to: "/agents", icon: Bot, label: "Agents" },
+      { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
       { to: "/browser", icon: Monitor, label: "Browsers" },
       { to: "/context", icon: BookOpen, label: "Context" },
     ],
@@ -51,6 +52,7 @@ const navGroups: NavGroup[] = [
   },
   {
     items: [
+      { to: "/agents", icon: Bot, label: "Agents" },
       { to: "/tools", icon: Wrench, label: "Tools" },
       { to: "/skills", icon: Sparkles, label: "Skills" },
       { to: "/library", icon: BookOpen, label: "Library" },

@@ -202,7 +202,7 @@ export function Header({ title, count, actions }: HeaderProps) {
             src="/cat-toolbar.webp"
             alt=""
             className="w-auto object-contain pointer-events-none select-none md:hidden"
-            style={{ position: "relative", bottom: "-3px", height: "130px" }}
+            style={{ position: "relative", bottom: "-3px", height: "55px" }}
           />
         )}
         <h1
@@ -258,12 +258,12 @@ export function Header({ title, count, actions }: HeaderProps) {
               aria-haspopup="true"
               className="flex items-center gap-2 p-1.5 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-full ring-2 ring-accent-primary/30 overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0">
+              <div className="w-8 h-8 rounded-md ring-2 ring-accent-primary/30 overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0">
                 {profilePic ? (
                   <img
                     src={profilePic}
                     alt="Profile"
-                    className="w-8 h-8 rounded-full object-cover"
+                    className="w-8 h-8 rounded-md object-cover"
                   />
                 ) : (
                   <User className="w-4 h-4 text-accent-primary" />

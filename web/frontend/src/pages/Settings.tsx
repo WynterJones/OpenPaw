@@ -29,6 +29,9 @@ import {
   Globe,
   Smartphone,
   ExternalLink,
+  Play,
+  GitBranch,
+  Loader2,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -62,6 +65,7 @@ const TABS = [
   { id: "design", label: "Design", icon: Paintbrush },
   { id: "security", label: "Security", icon: Shield },
   { id: "system", label: "System", icon: Server },
+  { id: "backup", label: "Backup", icon: HardDrive },
   { id: "about", label: "About", icon: Info },
   { id: "danger", label: "Danger", icon: Skull },
 ] as const;
@@ -861,6 +865,9 @@ function ModelsTab() {
   );
   const [maxTurns, setMaxTurns] = useState(300);
   const [agentTimeoutMin, setAgentTimeoutMin] = useState(60);
+  const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
+  const [autoCompactThreshold, setAutoCompactThreshold] = useState(85);
+  const [contextLimitOverride, setContextLimitOverride] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
@@ -875,6 +882,9 @@ function ModelsTab() {
         builder_model: string;
         max_turns: number;
         agent_timeout_min: number;
+        auto_compact_enabled: boolean;
+        auto_compact_threshold: number;
+        context_limit_override: number;
       }>("/settings/models")
       .then((data) => {
         setGatewayModel(data.gateway_model || "anthropic/claude-haiku-4-5");
@@ -882,6 +892,11 @@ function ModelsTab() {
         if (data.max_turns > 0) setMaxTurns(data.max_turns);
         if (data.agent_timeout_min > 0)
           setAgentTimeoutMin(data.agent_timeout_min);
+        setAutoCompactEnabled(data.auto_compact_enabled !== false);
+        if (data.auto_compact_threshold > 0)
+          setAutoCompactThreshold(data.auto_compact_threshold);
+        if (data.context_limit_override >= 0)
+          setContextLimitOverride(data.context_limit_override);
       })
       .catch(() => {});
     api
@@ -901,6 +916,9 @@ function ModelsTab() {
         builder_model: builderModel,
         max_turns: maxTurns,
         agent_timeout_min: agentTimeoutMin,
+        auto_compact_enabled: autoCompactEnabled,
+        auto_compact_threshold: autoCompactThreshold,
+        context_limit_override: contextLimitOverride,
       });
       toast("success", "Model settings saved");
     } catch (err) {
@@ -1040,6 +1058,96 @@ function ModelsTab() {
             }}
           />
           <p className="text-[11px] text-text-3 mt-1.5">Default: 60 minutes</p>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-1">
+          Auto-Compact
+        </h3>
+        <p className="text-xs text-text-3 mb-4">
+          Automatically compact chat threads when context usage exceeds the
+          threshold. Prevents API errors from exceeding the model's context
+          limit.
+        </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between max-w-xs">
+            <Toggle
+              enabled={autoCompactEnabled}
+              onChange={setAutoCompactEnabled}
+              label="Enable auto-compact"
+            />
+          </div>
+          {autoCompactEnabled && (
+            <div className="max-w-xs">
+              <Input
+                label="Threshold (%)"
+                type="number"
+                value={String(autoCompactThreshold)}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v) && v >= 50 && v <= 99)
+                    setAutoCompactThreshold(v);
+                }}
+              />
+              <p className="text-[11px] text-text-3 mt-1.5">
+                Compact when context usage exceeds this percentage (50-99).
+                Default: 85%
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-1">
+          Context Window Limit
+        </h3>
+        <p className="text-xs text-text-3 mb-4">
+          Override the context window size used for usage calculations and
+          auto-compact. Set to 0 to use the model's default limit.
+        </p>
+        <div className="max-w-xs">
+          <Select
+            value={
+              contextLimitOverride === 0
+                ? "0"
+                : contextLimitOverride === 200000
+                  ? "200000"
+                  : contextLimitOverride === 1000000
+                    ? "1000000"
+                    : "custom"
+            }
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "custom") return;
+              setContextLimitOverride(parseInt(val, 10));
+            }}
+            options={[
+              { value: "0", label: "Model default" },
+              { value: "200000", label: "200k tokens" },
+              { value: "1000000", label: "1M tokens" },
+              { value: "custom", label: "Custom..." },
+            ]}
+          />
+          {contextLimitOverride !== 0 &&
+            contextLimitOverride !== 200000 &&
+            contextLimitOverride !== 1000000 && (
+              <div className="mt-2">
+                <Input
+                  label="Custom token limit"
+                  type="number"
+                  value={String(contextLimitOverride)}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 0) setContextLimitOverride(v);
+                  }}
+                />
+              </div>
+            )}
+          <p className="text-[11px] text-text-3 mt-1.5">
+            0 = use the builder model's default context window
+          </p>
         </div>
       </Card>
 
@@ -1966,7 +2074,6 @@ function SecurityTab() {
 }
 
 function SystemTab() {
-  const { toast } = useToast();
   const [info, setInfo] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
@@ -1976,66 +2083,377 @@ function SystemTab() {
       .catch(() => {});
   }, []);
 
-  const exportData = async () => {
+  return (
+    <Card>
+      <h3 className="text-sm font-semibold text-text-1 mb-4">
+        System Information
+      </h3>
+      {info ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              { label: "Version", value: info.version, icon: Info },
+              { label: "Go Version", value: info.go_version, icon: Server },
+              {
+                label: "Platform",
+                value: `${info.os}/${info.arch}`,
+                icon: HardDrive,
+              },
+              { label: "Uptime", value: info.uptime, icon: Server },
+              { label: "Database Size", value: info.db_size, icon: Database },
+              {
+                label: "Tools",
+                value: String(info.tool_count),
+                icon: Settings2,
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-3 p-3 rounded-lg bg-surface-2"
+              >
+                <item.icon className="w-4 h-4 text-text-3" />
+                <div>
+                  <p className="text-xs text-text-3">{item.label}</p>
+                  <p className="text-sm font-medium text-text-1">
+                    {item.value}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <LoadingSpinner message="Loading system info..." />
+      )}
+    </Card>
+  );
+}
+
+interface BackupConfig {
+  enabled: boolean;
+  repo_url: string;
+  auth_method: string;
+  interval: string;
+  token_configured: boolean;
+  running: boolean;
+  last_status: string;
+  last_at: string;
+  last_error: string;
+  last_sha: string;
+}
+
+interface BackupExecution {
+  id: string;
+  status: string;
+  files_count: number;
+  commit_sha: string;
+  error: string;
+  started_at: string;
+  finished_at: string | null;
+}
+
+interface GitDetect {
+  name: string;
+  version: string;
+}
+
+function BackupTab() {
+  const { toast } = useToast();
+  const [config, setConfig] = useState<BackupConfig | null>(null);
+  const [gitInfo, setGitInfo] = useState<GitDetect | null>(null);
+  const [history, setHistory] = useState<BackupExecution[]>([]);
+
+  const [enabled, setEnabled] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [authMethod, setAuthMethod] = useState("token");
+  const [authToken, setAuthToken] = useState("");
+  const [interval, setInterval_] = useState("manual");
+
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [backing, setBacking] = useState(false);
+
+  const loadConfig = () => {
+    api
+      .get<BackupConfig>("/settings/backup")
+      .then((data) => {
+        setConfig(data);
+        setEnabled(data.enabled);
+        setRepoUrl(data.repo_url);
+        setAuthMethod(data.auth_method);
+        setInterval_(data.interval);
+        setBacking(data.running);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadConfig();
+    api
+      .get<GitDetect>("/settings/backup/detect-git")
+      .then(setGitInfo)
+      .catch(() => {});
+    api
+      .get<{ items: BackupExecution[]; total: number }>("/settings/backup/history?limit=10")
+      .then((data) => setHistory(data.items))
+      .catch(() => {});
+  }, []);
+
+  const saveConfig = async () => {
+    setSaving(true);
     try {
-      const blob = await fetch("/api/v1/system/export", {
-        credentials: "same-origin",
-      }).then((r) => r.blob());
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `openpaw-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast("success", "Data exported");
-    } catch (e) {
-      console.warn("exportData failed:", e);
-      toast("error", "Failed to export data");
+      const payload: Record<string, string> = {
+        backup_enabled: enabled ? "true" : "false",
+        backup_repo_url: repoUrl,
+        backup_auth_method: authMethod,
+        backup_interval: interval,
+      };
+      if (authToken) {
+        payload.backup_auth_token = authToken;
+      }
+      const data = await api.put<BackupConfig>("/settings/backup", payload);
+      setConfig(data);
+      setAuthToken("");
+      toast("success", "Backup settings saved");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setSaving(false);
     }
   };
 
+  const testConn = async () => {
+    setTesting(true);
+    try {
+      const result = await api.post<{ success: boolean; error?: string }>("/settings/backup/test", {
+        repo_url: repoUrl,
+        auth_token: authToken || undefined,
+        auth_method: authMethod,
+      });
+      if (result.success) {
+        toast("success", "Connection successful");
+      } else {
+        toast("error", result.error || "Connection failed");
+      }
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Connection test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const runBackup = async () => {
+    setBacking(true);
+    try {
+      await api.post("/settings/backup/run", {});
+      toast("success", "Backup started");
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const data = await api.get<BackupConfig>("/settings/backup");
+          setConfig(data);
+          if (!data.running) {
+            clearInterval(poll);
+            setBacking(false);
+            const hist = await api.get<{ items: BackupExecution[]; total: number }>("/settings/backup/history?limit=10");
+            setHistory(hist.items);
+            if (data.last_status === "success") {
+              toast("success", "Backup completed successfully");
+            } else if (data.last_status === "failed") {
+              toast("error", data.last_error || "Backup failed");
+            }
+          }
+        } catch {
+          clearInterval(poll);
+          setBacking(false);
+        }
+      }, 2000);
+    } catch (err) {
+      setBacking(false);
+      if (err instanceof Error && err.message.includes("already running")) {
+        toast("error", "A backup is already running");
+      } else {
+        toast("error", err instanceof Error ? err.message : "Failed to start backup");
+      }
+    }
+  };
+
+  const formatRelativeTime = (dateStr: string) => {
+    if (!dateStr) return "Never";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "Just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHrs = Math.floor(diffMin / 60);
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+    const diffDays = Math.floor(diffHrs / 24);
+    return `${diffDays}d ago`;
+  };
+
+  const formatDuration = (start: string, end: string | null) => {
+    if (!end) return "...";
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Card>
-        <h3 className="text-sm font-semibold text-text-1 mb-4">
-          System Information
-        </h3>
-        {info ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                { label: "Version", value: info.version, icon: Info },
-                { label: "Go Version", value: info.go_version, icon: Server },
-                {
-                  label: "Platform",
-                  value: `${info.os}/${info.arch}`,
-                  icon: HardDrive,
-                },
-                { label: "Uptime", value: info.uptime, icon: Server },
-                { label: "Database Size", value: info.db_size, icon: Database },
-                {
-                  label: "Tools",
-                  value: String(info.tool_count),
-                  icon: Settings2,
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-surface-2"
-                >
-                  <item.icon className="w-4 h-4 text-text-3" />
-                  <div>
-                    <p className="text-xs text-text-3">{item.label}</p>
-                    <p className="text-sm font-medium text-text-1">
-                      {item.value}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-accent-muted flex items-center justify-center">
+            <GitBranch className="w-4 h-4 text-accent-primary" />
           </div>
-        ) : (
-          <LoadingSpinner message="Loading system info..." />
+          <div>
+            <h3 className="text-sm font-semibold text-text-1">Configuration</h3>
+            <p className="text-xs text-text-3">
+              Back up your OpenPaw data to a GitHub repository
+            </p>
+          </div>
+        </div>
+
+        {gitInfo && (
+          <div className={`flex items-center gap-2 p-2.5 rounded-lg mb-4 ${
+            gitInfo.name !== "none"
+              ? "bg-green-500/5 border border-green-500/20"
+              : "bg-amber-500/5 border border-amber-500/20"
+          }`}>
+            {gitInfo.name !== "none" ? (
+              <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            )}
+            <p className={`text-xs font-medium ${
+              gitInfo.name !== "none" ? "text-green-400" : "text-amber-400"
+            }`}>
+              {gitInfo.name === "gh"
+                ? `GitHub CLI detected (${gitInfo.version})`
+                : gitInfo.name === "git"
+                  ? `Git detected (${gitInfo.version})`
+                  : "No git tool found — install git or GitHub CLI"}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-4 max-w-md">
+          <div className="flex items-center justify-between p-4 rounded-lg bg-surface-2">
+            <div>
+              <p className="text-sm font-medium text-text-1">Enable Automatic Backups</p>
+              <p className="text-xs text-text-3">Run backups on a schedule</p>
+            </div>
+            <Toggle enabled={enabled} onChange={setEnabled} label="Enable backups" />
+          </div>
+
+          <Input
+            label="Repository URL"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            placeholder="https://github.com/user/my-backup.git"
+          />
+
+          <Select
+            label="Authentication Method"
+            value={authMethod}
+            onChange={(e) => setAuthMethod(e.target.value)}
+            options={[
+              { value: "token", label: "Personal Access Token" },
+              { value: "gh_cli", label: "GitHub CLI (gh)" },
+            ]}
+          />
+
+          {authMethod === "token" && (
+            <Input
+              label="Personal Access Token"
+              type="password"
+              value={authToken}
+              onChange={(e) => setAuthToken(e.target.value)}
+              placeholder={config?.token_configured ? "Configured (enter new to change)" : "ghp_..."}
+            />
+          )}
+
+          <Select
+            label="Backup Interval"
+            value={interval}
+            onChange={(e) => setInterval_(e.target.value)}
+            options={[
+              { value: "manual", label: "Manual Only" },
+              { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" },
+            ]}
+          />
+
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button onClick={saveConfig} loading={saving} icon={<Save className="w-4 h-4" />}>
+              Save Settings
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={testConn}
+              loading={testing}
+              disabled={!repoUrl}
+              icon={<ExternalLink className="w-4 h-4" />}
+            >
+              Test Connection
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-1">Status</h3>
+            <p className="text-xs text-text-3">Current backup status and quick actions</p>
+          </div>
+          <Button
+            onClick={runBackup}
+            loading={backing}
+            disabled={!config?.repo_url}
+            icon={backing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          >
+            Backup Now
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3 rounded-lg bg-surface-2">
+            <p className="text-xs text-text-3 mb-1">Last Backup</p>
+            <p className="text-sm font-medium text-text-1">
+              {config?.last_at ? formatRelativeTime(config.last_at) : "Never"}
+            </p>
+            {config?.last_at && (
+              <p className="text-[11px] text-text-3 mt-0.5">
+                {new Date(config.last_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+          <div className="p-3 rounded-lg bg-surface-2">
+            <p className="text-xs text-text-3 mb-1">Status</p>
+            {config?.last_status ? (
+              <StatusBadge status={
+                config.last_status === "success" ? "success" :
+                config.last_status === "failed" ? "error" :
+                backing ? "running" : "pending"
+              } />
+            ) : (
+              <p className="text-sm text-text-2">No backups yet</p>
+            )}
+          </div>
+          <div className="p-3 rounded-lg bg-surface-2">
+            <p className="text-xs text-text-3 mb-1">Last Commit</p>
+            <p className="text-sm font-mono font-medium text-text-1">
+              {config?.last_sha || "—"}
+            </p>
+          </div>
+        </div>
+
+        {config?.last_status === "failed" && config.last_error && (
+          <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">{config.last_error}</p>
+          </div>
         )}
       </Card>
 
@@ -2046,7 +2464,22 @@ function SystemTab() {
         <div className="flex flex-wrap gap-2 md:gap-3">
           <Button
             variant="secondary"
-            onClick={exportData}
+            onClick={async () => {
+              try {
+                const blob = await fetch("/api/v1/system/export", {
+                  credentials: "same-origin",
+                }).then((r) => r.blob());
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `openpaw-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast("success", "Data exported");
+              } catch {
+                toast("error", "Failed to export data");
+              }
+            }}
             icon={<Download className="w-4 h-4" />}
           >
             Export Data
@@ -2056,6 +2489,64 @@ function SystemTab() {
           </Button>
         </div>
       </Card>
+
+      {history.length > 0 && (
+        <Card padding={false}>
+          <div className="px-4 pt-4 pb-2">
+            <h3 className="text-sm font-semibold text-text-1">History</h3>
+          </div>
+          <DataTable
+            columns={[
+              {
+                key: "status",
+                header: "Status",
+                render: (item: BackupExecution) => (
+                  <StatusBadge status={
+                    item.status === "success" ? "success" :
+                    item.status === "failed" ? "error" : "running"
+                  } />
+                ),
+              },
+              {
+                key: "files",
+                header: "Files",
+                render: (item: BackupExecution) => (
+                  <span className="text-sm text-text-2">{item.files_count}</span>
+                ),
+              },
+              {
+                key: "sha",
+                header: "SHA",
+                render: (item: BackupExecution) => (
+                  <span className="text-sm font-mono text-text-2">
+                    {item.commit_sha || "—"}
+                  </span>
+                ),
+              },
+              {
+                key: "time",
+                header: "Time",
+                render: (item: BackupExecution) => (
+                  <span className="text-sm text-text-2">
+                    {formatRelativeTime(item.started_at)}
+                  </span>
+                ),
+              },
+              {
+                key: "duration",
+                header: "Duration",
+                render: (item: BackupExecution) => (
+                  <span className="text-sm text-text-2">
+                    {formatDuration(item.started_at, item.finished_at)}
+                  </span>
+                ),
+              },
+            ]}
+            data={history}
+            keyExtractor={(item) => item.id}
+          />
+        </Card>
+      )}
     </div>
   );
 }
@@ -2323,6 +2814,7 @@ export function Settings() {
     design: <DesignTab />,
     security: <SecurityTab />,
     system: <SystemTab />,
+    backup: <BackupTab />,
     about: <AboutTab />,
     danger: <DangerTab />,
   };

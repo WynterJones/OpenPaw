@@ -21,6 +21,7 @@ const Skills = lazy(() => import('./pages/Skills').then(m => ({ default: m.Skill
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Context = lazy(() => import('./pages/Context').then(m => ({ default: m.Context })));
 const Browser = lazy(() => import('./pages/Browser').then(m => ({ default: m.Browser })));
+const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const HeartbeatMonitor = lazy(() => import('./pages/HeartbeatMonitor').then(m => ({ default: m.HeartbeatMonitor })));
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
 
@@ -82,6 +83,7 @@ function AppRoutes() {
         <Route path="/logs" element={<Logs />} />
         <Route path="/context" element={<Context />} />
         <Route path="/browser" element={<Browser />} />
+        <Route path="/workbench" element={<Workbench />} />
         <Route path="/heartbeat" element={<HeartbeatMonitor />} />
         <Route path="/library" element={<Library />} />
         <Route path="/settings" element={<Settings />} />

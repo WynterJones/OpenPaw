@@ -110,21 +110,8 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if h.toolMgr != nil {
-		if err := h.toolMgr.CompileTool(toolID); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("compile failed: %v", err))
-			return
-		}
-		if err := h.toolMgr.StartTool(toolID); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("start failed: %v", err))
-			return
-		}
-	}
-
-	userID := middleware.GetUserID(r.Context())
-	h.db.LogAudit(userID, "library_tool_installed", "tool", "tool", toolID, slug)
-
 	// Create placeholder secrets for required env vars that don't exist yet
+	// (must happen BEFORE StartTool so the tool can see them at startup)
 	catalogTool, _ := toollibrary.GetCatalogTool(slug)
 	if catalogTool != nil && len(catalogTool.Env) > 0 && h.secretsMgr != nil {
 		for _, envName := range catalogTool.Env {
@@ -144,6 +131,20 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 			}
 		}
 	}
+
+	if h.toolMgr != nil {
+		if err := h.toolMgr.CompileTool(toolID); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("compile failed: %v", err))
+			return
+		}
+		if err := h.toolMgr.StartTool(toolID); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("start failed: %v", err))
+			return
+		}
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "library_tool_installed", "tool", "tool", toolID, slug)
 
 	var t models.Tool
 	h.db.QueryRow(

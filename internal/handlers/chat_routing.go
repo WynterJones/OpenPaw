@@ -129,6 +129,16 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		h.threadCancels.Delete(threadID)
 	}()
 
+	// Auto-compact check: if context usage exceeds threshold, compact before routing
+	if h.shouldAutoCompact(threadID) {
+		h.broadcastStatus(threadID, "compacting", "Auto-compacting context...")
+		if err := h.doAutoCompact(parentCtx, threadID); err != nil {
+			logger.Warn("Auto-compact failed for thread %s: %v", threadID, err)
+		} else {
+			h.broadcastStatus(threadID, "message_saved", "")
+		}
+	}
+
 	// Priority 1: Explicit agent selection from UI dropdown (not gateway or empty)
 	if agentRoleSlug != "" && agentRoleSlug != "gateway" {
 		if isFirstMsg {

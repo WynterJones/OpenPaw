@@ -24,13 +24,14 @@ const (
 )
 
 type ChatHandler struct {
-	db            *database.DB
-	agentManager  *agents.Manager
-	toolsDir      string
-	dataDir       string
-	dashboardsDir string
-	threadCancels sync.Map // map[threadID]context.CancelFunc
-	roleCache     struct {
+	db               *database.DB
+	agentManager     *agents.Manager
+	toolsDir         string
+	dataDir          string
+	dashboardsDir    string
+	threadCancels    sync.Map // map[threadID]context.CancelFunc
+	compactingGuard  sync.Map // map[threadID]bool — prevents double-compaction
+	roleCache        struct {
 		sync.RWMutex
 		roles     []struct{ slug, name string }
 		expiresAt time.Time
@@ -66,7 +67,10 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(v, "%d", &offset)
 	}
 	rows, err := h.db.Query(
-		"SELECT id, title, created_at, updated_at FROM chat_threads ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.created_at, t.updated_at
+		 FROM chat_threads t
+		 LEFT JOIN (SELECT thread_id, SUM(cost_usd) AS cost FROM chat_messages GROUP BY thread_id) c ON c.thread_id = t.id
+		 ORDER BY t.updated_at DESC LIMIT ? OFFSET ?`,
 		limit, offset,
 	)
 	if err != nil {
@@ -78,7 +82,7 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	threads := []models.ChatThread{}
 	for rows.Next() {
 		var t models.ChatThread
-		if err := rows.Scan(&t.ID, &t.Title, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan thread")
 			return
 		}
@@ -411,15 +415,24 @@ func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contextUsed := totalContentLen / 4
-	contextLimit := llm.ContextWindowForModel("")
+	contextLimit := h.getEffectiveContextLimit()
+
+	autoCompactEnabled := false
+	autoCompactThreshold := 85
+	if h.agentManager != nil {
+		autoCompactEnabled = h.agentManager.AutoCompactEnabled
+		autoCompactThreshold = h.agentManager.AutoCompactThreshold
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"total_cost_usd":       totalCost,
-		"total_input_tokens":   totalInput,
-		"total_output_tokens":  totalOutput,
-		"message_count":        msgCount,
-		"context_used_tokens":  contextUsed,
-		"context_limit_tokens": contextLimit,
+		"total_cost_usd":         totalCost,
+		"total_input_tokens":     totalInput,
+		"total_output_tokens":    totalOutput,
+		"message_count":          msgCount,
+		"context_used_tokens":    contextUsed,
+		"context_limit_tokens":   contextLimit,
+		"auto_compact_enabled":   autoCompactEnabled,
+		"auto_compact_threshold": autoCompactThreshold,
 	})
 }
 
@@ -432,14 +445,26 @@ func (h *ChatHandler) CompactThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load all messages
+	if err := h.compactThreadInternal(r.Context(), threadID); err != nil {
+		writeError(w, http.StatusInternalServerError, "compaction failed: "+err.Error())
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "chat_thread_compacted", "chat", "chat_thread", threadID, "")
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "compacted"})
+}
+
+// compactThreadInternal performs the core compaction logic: loads messages,
+// summarizes them via LLM, replaces all messages with the summary.
+func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string) error {
 	rows, err := h.db.Query(
 		"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
 		threadID,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load messages")
-		return
+		return fmt.Errorf("failed to load messages: %w", err)
 	}
 	defer rows.Close()
 
@@ -447,46 +472,38 @@ func (h *ChatHandler) CompactThread(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var role, content string
 		if err := rows.Scan(&role, &content); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan message")
-			return
+			return fmt.Errorf("failed to scan message: %w", err)
 		}
 		transcript.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, content))
 	}
 
 	if transcript.Len() == 0 {
-		writeError(w, http.StatusBadRequest, "no messages to compact")
-		return
+		return fmt.Errorf("no messages to compact")
 	}
 
-	// Use RunOneShot to summarize
 	prompt := fmt.Sprintf(
 		"Summarize this conversation concisely, preserving: key decisions, requirements, outcomes, and technical details needed to continue. Format as a clear readable summary.\n\n---\n\n%s",
 		transcript.String(),
 	)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	compactCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	summary, usage, err := h.agentManager.Client().RunOneShot(ctx, llm.ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
+	summary, usage, err := h.agentManager.Client().RunOneShot(compactCtx, llm.ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "compaction failed: "+err.Error())
-		return
+		return fmt.Errorf("summarization failed: %w", err)
 	}
 
-	// Archive cost/token stats before compaction deletes messages
 	archiveThreadCosts(h.db, threadID)
 
-	// In a transaction: delete all messages, insert summary
 	tx, err := h.db.Begin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to start transaction")
-		return
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec("DELETE FROM chat_messages WHERE thread_id = ?", threadID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete messages")
-		return
+		return fmt.Errorf("failed to delete messages: %w", err)
 	}
 
 	var costUSD float64
@@ -503,16 +520,13 @@ func (h *ChatHandler) CompactThread(w http.ResponseWriter, r *http.Request) {
 		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		msgID, threadID, "system", strings.TrimSpace(summary), "", costUSD, inTok, outTok, now,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to insert summary")
-		return
+		return fmt.Errorf("failed to insert summary: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to commit compaction")
-		return
+		return fmt.Errorf("failed to commit compaction: %w", err)
 	}
 
-	// Update live counters for the new summary message's cost
 	if costUSD > 0 || inTok > 0 || outTok > 0 {
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_cost_usd'", costUSD)
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_input_tokens'", float64(inTok))
@@ -523,10 +537,52 @@ func (h *ChatHandler) CompactThread(w http.ResponseWriter, r *http.Request) {
 		logger.Error("Failed to update thread timestamp: %v", err)
 	}
 
-	userID := middleware.GetUserID(r.Context())
-	h.db.LogAudit(userID, "chat_thread_compacted", "chat", "chat_thread", threadID, "")
+	return nil
+}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "compacted"})
+// getEffectiveContextLimit returns the context limit override if set, otherwise the model default.
+func (h *ChatHandler) getEffectiveContextLimit() int {
+	if h.agentManager.ContextLimitOverride > 0 {
+		return h.agentManager.ContextLimitOverride
+	}
+	model := ""
+	if h.agentManager != nil {
+		model = h.agentManager.BuilderModel
+	}
+	return llm.ContextWindowForModel(model)
+}
+
+// shouldAutoCompact checks whether auto-compaction should trigger for the given thread.
+func (h *ChatHandler) shouldAutoCompact(threadID string) bool {
+	if h.agentManager == nil || !h.agentManager.AutoCompactEnabled {
+		return false
+	}
+
+	var totalContentLen int
+	if err := h.db.QueryRow(
+		"SELECT COALESCE(SUM(LENGTH(content)), 0) FROM chat_messages WHERE thread_id = ?", threadID,
+	).Scan(&totalContentLen); err != nil {
+		return false
+	}
+
+	contextUsed := totalContentLen / 4
+	contextLimit := h.getEffectiveContextLimit()
+	if contextLimit <= 0 {
+		return false
+	}
+
+	ratio := float64(contextUsed) / float64(contextLimit) * 100
+	return ratio >= float64(h.agentManager.AutoCompactThreshold)
+}
+
+// doAutoCompact runs compaction with a guard to prevent double-compaction on the same thread.
+func (h *ChatHandler) doAutoCompact(ctx context.Context, threadID string) error {
+	if _, loaded := h.compactingGuard.LoadOrStore(threadID, true); loaded {
+		return nil // already compacting
+	}
+	defer h.compactingGuard.Delete(threadID)
+
+	return h.compactThreadInternal(ctx, threadID)
 }
 
 func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content string, costUSD float64, inputTokens, outputTokens int, widgetData ...string) string {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { KeyRound, Plus, RotateCcw, Trash2, Shield, Activity, Eye, EyeOff } from 'lucide-react';
+import { KeyRound, Plus, Pencil, Trash2, Shield, Activity, Eye, EyeOff } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -25,6 +25,10 @@ export function Secrets() {
   const [loaded, setLoaded] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editToolId, setEditToolId] = useState('');
+  const [showEditValue, setShowEditValue] = useState(false);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [toolId, setToolId] = useState('');
@@ -42,11 +46,38 @@ export function Secrets() {
 
   const addSecret = async () => {
     setSaving(true);
-    try { await api.post('/secrets', { name, value, tool_id: toolId || null }); toast('success', 'Secret added'); setAddOpen(false); setName(''); setValue(''); setToolId(''); loadData(); }
+    try { await api.post('/secrets', { name, value, tool_id: toolId || '' }); toast('success', 'Secret added'); setAddOpen(false); setName(''); setValue(''); setToolId(''); loadData(); }
     catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to add secret'); } finally { setSaving(false); setShowValue(false); }
   };
 
-  const rotateSecret = async (id: string) => { try { await api.post(`/secrets/${id}/rotate`); toast('success', 'Secret rotated'); loadData(); } catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to rotate secret'); } };
+  const openEdit = (secret: Secret) => {
+    setEditId(secret.id);
+    setEditValue('');
+    setEditToolId(secret.tool_id || '');
+    setShowEditValue(false);
+  };
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await api.post(`/secrets/${editId}/rotate`, {
+        value: editValue || undefined,
+        tool_id: editToolId,
+      });
+      toast('success', 'Secret updated');
+      setEditId(null);
+      setEditValue('');
+      setEditToolId('');
+      loadData();
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to update secret');
+    } finally {
+      setSaving(false);
+      setShowEditValue(false);
+    }
+  };
+
   const deleteSecret = async () => { if (!deleteId) return; try { await api.delete(`/secrets/${deleteId}`); toast('success', 'Secret deleted'); setDeleteId(null); loadData(); } catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to delete secret'); } };
   const testConnection = async (id: string) => { try { const data = await api.post<{ status: string }>(`/secrets/${id}/test`); toast(data.status === 'ok' ? 'success' : 'warning', data.status === 'ok' ? 'Connection successful' : 'Connection test returned warnings'); } catch (err) { toast('error', err instanceof Error ? err.message : 'Connection test failed'); } };
 
@@ -56,6 +87,7 @@ export function Secrets() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const toolOptions = [{ value: '', label: 'No association' }, ...tools.map(t => ({ value: t.id, label: t.name }))];
+  const editingSecret = secrets.find(s => s.id === editId);
 
   return (
     <div className="flex flex-col h-full">
@@ -87,16 +119,16 @@ export function Secrets() {
                       </div>
                       <div className="flex items-center gap-1">
                         <button onClick={() => testConnection(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Test connection" aria-label="Test connection"><Activity className="w-4 h-4" /></button>
-                        <button onClick={() => rotateSecret(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Rotate" aria-label="Rotate secret"><RotateCcw className="w-4 h-4" /></button>
+                        <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Edit secret" aria-label="Edit secret"><Pencil className="w-4 h-4" /></button>
                         <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer" title="Delete" aria-label="Delete secret"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-text-0 font-mono truncate">{s.name}</p>
-                      <p className="text-xs text-text-3 mt-1">{s.tool_name || 'Global'} &middot; {s.scope}</p>
+                      <p className="text-xs text-text-3 mt-1">{s.tool_name || 'Global'}</p>
                     </div>
                     <div className="text-xs text-text-3">
-                      Rotated: {s.last_rotated ? new Date(s.last_rotated).toLocaleDateString() : 'Never'}
+                      Updated: {new Date(s.updated_at).toLocaleDateString()}
                     </div>
                   </div>
                 </Card>
@@ -112,12 +144,11 @@ export function Secrets() {
                   { key: 'name', header: 'Name', render: (s: Secret) => (<div className="flex items-center gap-2"><Shield className="w-4 h-4 text-accent-primary flex-shrink-0" /><div className="min-w-0"><span className="font-medium text-text-0 block truncate">{s.name}</span><span className="text-xs text-text-3 md:hidden">{s.tool_name || 'Global'}</span></div></div>) },
                   { key: 'value', header: 'Value', hideOnMobile: true, render: () => (<span className="text-sm text-text-3 font-mono tracking-wider">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>) },
                   { key: 'tool', header: 'Tool', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{s.tool_name || 'Global'}</span>) },
-                  { key: 'scope', header: 'Scope', hideOnMobile: true, render: (s: Secret) => (<span className="text-xs px-2 py-0.5 rounded-full bg-surface-2 text-text-1">{s.scope}</span>) },
-                  { key: 'rotated', header: 'Last Rotated', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{s.last_rotated ? new Date(s.last_rotated).toLocaleDateString() : 'Never'}</span>) },
+                  { key: 'updated', header: 'Updated', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{new Date(s.updated_at).toLocaleDateString()}</span>) },
                   { key: 'actions', header: '', className: 'text-right', render: (s: Secret) => (
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={(e) => { e.stopPropagation(); testConnection(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Test connection" aria-label="Test connection"><Activity className="w-4 h-4" /></button>
-                      <button onClick={(e) => { e.stopPropagation(); rotateSecret(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Rotate secret" aria-label="Rotate secret"><RotateCcw className="w-4 h-4" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="p-1.5 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Edit secret" aria-label="Edit secret"><Pencil className="w-4 h-4" /></button>
                       <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-red-400 hover:bg-surface-2 transition-colors cursor-pointer" title="Delete secret" aria-label="Delete secret"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )},
@@ -148,6 +179,27 @@ export function Secrets() {
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button onClick={addSecret} loading={saving} disabled={!name.trim() || !value.trim()}>Add Secret</Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={!!editId} onClose={() => { setEditId(null); setEditValue(''); setEditToolId(''); setShowEditValue(false); }} title="Edit Secret" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-2">Editing <span className="font-mono font-medium text-text-0">{editingSecret?.name}</span></p>
+          <div className="relative">
+            <Input label="New Value (leave blank to keep current)" type={showEditValue ? 'text' : 'password'} value={editValue} onChange={e => setEditValue(e.target.value)} placeholder="Enter new secret value" />
+            <button
+              type="button"
+              onClick={() => setShowEditValue(!showEditValue)}
+              className="absolute right-3 top-[34px] p-1 rounded text-text-3 hover:text-text-1 transition-colors cursor-pointer"
+              aria-label={showEditValue ? 'Hide value' : 'Show value'}
+            >
+              {showEditValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <Select label="Associated Tool" value={editToolId} onChange={e => setEditToolId(e.target.value)} options={toolOptions} />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { setEditId(null); setEditValue(''); setEditToolId(''); setShowEditValue(false); }}>Cancel</Button>
+            <Button onClick={saveEdit} loading={saving}>Save</Button>
           </div>
         </div>
       </Modal>

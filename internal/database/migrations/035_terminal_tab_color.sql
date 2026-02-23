@@ -1,0 +1,1 @@
+ALTER TABLE terminal_sessions ADD COLUMN color TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS workbenches (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT 'Default',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE terminal_sessions ADD COLUMN workbench_id TEXT NOT NULL DEFAULT '';

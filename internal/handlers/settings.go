@@ -132,19 +132,25 @@ func (h *SettingsHandler) UpdateDesign(w http.ResponseWriter, r *http.Request) {
 
 func (h *SettingsHandler) GetModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"gateway_model":     h.agentMgr.GatewayModel,
-		"builder_model":     h.agentMgr.BuilderModel,
-		"max_turns":         h.agentMgr.MaxTurns,
-		"agent_timeout_min": h.agentMgr.AgentTimeoutMin,
+		"gateway_model":          h.agentMgr.GatewayModel,
+		"builder_model":          h.agentMgr.BuilderModel,
+		"max_turns":              h.agentMgr.MaxTurns,
+		"agent_timeout_min":      h.agentMgr.AgentTimeoutMin,
+		"auto_compact_enabled":   h.agentMgr.AutoCompactEnabled,
+		"auto_compact_threshold": h.agentMgr.AutoCompactThreshold,
+		"context_limit_override": h.agentMgr.ContextLimitOverride,
 	})
 }
 
 func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		GatewayModel    string `json:"gateway_model"`
-		BuilderModel    string `json:"builder_model"`
-		MaxTurns        *int   `json:"max_turns"`
-		AgentTimeoutMin *int   `json:"agent_timeout_min"`
+		GatewayModel         string `json:"gateway_model"`
+		BuilderModel         string `json:"builder_model"`
+		MaxTurns             *int   `json:"max_turns"`
+		AgentTimeoutMin      *int   `json:"agent_timeout_min"`
+		AutoCompactEnabled   *bool  `json:"auto_compact_enabled"`
+		AutoCompactThreshold *int   `json:"auto_compact_threshold"`
+		ContextLimitOverride *int   `json:"context_limit_override"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -169,15 +175,34 @@ func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 		h.agentMgr.AgentTimeoutMin = *req.AgentTimeoutMin
 		h.upsertSetting("agent_timeout_min", fmt.Sprintf("%d", *req.AgentTimeoutMin))
 	}
+	if req.AutoCompactEnabled != nil {
+		h.agentMgr.AutoCompactEnabled = *req.AutoCompactEnabled
+		val := "true"
+		if !*req.AutoCompactEnabled {
+			val = "false"
+		}
+		h.upsertSetting("auto_compact_enabled", val)
+	}
+	if req.AutoCompactThreshold != nil && *req.AutoCompactThreshold >= 50 && *req.AutoCompactThreshold <= 99 {
+		h.agentMgr.AutoCompactThreshold = *req.AutoCompactThreshold
+		h.upsertSetting("auto_compact_threshold", fmt.Sprintf("%d", *req.AutoCompactThreshold))
+	}
+	if req.ContextLimitOverride != nil && *req.ContextLimitOverride >= 0 {
+		h.agentMgr.ContextLimitOverride = *req.ContextLimitOverride
+		h.upsertSetting("context_limit_override", fmt.Sprintf("%d", *req.ContextLimitOverride))
+	}
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "model_settings_updated", "settings", "settings", "", "")
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"gateway_model":     h.agentMgr.GatewayModel,
-		"builder_model":     h.agentMgr.BuilderModel,
-		"max_turns":         h.agentMgr.MaxTurns,
-		"agent_timeout_min": h.agentMgr.AgentTimeoutMin,
+		"gateway_model":          h.agentMgr.GatewayModel,
+		"builder_model":          h.agentMgr.BuilderModel,
+		"max_turns":              h.agentMgr.MaxTurns,
+		"agent_timeout_min":      h.agentMgr.AgentTimeoutMin,
+		"auto_compact_enabled":   h.agentMgr.AutoCompactEnabled,
+		"auto_compact_threshold": h.agentMgr.AutoCompactThreshold,
+		"context_limit_override": h.agentMgr.ContextLimitOverride,
 	})
 }
 
