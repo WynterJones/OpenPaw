@@ -173,7 +173,8 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 
 		if resp.Action == "bootstrap_complete" && resp.WorkOrder != nil {
 			h.handleBootstrapComplete(threadID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
-		} else {
+		} else if resp.Action == "guide" || (resp.WorkOrder == nil && resp.AssignedAgent == "") {
+			// Continue bootstrap onboarding conversation
 			h.addThreadMember(threadID, "pounce")
 			h.broadcastRoutingIndicator(threadID, "pounce")
 			msg := resp.Message
@@ -182,6 +183,11 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 			}
 			h.saveAssistantMessage(threadID, "pounce", msg, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 			h.endAgentWork(threadID)
+		} else {
+			// User made a functional request (build, route, etc.) during bootstrap —
+			// auto-exit bootstrap mode and handle normally.
+			agents.DeleteGatewayBootstrap(h.dataDir)
+			h.handleGatewayAction(parentCtx, threadID, content, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		}
 		return
 	}
@@ -230,6 +236,12 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		gatewayOutTok = int(usage.OutputTokens)
 	}
 
+	h.handleGatewayAction(parentCtx, threadID, content, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
+}
+
+// handleGatewayAction processes a parsed gateway response — routing to agents,
+// spawning builders, or delivering guide/fallback messages.
+func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, content, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
 	// Save memory note if the gateway detected something worth remembering
 	if resp.MemoryNote != "" {
 		if h.agentManager.MemoryMgr != nil {
