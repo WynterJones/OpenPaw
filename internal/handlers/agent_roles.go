@@ -32,7 +32,7 @@ var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
 
-	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, created_at, updated_at FROM agent_roles"
+	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles"
 	if enabledOnly {
 		query += " WHERE enabled = 1"
 	}
@@ -48,7 +48,7 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	roles := []models.AgentRole{}
 	for rows.Next() {
 		var role models.AgentRole
-		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.CreatedAt, &role.UpdatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan agent role")
 			return
 		}
@@ -62,9 +62,9 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	var role models.AgentRole
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.CreatedAt, &role.UpdatedAt)
+	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -156,9 +156,9 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var existing models.AgentRole
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.CreatedAt, &existing.UpdatedAt)
+	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existing.CreatedAt, &existing.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -171,6 +171,7 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Model            *string `json:"model"`
 		AvatarPath       *string `json:"avatar_path"`
 		HeartbeatEnabled *bool   `json:"heartbeat_enabled"`
+		Folder           *string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -195,6 +196,9 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.HeartbeatEnabled != nil {
 		existing.HeartbeatEnabled = *req.HeartbeatEnabled
 	}
+	if req.Folder != nil {
+		existing.Folder = *req.Folder
+	}
 
 	if existing.Name == "" {
 		writeError(w, http.StatusBadRequest, "name cannot be empty")
@@ -203,8 +207,8 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	_, err = h.db.Exec(
-		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, heartbeat_enabled = ?, updated_at = ? WHERE slug = ?`,
-		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.HeartbeatEnabled, now, slug,
+		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, heartbeat_enabled = ?, folder = ?, updated_at = ? WHERE slug = ?`,
+		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.HeartbeatEnabled, existing.Folder, now, slug,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent role")

@@ -55,11 +55,11 @@ export function SubAgentPanel({ tasks, roles }: { tasks: SubAgentTask[]; roles: 
                   onClick={() => hasContent && toggleTask(task.subagent_id)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${hasContent ? 'cursor-pointer hover:bg-surface-2/30' : 'cursor-default'}`}
                 >
-                  <div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-border-1">
+                  <div className="w-5 h-5 rounded-md overflow-hidden flex-shrink-0 ring-1 ring-border-1">
                     {role ? (
-                      <img src={role.avatar_path} alt={role.name} className="w-5 h-5 rounded-full object-cover" />
+                      <img src={role.avatar_path} alt={role.name} className="w-5 h-5 rounded-md object-cover" />
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-surface-3" />
+                      <div className="w-5 h-5 rounded-md bg-surface-3" />
                     )}
                   </div>
 

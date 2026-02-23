@@ -201,8 +201,8 @@ export function Header({ title, count, actions }: HeaderProps) {
           <img
             src="/cat-toolbar.webp"
             alt=""
-            className="h-full w-auto object-contain pointer-events-none select-none md:hidden"
-            style={{ position: "relative", bottom: "-3px" }}
+            className="w-auto object-contain pointer-events-none select-none md:hidden"
+            style={{ position: "relative", bottom: "-3px", height: "130px" }}
           />
         )}
         <h1

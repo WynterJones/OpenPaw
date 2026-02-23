@@ -3,6 +3,7 @@ package toolmgr
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -626,50 +627,124 @@ func filterEnv(env []string) []string {
 	return filtered
 }
 
-// getToolSecrets looks up the tool's required env vars (from its catalog entry)
-// and returns decrypted secrets as "KEY=VALUE" strings for injection into the environment.
-// missing contains the names of any secrets that are absent or still placeholder.
+type toolEnvVar struct {
+	Name     string
+	Required bool
+}
+
+// getToolSecrets looks up the tool's required env vars (from its catalog entry
+// or manifest.json on disk) and returns decrypted secrets as "KEY=VALUE" strings
+// for injection into the environment.
+// missing contains the names of any required secrets that are absent or still placeholder.
 func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []string) {
 	if m.secrets == nil {
 		return nil, nil
 	}
 
-	// Get the tool's library_slug to find its catalog env requirements
-	var librarySlug string
-	err := m.db.QueryRow("SELECT COALESCE(library_slug, '') FROM tools WHERE id = ?", toolID).Scan(&librarySlug)
-	if err != nil || librarySlug == "" {
+	envDefs := m.resolveToolEnvDefs(toolID)
+	if len(envDefs) == 0 {
 		return nil, nil
 	}
 
-	cat, err := toollibrary.GetCatalogTool(librarySlug)
-	if err != nil || len(cat.Env) == 0 {
-		return nil, nil
-	}
-
-	for _, envName := range cat.Env {
+	for _, ev := range envDefs {
 		var encrypted string
-		err := m.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", envName).Scan(&encrypted)
+		err := m.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", ev.Name).Scan(&encrypted)
 		if err != nil {
-			missing = append(missing, envName)
+			if ev.Required {
+				missing = append(missing, ev.Name)
+			}
 			continue
 		}
 		plaintext, err := m.secrets.Decrypt(encrypted)
 		if err != nil {
-			logger.Warn("Failed to decrypt secret %s for tool %s: %v", envName, toolID, err)
-			missing = append(missing, envName)
+			logger.Warn("Failed to decrypt secret %s for tool %s: %v", ev.Name, toolID, err)
+			if ev.Required {
+				missing = append(missing, ev.Name)
+			}
 			continue
 		}
 		if plaintext == "REPLACE_ME" {
-			missing = append(missing, envName)
+			if ev.Required {
+				missing = append(missing, ev.Name)
+			}
 			continue
 		}
-		envVars = append(envVars, fmt.Sprintf("%s=%s", envName, plaintext))
+		envVars = append(envVars, fmt.Sprintf("%s=%s", ev.Name, plaintext))
 	}
 
 	if len(envVars) > 0 {
 		logger.Info("Injected %d secrets for tool %s", len(envVars), toolID)
 	}
 	return envVars, missing
+}
+
+// resolveToolEnvDefs returns the env var definitions a tool needs.
+// It first checks the built-in catalog, then falls back to the tool's
+// manifest.json on disk (which external/user-built tools use).
+func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
+	var librarySlug string
+	err := m.db.QueryRow("SELECT COALESCE(library_slug, '') FROM tools WHERE id = ?", toolID).Scan(&librarySlug)
+	if err != nil {
+		return nil
+	}
+
+	// Try built-in catalog first (all env vars treated as required)
+	if librarySlug != "" {
+		if cat, err := toollibrary.GetCatalogTool(librarySlug); err == nil && len(cat.Env) > 0 {
+			defs := make([]toolEnvVar, len(cat.Env))
+			for i, name := range cat.Env {
+				defs[i] = toolEnvVar{Name: name, Required: true}
+			}
+			return defs
+		}
+	}
+
+	// Fall back to manifest.json on disk
+	manifestPath := filepath.Join(m.toolsDir, toolID, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil
+	}
+
+	var manifest struct {
+		Env json.RawMessage `json:"env"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil || len(manifest.Env) == 0 {
+		return nil
+	}
+
+	// Try object array format: [{"name": "FOO", "required": true}]
+	var envObjs []struct {
+		Name     string `json:"name"`
+		Required *bool  `json:"required"`
+	}
+	if json.Unmarshal(manifest.Env, &envObjs) == nil && len(envObjs) > 0 {
+		defs := make([]toolEnvVar, 0, len(envObjs))
+		for _, e := range envObjs {
+			if e.Name != "" {
+				required := true
+				if e.Required != nil {
+					required = *e.Required
+				}
+				defs = append(defs, toolEnvVar{Name: e.Name, Required: required})
+			}
+		}
+		if len(defs) > 0 {
+			return defs
+		}
+	}
+
+	// Try string array format: ["FOO", "BAR"]
+	var envStrings []string
+	if json.Unmarshal(manifest.Env, &envStrings) == nil {
+		defs := make([]toolEnvVar, len(envStrings))
+		for i, name := range envStrings {
+			defs[i] = toolEnvVar{Name: name, Required: true}
+		}
+		return defs
+	}
+
+	return nil
 }
 
 func (m *Manager) setToolError(toolID, errMsg string) {

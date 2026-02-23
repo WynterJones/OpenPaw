@@ -33,6 +33,10 @@ import { EmptyState } from "../components/EmptyState";
 import { Pagination } from "../components/Pagination";
 import { SearchBar } from "../components/SearchBar";
 import { ViewToggle, type ViewMode } from "../components/ViewToggle";
+import { FolderFilter } from "../components/FolderFilter";
+import { FolderSection } from "../components/FolderSection";
+import { FolderAssign } from "../components/FolderAssign";
+import { useFolderGrouping } from "../hooks/useFolderGrouping";
 import { api, toolExtra, toolLibrary, secretsApi, type Tool, type LibraryTool, type ToolEndpoint, type ToolIntegrityInfo, type SecretCheckResult } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { useWebSocket } from "../lib/useWebSocket";
@@ -321,10 +325,23 @@ function SecretsPanel({ tool }: { tool: Tool }) {
     if (!hasEnv) return;
     const names = envVars!.map(e => typeof e === 'string' ? e : e.name);
     secretsApi.checkNames(names)
-      .then(setStatuses)
+      .then(async (results) => {
+        setStatuses(results);
+        const missing = names.filter(name => {
+          const s = results.find(st => st.name === name);
+          return !s || !s.exists;
+        });
+        if (missing.length > 0) {
+          await secretsApi.ensurePlaceholders(
+            missing.map(name => ({ name, description: `Required by ${tool.name} — replace with your real key` }))
+          );
+          const updated = await secretsApi.checkNames(names);
+          setStatuses(updated);
+        }
+      })
       .catch(() => setStatuses([]))
       .finally(() => setLoading(false));
-  }, [tool.id, hasEnv, envVars]);
+  }, [tool.id, hasEnv, envVars, tool.name]);
 
   if (!hasEnv) return null;
   if (loading) return <p className="text-xs text-text-3">Checking secrets...</p>;
@@ -371,7 +388,7 @@ function SecretsPanel({ tool }: { tool: Tool }) {
   );
 }
 
-function ToolDetail({ tool, onBack, onRefresh, onDelete }: { tool: Tool; onBack: () => void; onRefresh: () => void; onDelete: () => void }) {
+function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: Tool; allFolders: string[]; onBack: () => void; onRefresh: () => void; onDelete: () => void }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -468,6 +485,13 @@ function ToolDetail({ tool, onBack, onRefresh, onDelete }: { tool: Tool; onBack:
           </div>
           <div className="text-sm text-text-2 mt-0.5">
             <EditableField value={tool.description} onSave={v => updateField("description", v)} multiline />
+          </div>
+          <div className="mt-1 max-w-[200px]">
+            <FolderAssign
+              value={tool.folder || ''}
+              folders={allFolders}
+              onChange={(f) => updateField("folder", f)}
+            />
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -771,13 +795,67 @@ export function Tools() {
 
   const handleSearch = (val: string) => { setSearch(val); setPage(0); };
 
-  const filtered = tools.filter(
+  const getFolder = useCallback((t: Tool) => t.folder || '', []);
+  const folderGrouping = useFolderGrouping(tools, getFolder);
+
+  const searchFiltered = folderGrouping.filtered.filter(
     (t) =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.description.toLowerCase().includes(search.toLowerCase()),
   );
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const showFolderSections = folderGrouping.selectedFolder === null && folderGrouping.folders.length > 0;
+  const totalPages = showFolderSections ? 1 : Math.max(1, Math.ceil(searchFiltered.length / PAGE_SIZE));
+  const paginated = showFolderSections ? searchFiltered : searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const renderToolGrid = (items: Tool[]) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {items.map((tool) => (
+        <ToolCard
+          key={tool.id}
+          tool={tool}
+          onClick={() => selectTool(tool)}
+          needsSecrets={toolsMissingSecrets.has(tool.id)}
+        />
+      ))}
+    </div>
+  );
+
+  const renderToolTable = (items: Tool[]) => (
+    <Card padding={false}>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border-0">
+            {[
+              { label: "Tool", hideOnMobile: false },
+              { label: "Status", hideOnMobile: false },
+              { label: "Port", hideOnMobile: true },
+              { label: "PID", hideOnMobile: true },
+            ].map((h) => (
+              <th
+                key={h.label}
+                scope="col"
+                className={`text-left px-3 md:px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-3 ${h.hideOnMobile ? 'hidden md:table-cell' : ''}`}
+              >
+                {h.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((tool) => (
+            <ToolRow
+              key={tool.id}
+              tool={tool}
+              onClick={() => selectTool(tool)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+
+  const renderContent = (items: Tool[]) => view === "grid" ? renderToolGrid(items) : renderToolTable(items);
 
   if (selectedTool)
     return (
@@ -786,6 +864,7 @@ export function Tools() {
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <ToolDetail
             tool={selectedTool}
+            allFolders={folderGrouping.folders}
             onBack={() => setSelectedTool(null)}
             onRefresh={refreshSelected}
             onDelete={() => { setSelectedTool(null); loadTools(); }}
@@ -816,11 +895,19 @@ export function Tools() {
               </Button>
               <ViewToggle view={view} onViewChange={setView} />
             </div>
+            <FolderFilter
+              folders={folderGrouping.folders}
+              folderCounts={folderGrouping.folderCounts}
+              unfiledCount={folderGrouping.unfiledCount}
+              totalCount={folderGrouping.totalCount}
+              selectedFolder={folderGrouping.selectedFolder}
+              onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
+            />
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : searchFiltered.length === 0 ? (
               <EmptyState
                 icon={<Wrench className="w-8 h-8" />}
                 title={search ? "No tools found" : "No tools yet"}
@@ -830,54 +917,35 @@ export function Tools() {
                     : "Install from the Library page or chat with Pounce to build a custom tool."
                 }
               />
-            ) : view === "grid" ? (
-              <>
-                <Pagination page={page} totalPages={totalPages} total={filtered.length} onPageChange={setPage} label="tools" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {paginated.map((tool) => (
-                    <ToolCard
-                      key={tool.id}
-                      tool={tool}
-                      onClick={() => selectTool(tool)}
-                      needsSecrets={toolsMissingSecrets.has(tool.id)}
-                    />
-                  ))}
-                </div>
-              </>
+            ) : showFolderSections ? (
+              <div className="space-y-4">
+                {folderGrouping.folders.map((folder) => {
+                  const items = (folderGrouping.grouped.get(folder) || []).filter(
+                    (t) => t.name.toLowerCase().includes(search.toLowerCase()) || t.description.toLowerCase().includes(search.toLowerCase()),
+                  );
+                  if (items.length === 0) return null;
+                  return (
+                    <FolderSection key={folder} name={folder} count={items.length}>
+                      {renderContent(items)}
+                    </FolderSection>
+                  );
+                })}
+                {(() => {
+                  const unfiled = (folderGrouping.grouped.get('') || []).filter(
+                    (t) => t.name.toLowerCase().includes(search.toLowerCase()) || t.description.toLowerCase().includes(search.toLowerCase()),
+                  );
+                  if (unfiled.length === 0) return null;
+                  return (
+                    <FolderSection name="" count={unfiled.length}>
+                      {renderContent(unfiled)}
+                    </FolderSection>
+                  );
+                })()}
+              </div>
             ) : (
               <>
-                <Pagination page={page} totalPages={totalPages} total={filtered.length} onPageChange={setPage} label="tools" />
-                <Card padding={false}>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border-0">
-                        {[
-                          { label: "Tool", hideOnMobile: false },
-                          { label: "Status", hideOnMobile: false },
-                          { label: "Port", hideOnMobile: true },
-                          { label: "PID", hideOnMobile: true },
-                        ].map((h) => (
-                          <th
-                            key={h.label}
-                            scope="col"
-                            className={`text-left px-3 md:px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-3 ${h.hideOnMobile ? 'hidden md:table-cell' : ''}`}
-                          >
-                            {h.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginated.map((tool) => (
-                        <ToolRow
-                          key={tool.id}
-                          tool={tool}
-                          onClick={() => selectTool(tool)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </Card>
+                <Pagination page={page} totalPages={totalPages} total={searchFiltered.length} onPageChange={setPage} label="tools" />
+                {renderContent(paginated)}
               </>
             )}
       </div>

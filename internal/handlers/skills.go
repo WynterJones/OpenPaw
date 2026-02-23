@@ -33,6 +33,7 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Content     string `json:"content"`
 		Description string `json:"description"`
+		Folder      string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -43,14 +44,19 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure frontmatter if description provided but content lacks it
 	content := req.Content
-	if req.Description != "" {
-		meta, _ := agents.ParseFrontmatter(content)
-		if meta.Description == "" {
-			_, body := agents.ParseFrontmatter(content)
-			content = agents.BuildFrontmatter(req.Name, req.Description, body)
-		}
+	meta, body := agents.ParseFrontmatter(content)
+	if req.Description != "" && meta.Description == "" {
+		meta.Description = req.Description
+	}
+	if meta.Name == "" {
+		meta.Name = req.Name
+	}
+	if req.Folder != "" {
+		meta.Folder = req.Folder
+	}
+	if meta.Description != "" || meta.Folder != "" {
+		content = agents.BuildFrontmatterFromMeta(meta, body)
 	}
 
 	if err := agents.WriteGlobalSkill(h.dataDir, req.Name, content); err != nil {
@@ -74,22 +80,41 @@ func (h *SkillsHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var req struct {
-		Content string `json:"content"`
+		Content string  `json:"content"`
+		Folder  *string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := agents.WriteGlobalSkill(h.dataDir, name, req.Content); err != nil {
+	content := req.Content
+
+	// If folder is being updated, parse existing content and rebuild frontmatter
+	if req.Folder != nil {
+		// If no content provided, read existing
+		if content == "" {
+			existing, err := agents.GetGlobalSkill(h.dataDir, name)
+			if err != nil {
+				writeError(w, http.StatusNotFound, "skill not found")
+				return
+			}
+			content = existing
+		}
+		meta, body := agents.ParseFrontmatter(content)
+		meta.Folder = *req.Folder
+		if meta.Name == "" {
+			meta.Name = name
+		}
+		content = agents.BuildFrontmatterFromMeta(meta, body)
+	}
+
+	if err := agents.WriteGlobalSkill(h.dataDir, name, content); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update skill: "+err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agents.Skill{
-		Name:    name,
-		Content: req.Content,
-	})
+	writeJSON(w, http.StatusOK, agents.BuildSkillFromFile(name, content))
 }
 
 func (h *SkillsHandler) Delete(w http.ResponseWriter, r *http.Request) {

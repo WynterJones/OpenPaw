@@ -21,9 +21,9 @@ export function ThreadMembersPanel({ members, activeSlug, onRemove }: {
         <div key={m.agent_role_slug} className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-2 transition-colors">
           <div className="relative flex-shrink-0">
             {m.avatar_path ? (
-              <img src={m.avatar_path} alt={m.name} className="w-7 h-7 rounded-full object-cover ring-1 ring-border-1" />
+              <img src={m.avatar_path} alt={m.name} className="w-7 h-7 rounded-md object-cover ring-1 ring-border-1" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-surface-3 flex items-center justify-center ring-1 ring-border-1">
+              <div className="w-7 h-7 rounded-md bg-surface-3 flex items-center justify-center ring-1 ring-border-1">
                 <Bot className="w-3.5 h-3.5 text-text-3" />
               </div>
             )}

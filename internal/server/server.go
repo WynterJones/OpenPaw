@@ -222,6 +222,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/", secretsHandler.List)
 				r.Post("/", secretsHandler.Create)
 				r.Post("/check", secretsHandler.CheckNames)
+				r.Post("/ensure", secretsHandler.EnsurePlaceholders)
 				r.Delete("/{id}", secretsHandler.Delete)
 				r.Post("/{id}/rotate", secretsHandler.Rotate)
 				r.Post("/{id}/test", secretsHandler.Test)

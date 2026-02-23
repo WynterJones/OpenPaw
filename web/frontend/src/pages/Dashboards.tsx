@@ -404,13 +404,13 @@ export function Dashboards() {
       } />
 
       {isCustom ? (
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative" style={{ minHeight: 0 }}>
           {selected?.bg_image && <DashboardBackground bgImage={selected.bg_image} />}
           <iframe
             ref={iframeRef}
             src={`/api/v1/dashboards/${selected!.id}/assets/index.html`}
             sandbox="allow-scripts"
-            className="w-full h-full border-0 relative z-[1] bg-transparent"
+            className="absolute inset-0 w-full h-full border-0 z-[1] bg-transparent"
             title={selected!.name}
           />
         </div>

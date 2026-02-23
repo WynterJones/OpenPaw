@@ -32,7 +32,7 @@ func NewToolsHandler(db *database.DB, agentManager *agents.Manager, toolMgr *too
 
 func (h *ToolsHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
-		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, created_at, updated_at FROM tools WHERE deleted_at IS NULL ORDER BY created_at DESC",
+		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, folder, created_at, updated_at FROM tools WHERE deleted_at IS NULL ORDER BY created_at DESC",
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list tools")
@@ -43,7 +43,7 @@ func (h *ToolsHandler) List(w http.ResponseWriter, r *http.Request) {
 	tools := []models.Tool{}
 	for rows.Next() {
 		var t models.Tool
-		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.Folder, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan tool")
 			return
 		}
@@ -59,6 +59,7 @@ func (h *ToolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Type        string `json:"type"`
 		Config      string `json:"config"`
 		AutoBuild   bool   `json:"auto_build"`
+		Folder      string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -86,8 +87,8 @@ func (h *ToolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := h.db.Exec(
-		"INSERT INTO tools (id, name, description, type, config, enabled, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		id, req.Name, req.Description, req.Type, req.Config, enabled, status, now, now,
+		"INSERT INTO tools (id, name, description, type, config, enabled, status, folder, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, req.Name, req.Description, req.Type, req.Config, enabled, status, req.Folder, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create tool")
@@ -139,9 +140,9 @@ func (h *ToolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var t models.Tool
 	err := h.db.QueryRow(
-		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, created_at, updated_at FROM tools WHERE id = ? AND deleted_at IS NULL",
+		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, folder, created_at, updated_at FROM tools WHERE id = ? AND deleted_at IS NULL",
 		id,
-	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.CreatedAt, &t.UpdatedAt)
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.Folder, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "tool not found")
 		return
@@ -179,6 +180,7 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Description *string `json:"description"`
 		Type        *string `json:"type"`
 		Config      *string `json:"config"`
+		Folder      *string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -198,14 +200,17 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Config != nil {
 		h.db.Exec("UPDATE tools SET config = ?, updated_at = ? WHERE id = ?", *req.Config, now, id)
 	}
+	if req.Folder != nil {
+		h.db.Exec("UPDATE tools SET folder = ?, updated_at = ? WHERE id = ?", *req.Folder, now, id)
+	}
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_updated", "tool", "tool", id, "")
 
 	var t models.Tool
 	h.db.QueryRow(
-		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, created_at, updated_at FROM tools WHERE id = ?", id,
-	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.CreatedAt, &t.UpdatedAt)
+		"SELECT id, name, description, type, config, enabled, status, port, pid, capabilities, owner_agent_slug, library_slug, library_version, source_hash, binary_hash, folder, created_at, updated_at FROM tools WHERE id = ?", id,
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.Folder, &t.CreatedAt, &t.UpdatedAt)
 
 	writeJSON(w, http.StatusOK, t)
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { KeyRound, Plus, RotateCcw, Trash2, Shield, Activity } from 'lucide-react';
+import { KeyRound, Plus, RotateCcw, Trash2, Shield, Activity, Eye, EyeOff } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -29,6 +29,7 @@ export function Secrets() {
   const [value, setValue] = useState('');
   const [toolId, setToolId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showValue, setShowValue] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -42,7 +43,7 @@ export function Secrets() {
   const addSecret = async () => {
     setSaving(true);
     try { await api.post('/secrets', { name, value, tool_id: toolId || null }); toast('success', 'Secret added'); setAddOpen(false); setName(''); setValue(''); setToolId(''); loadData(); }
-    catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to add secret'); } finally { setSaving(false); }
+    catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to add secret'); } finally { setSaving(false); setShowValue(false); }
   };
 
   const rotateSecret = async (id: string) => { try { await api.post(`/secrets/${id}/rotate`); toast('success', 'Secret rotated'); loadData(); } catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to rotate secret'); } };
@@ -132,7 +133,17 @@ export function Secrets() {
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Secret">
         <div className="space-y-4">
           <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. SLACK_API_TOKEN" />
-          <Input label="Value" type="password" value={value} onChange={e => setValue(e.target.value)} placeholder="Enter secret value" />
+          <div className="relative">
+            <Input label="Value" type={showValue ? 'text' : 'password'} value={value} onChange={e => setValue(e.target.value)} placeholder="Enter secret value" />
+            <button
+              type="button"
+              onClick={() => setShowValue(!showValue)}
+              className="absolute right-3 top-[34px] p-1 rounded text-text-3 hover:text-text-1 transition-colors cursor-pointer"
+              aria-label={showValue ? 'Hide value' : 'Show value'}
+            >
+              {showValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
           <Select label="Associated Tool" value={toolId} onChange={e => setToolId(e.target.value)} options={toolOptions} />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>

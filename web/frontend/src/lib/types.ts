@@ -50,6 +50,7 @@ export interface Tool {
   library_version: string;
   source_hash: string;
   binary_hash: string;
+  folder: string;
   created_at: string;
   updated_at: string;
   manifest?: ToolManifest;
@@ -142,6 +143,7 @@ export interface AgentRole {
   heartbeat_enabled: boolean;
   library_slug: string;
   library_version: string;
+  folder: string;
   created_at: string;
   updated_at: string;
 }
@@ -166,6 +168,7 @@ export interface Skill {
   summary?: string;
   description?: string;
   allowed_tools?: string;
+  folder?: string;
 }
 
 export interface LibrarySkill {

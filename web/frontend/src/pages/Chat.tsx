@@ -621,7 +621,16 @@ export function Chat() {
   const initActiveThreadIds = async () => {
     try {
       const data = await api.get<{ active_thread_ids: string[] }>('/chat/threads/active');
-      setActiveThreadIds(new Set(data.active_thread_ids || []));
+      const candidates = data.active_thread_ids || [];
+      if (candidates.length === 0) { setActiveThreadIds(new Set()); return; }
+      const verified = new Set<string>();
+      await Promise.all(candidates.map(async (id) => {
+        try {
+          const status = await api.get<{ active: boolean; stream_state?: { active: boolean } }>(`/chat/threads/${id}/status`);
+          if (status.active || status.stream_state?.active) verified.add(id);
+        } catch { /* thread may not exist */ }
+      }));
+      setActiveThreadIds(verified);
     } catch (e) { console.warn('initActiveThreadIds failed:', e); }
   };
 
@@ -1020,8 +1029,8 @@ export function Chat() {
                             }}
                             className="group flex flex-col items-center gap-2 p-3 rounded-xl bg-surface-2/60 hover:bg-surface-2 border border-transparent hover:border-border-1 transition-all cursor-pointer"
                           >
-                            <div className="w-10 h-10 rounded-full overflow-hidden ring-1 ring-border-1 group-hover:ring-accent-primary/40 transition-all">
-                              <img src={role.avatar_path} alt={role.name} className="w-10 h-10 rounded-full object-cover" />
+                            <div className="w-10 h-10 rounded-md overflow-hidden ring-1 ring-border-1 group-hover:ring-accent-primary/40 transition-all">
+                              <img src={role.avatar_path} alt={role.name} className="w-10 h-10 rounded-md object-cover" />
                             </div>
                             <span className="text-xs font-medium text-text-2 group-hover:text-text-0 truncate w-full transition-colors">{role.name}</span>
                           </button>
@@ -1037,7 +1046,7 @@ export function Chat() {
                             }}
                             className="group flex flex-col items-center gap-2 p-3 rounded-xl bg-surface-2/60 hover:bg-surface-2 border border-transparent hover:border-border-1 transition-all cursor-pointer"
                           >
-                            <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center ring-1 ring-border-1 group-hover:ring-accent-primary/40 transition-all">
+                            <div className="w-10 h-10 rounded-md bg-surface-3 flex items-center justify-center ring-1 ring-border-1 group-hover:ring-accent-primary/40 transition-all">
                               <Plus className="w-5 h-5 text-text-3 group-hover:text-accent-primary transition-colors" />
                             </div>
                             <span className="text-xs font-medium text-text-3 group-hover:text-text-1 transition-colors">+{userRoles.length - 5} more</span>
@@ -1069,11 +1078,11 @@ export function Chat() {
                 )}
                 {thinking && !isStreaming && (
                   <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
+                    <div className="w-8 h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
                       {thinkingRole ? (
-                        <img src={thinkingRole.avatar_path} alt={thinkingRole.name} className="w-8 h-8 rounded-full object-cover" />
+                        <img src={thinkingRole.avatar_path} alt={thinkingRole.name} className="w-8 h-8 rounded-md object-cover" />
                       ) : (
-                        <img src="/gateway-avatar.png" alt="AI" className="w-8 h-8 rounded-full object-cover" />
+                        <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-8 h-8 rounded-md object-cover" />
                       )}
                     </div>
                     <div className="max-w-[85%] md:max-w-[75%]">
@@ -1149,7 +1158,7 @@ export function Chat() {
                             i === mentionIndex ? 'bg-accent-muted' : 'hover:bg-surface-2'
                           }`}
                         >
-                          <img src={role.avatar_path} alt={role.name} className="w-7 h-7 rounded-full flex-shrink-0" />
+                          <img src={role.avatar_path} alt={role.name} className="w-7 h-7 rounded-md flex-shrink-0" />
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-text-0 truncate">@{role.name}</p>
                             {role.description && (

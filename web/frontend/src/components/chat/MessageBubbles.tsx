@@ -23,11 +23,11 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   return (
     <div className="streaming-entrance flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
-        <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
+        <div className="w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
           {role ? (
-            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover" />
+            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
           ) : (
-            <img src="/gateway-avatar.png" alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover" />
+            <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
           )}
         </div>
         {role && (
@@ -81,9 +81,9 @@ function UserMessageBubble({ message, roles, avatarPath }: { message: ChatMessag
 
   return (
     <div className="flex flex-col items-end md:flex-row md:justify-end gap-1 md:gap-3">
-      <div className="w-7 h-7 md:w-8 md:h-8 rounded-full overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0 ring-1 ring-border-1 md:order-2">
+      <div className="w-7 h-7 md:w-8 md:h-8 rounded-md overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0 ring-1 ring-border-1 md:order-2">
         {avatarPath ? (
-          <img src={avatarPath} alt="You" className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover" />
+          <img src={avatarPath} alt="You" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
         ) : (
           <Users className="w-4 h-4 text-accent-primary" />
         )}
@@ -126,11 +126,11 @@ export function MessageBubble({ message, roles, onRefresh, userAvatarPath }: { m
   return (
     <div className="flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
-        <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
+        <div className="w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
           {role ? (
-            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover" />
+            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
           ) : (
-            <img src="/gateway-avatar.png" alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-full object-cover" />
+            <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
           )}
         </div>
         {role && (

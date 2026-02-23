@@ -146,8 +146,8 @@ export const agentMemories = {
 export const skills = {
   list: () => api.get<Skill[]>('/skills'),
   get: (name: string) => api.get<Skill>(`/skills/${name}`),
-  create: (name: string, content: string) => api.post<Skill>('/skills', { name, content }),
-  update: (name: string, content: string) => api.put<Skill>(`/skills/${name}`, { content }),
+  create: (name: string, content: string, folder?: string) => api.post<Skill>('/skills', { name, content, folder }),
+  update: (name: string, data: { content?: string; folder?: string }) => api.put<Skill>(`/skills/${name}`, data),
   delete: (name: string) => api.delete(`/skills/${name}`),
 };
 
@@ -286,6 +286,7 @@ export interface SecretCheckResult {
 
 export const secretsApi = {
   checkNames: (names: string[]) => api.post<SecretCheckResult[]>('/secrets/check', { names }),
+  ensurePlaceholders: (secrets: { name: string; description: string }[]) => api.post<{ created: number }>('/secrets/ensure', { secrets }),
 };
 
 // Heartbeat API helpers

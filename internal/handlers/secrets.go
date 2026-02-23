@@ -183,6 +183,53 @@ func (h *SecretsHandler) CheckNames(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, results)
 }
 
+func (h *SecretsHandler) EnsurePlaceholders(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Secrets []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"secrets"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	created := 0
+	for _, s := range req.Secrets {
+		if s.Name == "" {
+			continue
+		}
+		var exists int
+		h.db.QueryRow("SELECT COUNT(*) FROM secrets WHERE name = ?", s.Name).Scan(&exists)
+		if exists > 0 {
+			continue
+		}
+		encrypted, err := h.manager.Encrypt("REPLACE_ME")
+		if err != nil {
+			continue
+		}
+		id := generateID()
+		now := time.Now().UTC()
+		desc := s.Description
+		if desc == "" {
+			desc = "Placeholder — replace with your real value"
+		}
+		h.db.Exec(
+			"INSERT INTO secrets (id, name, encrypted_value, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+			id, s.Name, encrypted, desc, now, now,
+		)
+		created++
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	if created > 0 {
+		h.db.LogAudit(userID, "secrets_placeholders_created", "secret", "secret", "", "")
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"created": created})
+}
+
 func (h *SecretsHandler) Test(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

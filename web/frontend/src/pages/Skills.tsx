@@ -10,6 +10,10 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { Pagination } from '../components/Pagination';
 import { SearchBar } from '../components/SearchBar';
 import { ViewToggle, type ViewMode } from '../components/ViewToggle';
+import { FolderFilter } from '../components/FolderFilter';
+import { FolderSection } from '../components/FolderSection';
+import { FolderAssign } from '../components/FolderAssign';
+import { useFolderGrouping } from '../hooks/useFolderGrouping';
 import { useToast } from '../components/Toast';
 import { skills as skillsApi, type Skill } from '../lib/api';
 
@@ -122,7 +126,7 @@ export function Skills() {
     if (!editing) return;
     setSaving(true);
     try {
-      await skillsApi.update(editing.name, editContent);
+      await skillsApi.update(editing.name, { content: editContent });
       setSkillList(prev => prev.map(s => s.name === editing.name ? { ...s, content: editContent, summary: editContent.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '') || '' } : s));
       setEditing(null);
       toast('success', 'Skill saved');
@@ -133,15 +137,56 @@ export function Skills() {
     }
   };
 
+  const handleFolderChange = async (skill: Skill, folder: string) => {
+    try {
+      await skillsApi.update(skill.name, { folder });
+      setSkillList(prev => prev.map(s => s.name === skill.name ? { ...s, folder } : s));
+      toast('success', 'Folder updated');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to update folder');
+    }
+  };
+
   const handleSearch = (val: string) => { setSearch(val); setPage(0); };
 
-  const filteredSkills = skillList.filter(skill => {
+  const getFolder = useCallback((s: Skill) => s.folder || '', []);
+  const folderGrouping = useFolderGrouping(skillList, getFolder);
+
+  const searchFiltered = folderGrouping.filtered.filter(skill => {
     if (!search) return true;
     const term = search.toLowerCase();
     return skill.name.toLowerCase().includes(term) || (skill.description || skill.summary || '').toLowerCase().includes(term);
   });
-  const totalPages = Math.max(1, Math.ceil(filteredSkills.length / PAGE_SIZE));
-  const paginatedSkills = filteredSkills.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const showFolderSections = folderGrouping.selectedFolder === null && folderGrouping.folders.length > 0;
+  const totalPages = showFolderSections ? 1 : Math.max(1, Math.ceil(searchFiltered.length / PAGE_SIZE));
+  const paginatedSkills = showFolderSections ? searchFiltered : searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const renderSkillContent = (items: Skill[]) => view === 'grid' ? (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {items.map(skill => (
+        <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-0 font-mono truncate">{skill.name}</p>
+            <p className="text-xs text-text-3 line-clamp-2 mt-1">{skill.description || skill.summary || 'No description'}</p>
+          </div>
+        </Card>
+      ))}
+    </div>
+  ) : (
+    <div className="space-y-3">
+      {items.map(skill => (
+        <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-text-0 font-mono">{skill.name}</p>
+              <p className="text-xs text-text-3 truncate">{skill.description || skill.summary || 'No description'}</p>
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -156,6 +201,13 @@ export function Skills() {
                   <X className="w-5 h-5" />
                 </button>
                 <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
+                <div className="w-[160px]">
+                  <FolderAssign
+                    value={editing.folder || ''}
+                    folders={folderGrouping.folders}
+                    onChange={(f) => handleFolderChange(editing, f)}
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="danger" onClick={() => setDeleteTarget(editing.name)} icon={<Trash2 className="w-3.5 h-3.5" />}>
@@ -184,42 +236,54 @@ export function Skills() {
                   <ViewToggle view={view} onViewChange={setView} />
                   <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />} className="flex-shrink-0">Add Skill</Button>
                 </div>
+                <FolderFilter
+                  folders={folderGrouping.folders}
+                  folderCounts={folderGrouping.folderCounts}
+                  unfiledCount={folderGrouping.unfiledCount}
+                  totalCount={folderGrouping.totalCount}
+                  selectedFolder={folderGrouping.selectedFolder}
+                  onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
+                />
 
-                {filteredSkills.length === 0 ? (
+                {searchFiltered.length === 0 ? (
                   <EmptyState
                     icon={<Wrench className="w-8 h-8" />}
                     title={search ? 'No skills found' : 'No skills yet'}
                     description={search ? 'Try a different search term.' : 'Create a skill or install one from the Library page.'}
                   />
-                ) : view === 'grid' ? (
-                  <>
-                    <Pagination page={page} totalPages={totalPages} total={filteredSkills.length} onPageChange={setPage} label="skills" />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {paginatedSkills.map(skill => (
-                        <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-text-0 font-mono truncate">{skill.name}</p>
-                            <p className="text-xs text-text-3 line-clamp-2 mt-1">{skill.description || skill.summary || 'No description'}</p>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </>
+                ) : showFolderSections ? (
+                  <div className="space-y-4">
+                    {folderGrouping.folders.map((folder) => {
+                      const items = (folderGrouping.grouped.get(folder) || []).filter(s => {
+                        if (!search) return true;
+                        const term = search.toLowerCase();
+                        return s.name.toLowerCase().includes(term) || (s.description || s.summary || '').toLowerCase().includes(term);
+                      });
+                      if (items.length === 0) return null;
+                      return (
+                        <FolderSection key={folder} name={folder} count={items.length}>
+                          {renderSkillContent(items)}
+                        </FolderSection>
+                      );
+                    })}
+                    {(() => {
+                      const unfiled = (folderGrouping.grouped.get('') || []).filter(s => {
+                        if (!search) return true;
+                        const term = search.toLowerCase();
+                        return s.name.toLowerCase().includes(term) || (s.description || s.summary || '').toLowerCase().includes(term);
+                      });
+                      if (unfiled.length === 0) return null;
+                      return (
+                        <FolderSection name="" count={unfiled.length}>
+                          {renderSkillContent(unfiled)}
+                        </FolderSection>
+                      );
+                    })()}
+                  </div>
                 ) : (
                   <>
-                    <Pagination page={page} totalPages={totalPages} total={filteredSkills.length} onPageChange={setPage} label="skills" />
-                    <div className="space-y-3">
-                      {paginatedSkills.map(skill => (
-                        <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-text-0 font-mono">{skill.name}</p>
-                              <p className="text-xs text-text-3 truncate">{skill.description || skill.summary || 'No description'}</p>
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
+                    <Pagination page={page} totalPages={totalPages} total={searchFiltered.length} onPageChange={setPage} label="skills" />
+                    {renderSkillContent(paginatedSkills)}
                   </>
                 )}
           </>

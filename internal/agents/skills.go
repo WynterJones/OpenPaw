@@ -15,6 +15,7 @@ type SkillMeta struct {
 	Name         string `json:"name,omitempty"`
 	Description  string `json:"description,omitempty"`
 	AllowedTools string `json:"allowed_tools,omitempty"`
+	Folder       string `json:"folder,omitempty"`
 }
 
 // Skill represents a skill definition.
@@ -24,6 +25,7 @@ type Skill struct {
 	Summary      string `json:"summary,omitempty"`
 	Description  string `json:"description,omitempty"`
 	AllowedTools string `json:"allowed_tools,omitempty"`
+	Folder       string `json:"folder,omitempty"`
 }
 
 // globalSkillsDir returns the path to the global skills directory.
@@ -223,6 +225,8 @@ func ParseFrontmatter(content string) (SkillMeta, string) {
 			meta.Description = val
 		case "allowed_tools", "allowedTools":
 			meta.AllowedTools = val
+		case "folder":
+			meta.Folder = val
 		}
 	}
 
@@ -243,16 +247,30 @@ func BuildSkillFromFile(name, content string) Skill {
 		Summary:      firstLine(body),
 		Description:  desc,
 		AllowedTools: meta.AllowedTools,
+		Folder:       meta.Folder,
 	}
 }
 
 // BuildFrontmatter generates a valid SKILL.md with YAML frontmatter.
 func BuildFrontmatter(name, description, body string) string {
+	return BuildFrontmatterFromMeta(SkillMeta{Name: name, Description: description}, body)
+}
+
+// BuildFrontmatterFromMeta generates SKILL.md with YAML frontmatter from a SkillMeta.
+func BuildFrontmatterFromMeta(meta SkillMeta, body string) string {
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("name: %s\n", name))
-	if description != "" {
-		sb.WriteString(fmt.Sprintf("description: %s\n", description))
+	if meta.Name != "" {
+		sb.WriteString(fmt.Sprintf("name: %s\n", meta.Name))
+	}
+	if meta.Description != "" {
+		sb.WriteString(fmt.Sprintf("description: %s\n", meta.Description))
+	}
+	if meta.AllowedTools != "" {
+		sb.WriteString(fmt.Sprintf("allowed_tools: %s\n", meta.AllowedTools))
+	}
+	if meta.Folder != "" {
+		sb.WriteString(fmt.Sprintf("folder: %s\n", meta.Folder))
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(body)

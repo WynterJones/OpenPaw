@@ -108,9 +108,9 @@ func (h *AgentLibraryHandler) InstallCatalogAgent(w http.ResponseWriter, r *http
 
 	var a models.AgentRole
 	h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		agentSlug,
-	).Scan(&a.ID, &a.Slug, &a.Name, &a.Description, &a.SystemPrompt, &a.Model, &a.AvatarPath, &a.Enabled, &a.SortOrder, &a.IsPreset, &a.IdentityInitialized, &a.HeartbeatEnabled, &a.LibrarySlug, &a.LibraryVersion, &a.CreatedAt, &a.UpdatedAt)
+	).Scan(&a.ID, &a.Slug, &a.Name, &a.Description, &a.SystemPrompt, &a.Model, &a.AvatarPath, &a.Enabled, &a.SortOrder, &a.IsPreset, &a.IdentityInitialized, &a.HeartbeatEnabled, &a.LibrarySlug, &a.LibraryVersion, &a.Folder, &a.CreatedAt, &a.UpdatedAt)
 
 	writeJSON(w, http.StatusCreated, a)
 }

@@ -28,6 +28,7 @@ type Tool struct {
 	LibraryVersion string     `json:"library_version"`
 	SourceHash     string     `json:"source_hash"`
 	BinaryHash     string     `json:"binary_hash"`
+	Folder         string     `json:"folder"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
@@ -183,6 +184,7 @@ type AgentRole struct {
 	HeartbeatEnabled     bool      `json:"heartbeat_enabled"`
 	LibrarySlug          string    `json:"library_slug"`
 	LibraryVersion       string    `json:"library_version"`
+	Folder               string    `json:"folder"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }

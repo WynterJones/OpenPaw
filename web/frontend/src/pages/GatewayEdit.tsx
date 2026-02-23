@@ -8,6 +8,8 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { api, gatewayFiles, type AgentRole, type MemoryFile } from '../lib/api';
 
+const PRESET_AVATARS = Array.from({ length: 45 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
+
 interface FileTab {
   key: string;
   label: string;
@@ -268,6 +270,25 @@ export function GatewayEdit() {
                       )}
                       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="hidden" aria-label="Upload avatar" tabIndex={-1} />
                     </label>
+                  </div>
+                  <div className="w-full max-h-48 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2">
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {PRESET_AVATARS.map((path, i) => (
+                        <button
+                          key={path}
+                          onClick={() => setAvatarPath(path)}
+                          aria-label={`Select avatar ${i + 1}`}
+                          aria-pressed={avatarPath === path}
+                          className={`aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                            avatarPath === path
+                              ? 'border-accent-primary ring-2 ring-accent-primary/20 scale-105'
+                              : 'border-transparent hover:border-border-0 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={path} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </Card>
