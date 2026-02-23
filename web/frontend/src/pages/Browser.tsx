@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Monitor,
   ArrowLeft,
@@ -12,46 +12,46 @@ import {
   Check,
   Lock,
   RefreshCw,
-} from 'lucide-react';
-import { Header } from '../components/Header';
-import { Button } from '../components/Button';
-import { Card } from '../components/Card';
-import { Toggle } from '../components/Toggle';
-import { StatusBadge } from '../components/StatusBadge';
-import { EmptyState } from '../components/EmptyState';
-import { SearchBar } from '../components/SearchBar';
-import { Pagination } from '../components/Pagination';
-import { ViewToggle, type ViewMode } from '../components/ViewToggle';
-import { LoadingSpinner } from '../components/LoadingSpinner';
-import { BrowserViewer } from '../components/BrowserViewer';
-import { BrowserActionBar } from '../components/BrowserActionBar';
-import { useToast } from '../components/Toast';
-import { useWebSocket } from '../lib/useWebSocket';
-import { browserApi, type BrowserSession } from '../lib/api';
+} from "lucide-react";
+import { Header } from "../components/Header";
+import { Button } from "../components/Button";
+import { Card } from "../components/Card";
+import { Toggle } from "../components/Toggle";
+import { StatusBadge } from "../components/StatusBadge";
+import { EmptyState } from "../components/EmptyState";
+import { SearchBar } from "../components/SearchBar";
+import { Pagination } from "../components/Pagination";
+import { ViewToggle, type ViewMode } from "../components/ViewToggle";
+import { LoadingSpinner } from "../components/LoadingSpinner";
+import { BrowserViewer } from "../components/BrowserViewer";
+import { BrowserActionBar } from "../components/BrowserActionBar";
+import { useToast } from "../components/Toast";
+import { useWebSocket } from "../lib/useWebSocket";
+import { browserApi, type BrowserSession } from "../lib/api";
 
 const PAGE_SIZE = 12;
 
 function statusColor(status: string) {
   const colors: Record<string, string> = {
-    active: 'bg-emerald-400',
-    busy: 'bg-blue-400',
-    human: 'bg-amber-400',
-    idle: 'bg-text-3',
-    stopped: 'bg-text-3',
-    error: 'bg-red-400',
+    active: "bg-emerald-400",
+    busy: "bg-blue-400",
+    human: "bg-amber-400",
+    idle: "bg-text-3",
+    stopped: "bg-text-3",
+    error: "bg-red-400",
   };
-  return colors[status] ?? 'bg-text-3';
+  return colors[status] ?? "bg-text-3";
 }
 
 function truncateUrl(url: string) {
   try {
     const u = new URL(url);
-    const path = u.pathname === '/' ? '' : u.pathname;
+    const path = u.pathname === "/" ? "" : u.pathname;
     const display = u.hostname + path;
-    return display.length > 40 ? display.slice(0, 40) + '...' : display;
+    return display.length > 40 ? display.slice(0, 40) + "..." : display;
   } catch (e) {
-    console.warn('formatUrl: failed to parse URL:', e);
-    return url.length > 40 ? url.slice(0, 40) + '...' : url;
+    console.warn("formatUrl: failed to parse URL:", e);
+    return url.length > 40 ? url.slice(0, 40) + "..." : url;
   }
 }
 
@@ -70,15 +70,20 @@ function BrowserCard({
   onStop: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
-  const isStopped = session.status === 'stopped' || session.status === 'idle';
-  const isRunning = ['active', 'busy', 'human'].includes(session.status);
+  const isStopped = session.status === "stopped" || session.status === "idle";
+  const isRunning = ["active", "busy", "human"].includes(session.status);
 
   return (
     <div
       onClick={onClick}
       tabIndex={0}
       role="button"
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="group rounded-xl border border-border-0 bg-surface-1 shadow-sm hover:border-border-1 hover:shadow-md focus:border-border-1 focus:shadow-md focus-visible:ring-2 focus-visible:ring-accent-primary transition-all duration-150 cursor-pointer overflow-hidden"
     >
       {/* Title bar */}
@@ -91,7 +96,9 @@ function BrowserCard({
         <span className="flex-1 text-xs font-medium text-text-1 truncate text-center">
           {session.name}
         </span>
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor(session.status)}`} />
+        <span
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor(session.status)}`}
+        />
       </div>
 
       {/* URL bar */}
@@ -106,7 +113,9 @@ function BrowserCard({
         ) : (
           <>
             <Globe className="w-3 h-3 text-text-3 flex-shrink-0" />
-            <span className="text-[11px] text-text-3 italic flex-1">No URL loaded</span>
+            <span className="text-[11px] text-text-3 italic flex-1">
+              No URL loaded
+            </span>
           </>
         )}
         <RefreshCw className="w-3 h-3 text-text-3 flex-shrink-0" />
@@ -117,7 +126,9 @@ function BrowserCard({
         <div className="text-center">
           <Monitor className="w-6 h-6 text-text-3/40 mx-auto mb-1" />
           {session.current_title ? (
-            <p className="text-[10px] text-text-3 px-3 truncate max-w-[180px]">{session.current_title}</p>
+            <p className="text-[10px] text-text-3 px-3 truncate max-w-[180px]">
+              {session.current_title}
+            </p>
           ) : (
             <p className="text-[10px] text-text-3">Browser session</p>
           )}
@@ -136,7 +147,10 @@ function BrowserCard({
             <StatusBadge status={session.status} />
           )}
         </div>
-        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex items-center gap-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
           {isStopped && (
             <button
               onClick={onStart}
@@ -186,8 +200,8 @@ function BrowserRow({
   onStop: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
-  const isStopped = session.status === 'stopped' || session.status === 'idle';
-  const isRunning = ['active', 'busy', 'human'].includes(session.status);
+  const isStopped = session.status === "stopped" || session.status === "idle";
+  const isRunning = ["active", "busy", "human"].includes(session.status);
 
   return (
     <Card hover onClick={onClick}>
@@ -196,7 +210,9 @@ function BrowserRow({
           <Monitor className="w-5 h-5 text-text-2" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-text-0 truncate">{session.name}</p>
+          <p className="text-sm font-semibold text-text-0 truncate">
+            {session.name}
+          </p>
           {session.current_url ? (
             <p className="text-xs text-text-3 font-mono truncate flex items-center gap-1">
               <Lock className="w-3 h-3 flex-shrink-0 inline" />
@@ -213,7 +229,10 @@ function BrowserRow({
           </span>
         )}
         <StatusBadge status={session.status} />
-        <div className="flex items-center gap-0.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex items-center gap-0.5 flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
           {isStopped && (
             <button
               onClick={onStart}
@@ -258,8 +277,8 @@ function NewSessionModal({
   onCreate: (session: BrowserSession) => void;
 }) {
   const { toast } = useToast();
-  const [name, setName] = useState('');
-  const [ownerSlug, setOwnerSlug] = useState('');
+  const [name, setName] = useState("");
+  const [ownerSlug, setOwnerSlug] = useState("");
   const [headless, setHeadless] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -273,10 +292,13 @@ function NewSessionModal({
         headless,
         owner_agent_slug: ownerSlug.trim() || undefined,
       });
-      toast('success', 'Session created');
+      toast("success", "Session created");
       onCreate(session);
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to create session');
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to create session",
+      );
     } finally {
       setSaving(false);
     }
@@ -284,10 +306,20 @@ function NewSessionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="New browser session" className="relative w-full max-w-md rounded-2xl border border-border-0 bg-surface-1 shadow-2xl p-6">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="New browser session"
+        className="relative w-full max-w-md rounded-2xl border border-border-0 bg-surface-1 shadow-2xl p-6"
+      >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-text-0">New Browser Session</h2>
+          <h2 className="text-lg font-semibold text-text-0">
+            New Browser Session
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -327,12 +359,20 @@ function NewSessionModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <Toggle enabled={headless} onChange={(v) => setHeadless(v)} label="Headless mode" />
+            <Toggle
+              enabled={headless}
+              onChange={(v) => setHeadless(v)}
+              label="Headless mode"
+            />
             <span className="text-sm text-text-1">Headless mode</span>
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Button type="submit" loading={saving} icon={<Check className="w-4 h-4" />}>
+            <Button
+              type="submit"
+              loading={saving}
+              icon={<Check className="w-4 h-4" />}
+            >
               Create Session
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -365,14 +405,14 @@ function SessionDetail({
   onRefresh: () => void;
 }) {
   const { toast } = useToast();
-  const [humanControl, setHumanControl] = useState(session.status === 'human');
+  const [humanControl, setHumanControl] = useState(session.status === "human");
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [actionLog]);
 
   const addLog = (action: string, detail: string, success: boolean) => {
@@ -391,14 +431,18 @@ function SessionDetail({
   useWebSocket({
     onMessage: (msg) => {
       if (
-        msg.type === 'browser_action' &&
+        msg.type === "browser_action" &&
         (msg.payload as { session_id?: string }).session_id === session.id
       ) {
-        const p = msg.payload as { action?: string; detail?: string; success?: boolean };
-        addLog(p.action ?? 'action', p.detail ?? '', p.success !== false);
+        const p = msg.payload as {
+          action?: string;
+          detail?: string;
+          success?: boolean;
+        };
+        addLog(p.action ?? "action", p.detail ?? "", p.success !== false);
       }
       if (
-        msg.type === 'browser_status' &&
+        msg.type === "browser_status" &&
         (msg.payload as { session_id?: string }).session_id === session.id
       ) {
         onRefresh();
@@ -406,35 +450,41 @@ function SessionDetail({
     },
   });
 
-  const isStopped = session.status === 'stopped' || session.status === 'idle';
-  const isRunning = ['active', 'busy', 'human'].includes(session.status);
+  const isStopped = session.status === "stopped" || session.status === "idle";
+  const isRunning = ["active", "busy", "human"].includes(session.status);
 
-  const doSessionAction = async (action: 'start' | 'stop') => {
+  const doSessionAction = async (action: "start" | "stop") => {
     setLoadingAction(action);
     try {
-      if (action === 'start') {
+      if (action === "start") {
         await browserApi.startSession(session.id);
-        toast('success', 'Session started');
+        toast("success", "Session started");
       } else {
         await browserApi.stopSession(session.id);
-        toast('success', 'Session stopped');
+        toast("success", "Session stopped");
       }
       onRefresh();
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : `Failed to ${action} session`);
+      toast(
+        "error",
+        err instanceof Error ? err.message : `Failed to ${action} session`,
+      );
     } finally {
       setLoadingAction(null);
     }
   };
 
   const handleDelete = async () => {
-    setLoadingAction('delete');
+    setLoadingAction("delete");
     try {
       await browserApi.deleteSession(session.id);
-      toast('success', 'Session deleted');
+      toast("success", "Session deleted");
       onBack();
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to delete session');
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to delete session",
+      );
       setLoadingAction(null);
       setConfirmDelete(false);
     }
@@ -452,13 +502,19 @@ function SessionDetail({
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold text-text-0 truncate">{session.name}</h2>
+          <h2 className="text-lg font-semibold text-text-0 truncate">
+            {session.name}
+          </h2>
           {session.current_url && (
-            <p className="text-xs text-text-3 font-mono truncate">{session.current_url}</p>
+            <p className="text-xs text-text-3 font-mono truncate">
+              {session.current_url}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`w-2 h-2 rounded-full ${statusColor(session.status)}`} />
+          <span
+            className={`w-2 h-2 rounded-full ${statusColor(session.status)}`}
+          />
           <StatusBadge status={session.status} />
         </div>
       </div>
@@ -470,8 +526,8 @@ function SessionDetail({
           <div className="flex flex-wrap gap-2">
             {isStopped && (
               <Button
-                onClick={() => doSessionAction('start')}
-                loading={loadingAction === 'start'}
+                onClick={() => doSessionAction("start")}
+                loading={loadingAction === "start"}
                 icon={<Play className="w-4 h-4" />}
               >
                 Start
@@ -480,8 +536,8 @@ function SessionDetail({
             {isRunning && (
               <Button
                 variant="secondary"
-                onClick={() => doSessionAction('stop')}
-                loading={loadingAction === 'stop'}
+                onClick={() => doSessionAction("stop")}
+                loading={loadingAction === "stop"}
                 icon={<Square className="w-4 h-4" />}
               >
                 Stop
@@ -492,12 +548,14 @@ function SessionDetail({
 
             {confirmDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-red-400">Delete this session?</span>
+                <span className="text-sm text-red-400">
+                  Delete this session?
+                </span>
                 <Button
                   variant="danger"
                   size="sm"
                   onClick={handleDelete}
-                  loading={loadingAction === 'delete'}
+                  loading={loadingAction === "delete"}
                 >
                   Confirm
                 </Button>
@@ -527,12 +585,12 @@ function SessionDetail({
             humanControl={humanControl}
             onTakeControl={() => {
               setHumanControl(true);
-              addLog('control', 'Human control activated', true);
+              addLog("control", "Human control activated", true);
               onRefresh();
             }}
             onReleaseControl={() => {
               setHumanControl(false);
-              addLog('release', 'Human control released', true);
+              addLog("release", "Human control released", true);
               onRefresh();
             }}
           />
@@ -542,22 +600,29 @@ function SessionDetail({
               Action Log
             </h4>
             {actionLog.length === 0 ? (
-              <p className="text-sm text-text-3 italic">No actions recorded yet.</p>
+              <p className="text-sm text-text-3 italic">
+                No actions recorded yet.
+              </p>
             ) : (
               <div className="space-y-1.5 max-h-56 overflow-y-auto">
                 {actionLog.map((entry) => (
-                  <div key={entry.id} className="flex items-start gap-2 text-xs font-mono">
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-2 text-xs font-mono"
+                  >
                     <span className="text-text-3 flex-shrink-0 tabular-nums">
                       {entry.timestamp.toLocaleTimeString()}
                     </span>
                     <span
                       className={`flex-shrink-0 font-semibold ${
-                        entry.success ? 'text-emerald-400' : 'text-red-400'
+                        entry.success ? "text-emerald-400" : "text-red-400"
                       }`}
                     >
                       [{entry.action}]
                     </span>
-                    <span className="text-text-2 break-all">{entry.detail}</span>
+                    <span className="text-text-2 break-all">
+                      {entry.detail}
+                    </span>
                   </div>
                 ))}
                 <div ref={logEndRef} />
@@ -581,10 +646,12 @@ export function Browser() {
   const { toast } = useToast();
   const [sessions, setSessions] = useState<BrowserSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSession, setSelectedSession] = useState<BrowserSession | null>(null);
+  const [selectedSession, setSelectedSession] = useState<BrowserSession | null>(
+    null,
+  );
   const [showNewModal, setShowNewModal] = useState(false);
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState<ViewMode>('grid');
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("grid");
   const [page, setPage] = useState(0);
   const selectedRef = useRef<BrowserSession | null>(null);
 
@@ -601,7 +668,7 @@ export function Browser() {
       const data = await browserApi.listSessions();
       setSessions(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.warn('loadBrowserSessions failed:', e);
+      console.warn("loadBrowserSessions failed:", e);
       setSessions([]);
     } finally {
       setLoading(false);
@@ -614,13 +681,13 @@ export function Browser() {
       setSelectedSession(data);
       setSessions((prev) => prev.map((s) => (s.id === id ? data : s)));
     } catch (e) {
-      console.warn('fetchSessionDetail failed:', e);
+      console.warn("fetchSessionDetail failed:", e);
     }
   }, []);
 
   useWebSocket({
     onMessage: (msg) => {
-      if (msg.type === 'browser_status') {
+      if (msg.type === "browser_status") {
         loadSessions();
         const current = selectedRef.current;
         const payload = msg.payload as { session_id?: string };
@@ -631,7 +698,10 @@ export function Browser() {
     },
   });
 
-  const handleSearch = (val: string) => { setSearch(val); setPage(0); };
+  const handleSearch = (val: string) => {
+    setSearch(val);
+    setPage(0);
+  };
 
   const filteredSessions = sessions.filter((s) => {
     if (!search.trim()) return true;
@@ -643,17 +713,26 @@ export function Browser() {
     );
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / PAGE_SIZE));
-  const paginatedSessions = filteredSessions.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredSessions.length / PAGE_SIZE),
+  );
+  const paginatedSessions = filteredSessions.slice(
+    page * PAGE_SIZE,
+    (page + 1) * PAGE_SIZE,
+  );
 
   const handleStart = async (e: React.MouseEvent, session: BrowserSession) => {
     e.stopPropagation();
     try {
       await browserApi.startSession(session.id);
-      toast('success', 'Session started');
+      toast("success", "Session started");
       loadSessions();
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to start session');
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to start session",
+      );
     }
   };
 
@@ -661,10 +740,13 @@ export function Browser() {
     e.stopPropagation();
     try {
       await browserApi.stopSession(session.id);
-      toast('success', 'Session stopped');
+      toast("success", "Session stopped");
       loadSessions();
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to stop session');
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to stop session",
+      );
     }
   };
 
@@ -672,11 +754,14 @@ export function Browser() {
     e.stopPropagation();
     try {
       await browserApi.deleteSession(session.id);
-      toast('success', 'Session deleted');
+      toast("success", "Session deleted");
       if (selectedSession?.id === session.id) setSelectedSession(null);
       loadSessions();
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to delete session');
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to delete session",
+      );
     }
   };
 
@@ -707,9 +792,17 @@ export function Browser() {
         ) : (
           <>
             <div className="flex items-center gap-3 mb-4">
-              <SearchBar value={search} onChange={handleSearch} placeholder="Search sessions..." className="flex-1" />
+              <SearchBar
+                value={search}
+                onChange={handleSearch}
+                placeholder="Search sessions..."
+                className="flex-1"
+              />
               <ViewToggle view={view} onViewChange={setView} />
-              <Button onClick={() => setShowNewModal(true)} icon={<Plus className="w-4 h-4" />}>
+              <Button
+                onClick={() => setShowNewModal(true)}
+                icon={<Plus className="w-4 h-4" />}
+              >
                 New Session
               </Button>
             </div>
@@ -717,12 +810,26 @@ export function Browser() {
             {filteredSessions.length === 0 ? (
               <EmptyState
                 icon={<Monitor className="w-8 h-8" />}
-                title={sessions.length === 0 ? 'No browser sessions' : 'No sessions match your search'}
-                description={sessions.length === 0 ? 'Create a browser session to start controlling web browsers for your agents.' : 'Try a different search term.'}
+                title={
+                  sessions.length === 0
+                    ? "No browser sessions"
+                    : "No sessions match your search"
+                }
+                description={
+                  sessions.length === 0
+                    ? "Create a browser session to start controlling web browsers."
+                    : "Try a different search term."
+                }
               />
-            ) : view === 'grid' ? (
+            ) : view === "grid" ? (
               <>
-                <Pagination page={page} totalPages={totalPages} total={filteredSessions.length} onPageChange={setPage} label="sessions" />
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={filteredSessions.length}
+                  onPageChange={setPage}
+                  label="sessions"
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {paginatedSessions.map((session) => (
                     <BrowserCard
@@ -741,7 +848,13 @@ export function Browser() {
               </>
             ) : (
               <>
-                <Pagination page={page} totalPages={totalPages} total={filteredSessions.length} onPageChange={setPage} label="sessions" />
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={filteredSessions.length}
+                  onPageChange={setPage}
+                  label="sessions"
+                />
                 <div className="space-y-3">
                   {paginatedSessions.map((session) => (
                     <BrowserRow

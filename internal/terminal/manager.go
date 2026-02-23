@@ -33,6 +33,7 @@ type Session struct {
 type Workbench struct {
 	ID        string
 	Name      string
+	Color     string
 	SortOrder int
 	CreatedAt time.Time
 }
@@ -252,7 +253,7 @@ func (m *Manager) Shutdown() {
 
 // ListWorkbenches returns all workbenches ordered by sort_order then created_at.
 func (m *Manager) ListWorkbenches() ([]Workbench, error) {
-	rows, err := m.db.Query("SELECT id, name, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at")
+	rows, err := m.db.Query("SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at")
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +261,7 @@ func (m *Manager) ListWorkbenches() ([]Workbench, error) {
 	var result []Workbench
 	for rows.Next() {
 		var w Workbench
-		if err := rows.Scan(&w.ID, &w.Name, &w.SortOrder, &w.CreatedAt); err != nil {
+		if err := rows.Scan(&w.ID, &w.Name, &w.Color, &w.SortOrder, &w.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, w)
@@ -272,16 +273,16 @@ func (m *Manager) ListWorkbenches() ([]Workbench, error) {
 func (m *Manager) CreateWorkbench(name string) (*Workbench, error) {
 	id := uuid.New().String()
 	now := time.Now().UTC()
-	_, err := m.db.Exec("INSERT INTO workbenches (id, name, created_at) VALUES (?, ?, ?)", id, name, now)
+	_, err := m.db.Exec("INSERT INTO workbenches (id, name, color, created_at) VALUES (?, ?, '', ?)", id, name, now)
 	if err != nil {
 		return nil, err
 	}
-	return &Workbench{ID: id, Name: name, SortOrder: 0, CreatedAt: now}, nil
+	return &Workbench{ID: id, Name: name, Color: "", SortOrder: 0, CreatedAt: now}, nil
 }
 
-// UpdateWorkbench updates the name of a workbench.
-func (m *Manager) UpdateWorkbench(id, name string) error {
-	res, err := m.db.Exec("UPDATE workbenches SET name = ? WHERE id = ?", name, id)
+// UpdateWorkbench updates the name and color of a workbench.
+func (m *Manager) UpdateWorkbench(id, name, color string) error {
+	res, err := m.db.Exec("UPDATE workbenches SET name = ?, color = ? WHERE id = ?", name, color, id)
 	if err != nil {
 		return err
 	}
@@ -323,7 +324,7 @@ func (m *Manager) EnsureDefaultWorkbench() (*Workbench, error) {
 	}
 	if count > 0 {
 		var w Workbench
-		err := m.db.QueryRow("SELECT id, name, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at LIMIT 1").Scan(&w.ID, &w.Name, &w.SortOrder, &w.CreatedAt)
+		err := m.db.QueryRow("SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at LIMIT 1").Scan(&w.ID, &w.Name, &w.Color, &w.SortOrder, &w.CreatedAt)
 		if err != nil {
 			return nil, err
 		}

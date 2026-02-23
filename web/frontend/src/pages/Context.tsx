@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Folder,
   FolderOpen,
@@ -16,22 +16,22 @@ import {
   Pencil,
   GripVertical,
   PanelLeft,
-} from 'lucide-react';
-import { Header } from '../components/Header';
-import { Button } from '../components/Button';
-import { Modal } from '../components/Modal';
-import { useToast } from '../components/Toast';
+} from "lucide-react";
+import { Header } from "../components/Header";
+import { Button } from "../components/Button";
+import { Modal } from "../components/Modal";
+import { useToast } from "../components/Toast";
 import {
   contextApi,
   type ContextFile,
   type ContextTree,
   type ContextTreeNode,
-} from '../lib/api';
+} from "../lib/api";
 
 // ---- Utilities ----------------------------------------------------------------
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -39,15 +39,15 @@ function formatBytes(bytes: number): string {
 
 function isTextMime(mime: string): boolean {
   return (
-    mime.startsWith('text/') ||
-    mime === 'application/json' ||
-    mime === 'application/xml' ||
-    mime === 'application/javascript'
+    mime.startsWith("text/") ||
+    mime === "application/json" ||
+    mime === "application/xml" ||
+    mime === "application/javascript"
   );
 }
 
 function isImageMime(mime: string): boolean {
-  return mime.startsWith('image/');
+  return mime.startsWith("image/");
 }
 
 function MimeIcon({ mime, className }: { mime: string; className?: string }) {
@@ -77,10 +77,10 @@ function ContextMenu({
 }) {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
   return (
@@ -144,9 +144,9 @@ function TreeNodeItem({
   const [dragOver, setDragOver] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('application/x-context-file')) {
+    if (e.dataTransfer.types.includes("application/x-context-file")) {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      e.dataTransfer.dropEffect = "move";
       setDragOver(true);
     }
   };
@@ -156,7 +156,7 @@ function TreeNodeItem({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const fileId = e.dataTransfer.getData('application/x-context-file');
+    const fileId = e.dataTransfer.getData("application/x-context-file");
     if (fileId) onFileDrop(fileId, node.id);
   };
 
@@ -164,7 +164,7 @@ function TreeNodeItem({
     <div role="treeitem" aria-expanded={isOpen} aria-level={level + 1}>
       <div
         className={`relative group flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors text-sm text-text-1 ${
-          dragOver ? 'ring-2 ring-accent-primary bg-accent-muted/30' : ''
+          dragOver ? "ring-2 ring-accent-primary bg-accent-muted/30" : ""
         }`}
         style={{ paddingLeft: `${8 + level * 16}px` }}
         onClick={() => onToggleFolder(node.id)}
@@ -236,10 +236,16 @@ interface FileItemProps {
   onContextMenu: (e: React.MouseEvent, file: ContextFile) => void;
 }
 
-function FileItem({ file, level, selected, onSelect, onContextMenu }: FileItemProps) {
+function FileItem({
+  file,
+  level,
+  selected,
+  onSelect,
+  onContextMenu,
+}: FileItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData('application/x-context-file', file.id);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData("application/x-context-file", file.id);
+    e.dataTransfer.effectAllowed = "move";
   };
 
   return (
@@ -249,8 +255,8 @@ function FileItem({ file, level, selected, onSelect, onContextMenu }: FileItemPr
       aria-selected={selected}
       className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer transition-colors text-sm ${
         selected
-          ? 'bg-accent-muted text-accent-text'
-          : 'hover:bg-surface-2 text-text-2 hover:text-text-1'
+          ? "bg-accent-muted text-accent-text"
+          : "hover:bg-surface-2 text-text-2 hover:text-text-1"
       }`}
       style={{ paddingLeft: `${8 + level * 16}px` }}
       onClick={() => onSelect(file)}
@@ -276,18 +282,20 @@ export function Context() {
 
   // Selection & file content
   const [selectedFile, setSelectedFile] = useState<ContextFile | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
+  const [fileContent, setFileContent] = useState<string>("");
   const [contentLoading, setContentLoading] = useState(false);
-  const [editedContent, setEditedContent] = useState<string>('');
+  const [editedContent, setEditedContent] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
   // File rename
   const [renamingFile, setRenamingFile] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
+  const [renameValue, setRenameValue] = useState("");
 
   // Folder expand state
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Drag & drop (upload)
   const [isDragging, setIsDragging] = useState(false);
@@ -298,7 +306,7 @@ export function Context() {
 
   // Modals
   const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [deleteFileOpen, setDeleteFileOpen] = useState(false);
   const [deletingFile, setDeletingFile] = useState(false);
@@ -312,8 +320,8 @@ export function Context() {
 
   // About You mode
   const [aboutYouMode, setAboutYouMode] = useState(false);
-  const [aboutYouContent, setAboutYouContent] = useState('');
-  const [aboutYouSaved, setAboutYouSaved] = useState('');
+  const [aboutYouContent, setAboutYouContent] = useState("");
+  const [aboutYouSaved, setAboutYouSaved] = useState("");
   const [aboutYouDirty, setAboutYouDirty] = useState(false);
   const [aboutYouSaving, setAboutYouSaving] = useState(false);
   const [aboutYouLoading, setAboutYouLoading] = useState(false);
@@ -327,8 +335,8 @@ export function Context() {
       const data = await contextApi.tree();
       setTree(data);
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to load context files');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to load context files");
     } finally {
       setLoading(false);
     }
@@ -360,26 +368,26 @@ export function Context() {
   // Select a file and load its content
   const selectFile = async (file: ContextFile) => {
     if (isDirty && selectedFile) {
-      if (!confirm('You have unsaved changes. Discard them?')) return;
+      if (!confirm("You have unsaved changes. Discard them?")) return;
     }
     setAboutYouMode(false);
     setSelectedFile(file);
     setRenamingFile(false);
     setMobileSidebarOpen(false);
     setIsDirty(false);
-    setFileContent('');
-    setEditedContent('');
+    setFileContent("");
+    setEditedContent("");
 
     if (isTextMime(file.mime_type)) {
       setContentLoading(true);
       try {
         const result = await contextApi.getFile(file.id);
-        const content = result.content ?? '';
+        const content = result.content ?? "";
         setFileContent(content);
         setEditedContent(content);
       } catch (e) {
-        console.warn('contextOperation failed:', e);
-        toast('error', 'Failed to load file content');
+        console.warn("contextOperation failed:", e);
+        toast("error", "Failed to load file content");
       } finally {
         setContentLoading(false);
       }
@@ -410,10 +418,10 @@ export function Context() {
       await contextApi.updateFile(selectedFile.id, { content: editedContent });
       setFileContent(editedContent);
       setIsDirty(false);
-      toast('success', 'File saved');
+      toast("success", "File saved");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to save file');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to save file");
     } finally {
       setSaving(false);
     }
@@ -436,15 +444,17 @@ export function Context() {
       return;
     }
     try {
-      await contextApi.updateFile(selectedFile.id, { name: renameValue.trim() });
+      await contextApi.updateFile(selectedFile.id, {
+        name: renameValue.trim(),
+      });
       const updated = { ...selectedFile, name: renameValue.trim() };
       updateFileInTree(updated);
       setSelectedFile(updated);
       setRenamingFile(false);
-      toast('success', 'File renamed');
+      toast("success", "File renamed");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to rename file');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to rename file");
       setRenamingFile(false);
     }
   };
@@ -456,7 +466,8 @@ export function Context() {
     setDeletingFile(true);
     try {
       await contextApi.deleteFile(target.id);
-      const removeFile = (files: ContextFile[]) => files.filter((f) => f.id !== target.id);
+      const removeFile = (files: ContextFile[]) =>
+        files.filter((f) => f.id !== target.id);
       const removeFromNodes = (nodes: ContextTreeNode[]): ContextTreeNode[] =>
         nodes.map((n) => ({
           ...n,
@@ -469,15 +480,15 @@ export function Context() {
       }));
       if (selectedFile?.id === target.id) {
         setSelectedFile(null);
-        setFileContent('');
-        setEditedContent('');
+        setFileContent("");
+        setEditedContent("");
       }
       setDeleteFileOpen(false);
       setFileToDelete(null);
-      toast('success', 'File deleted');
+      toast("success", "File deleted");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to delete file');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to delete file");
     } finally {
       setDeletingFile(false);
     }
@@ -485,19 +496,26 @@ export function Context() {
 
   // Delete folder
   const handleDeleteFolder = async (id: string, name: string) => {
-    if (!confirm(`Delete folder "${name}" and all its contents? This cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Delete folder "${name}" and all its contents? This cannot be undone.`,
+      )
+    )
+      return;
     try {
       await contextApi.deleteFolder(id);
       const removeFolder = (nodes: ContextTreeNode[]): ContextTreeNode[] =>
-        nodes.filter((n) => n.id !== id).map((n) => ({
-          ...n,
-          children: removeFolder(n.children),
-        }));
+        nodes
+          .filter((n) => n.id !== id)
+          .map((n) => ({
+            ...n,
+            children: removeFolder(n.children),
+          }));
       setTree((prev) => ({ ...prev, folders: removeFolder(prev.folders) }));
-      toast('success', 'Folder deleted');
+      toast("success", "Folder deleted");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to delete folder');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to delete folder");
     }
   };
 
@@ -511,11 +529,11 @@ export function Context() {
       setTree((prev) => ({ ...prev, folders: [...prev.folders, newNode] }));
       setExpandedFolders((prev) => new Set([...prev, folder.id]));
       setNewFolderOpen(false);
-      setNewFolderName('');
-      toast('success', 'Folder created');
+      setNewFolderName("");
+      toast("success", "Folder created");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to create folder');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to create folder");
     } finally {
       setCreatingFolder(false);
     }
@@ -528,10 +546,10 @@ export function Context() {
       try {
         const uploaded = await contextApi.uploadFile(file);
         setTree((prev) => ({ ...prev, files: [...prev.files, uploaded] }));
-        toast('success', `Uploaded ${file.name}`);
+        toast("success", `Uploaded ${file.name}`);
       } catch (e) {
-        console.warn('contextOperation failed:', e);
-        toast('error', `Failed to upload ${file.name}`);
+        console.warn("contextOperation failed:", e);
+        toast("error", `Failed to upload ${file.name}`);
       }
     }
   };
@@ -540,7 +558,7 @@ export function Context() {
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     dragCounter.current++;
-    if (e.dataTransfer.types.includes('Files')) {
+    if (e.dataTransfer.types.includes("Files")) {
       setIsDragging(true);
     }
   };
@@ -571,10 +589,10 @@ export function Context() {
     try {
       await contextApi.moveFile(fileId, folderId);
       await loadTree();
-      toast('success', 'File moved');
+      toast("success", "File moved");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to move file');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to move file");
     }
   };
 
@@ -582,15 +600,15 @@ export function Context() {
   const handleRootDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setRootDragOver(false);
-    const fileId = e.dataTransfer.getData('application/x-context-file');
+    const fileId = e.dataTransfer.getData("application/x-context-file");
     if (fileId) {
       try {
         await contextApi.moveFile(fileId, null);
         await loadTree();
-        toast('success', 'File moved to root');
+        toast("success", "File moved to root");
       } catch (e) {
-        console.warn('contextOperation failed:', e);
-        toast('error', 'Failed to move file');
+        console.warn("contextOperation failed:", e);
+        toast("error", "Failed to move file");
       }
     }
   };
@@ -616,7 +634,7 @@ export function Context() {
   // About You
   const openAboutYou = async () => {
     if (isDirty && selectedFile) {
-      if (!confirm('You have unsaved changes. Discard them?')) return;
+      if (!confirm("You have unsaved changes. Discard them?")) return;
     }
     setAboutYouMode(true);
     setSelectedFile(null);
@@ -625,12 +643,12 @@ export function Context() {
     setAboutYouLoading(true);
     try {
       const result = await contextApi.getAboutYou();
-      setAboutYouContent(result.content || '');
-      setAboutYouSaved(result.content || '');
+      setAboutYouContent(result.content || "");
+      setAboutYouSaved(result.content || "");
       setAboutYouDirty(false);
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to load About You');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to load About You");
     } finally {
       setAboutYouLoading(false);
     }
@@ -642,10 +660,10 @@ export function Context() {
       await contextApi.updateAboutYou(aboutYouContent);
       setAboutYouSaved(aboutYouContent);
       setAboutYouDirty(false);
-      toast('success', 'About You saved');
+      toast("success", "About You saved");
     } catch (e) {
-      console.warn('contextOperation failed:', e);
-      toast('error', 'Failed to save About You');
+      console.warn("contextOperation failed:", e);
+      toast("error", "Failed to save About You");
     } finally {
       setAboutYouSaving(false);
     }
@@ -654,7 +672,10 @@ export function Context() {
   const totalFiles =
     tree.files.length +
     (function count(nodes: ContextTreeNode[]): number {
-      return nodes.reduce((acc, n) => acc + n.files.length + count(n.children), 0);
+      return nodes.reduce(
+        (acc, n) => acc + n.files.length + count(n.children),
+        0,
+      );
     })(tree.folders);
 
   return (
@@ -673,7 +694,9 @@ export function Context() {
           <div className="absolute inset-4 rounded-xl border-2 border-dashed border-accent-primary bg-accent-muted/60 backdrop-blur-sm flex items-center justify-center">
             <div className="text-center">
               <Upload className="w-10 h-10 text-accent-primary mx-auto mb-2" />
-              <p className="text-base font-semibold text-accent-text">Drop files to upload</p>
+              <p className="text-base font-semibold text-accent-text">
+                Drop files to upload
+              </p>
             </div>
           </div>
         </div>
@@ -682,16 +705,21 @@ export function Context() {
       <div className="flex flex-1 min-h-0 relative">
         {/* ---- Mobile sidebar overlay ---------------------------------------- */}
         {mobileSidebarOpen && (
-          <div className="absolute inset-0 z-20 bg-black/50 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
+          <div
+            className="absolute inset-0 z-20 bg-black/50 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
         )}
 
         {/* ---- Left sidebar -------------------------------------------------- */}
-        <aside className={`${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}>
+        <aside
+          className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
+        >
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
             {/* About You button — always visible at top */}
             <div className="mb-1">
               <Button
-                variant={aboutYouMode ? 'primary' : 'secondary'}
+                variant={aboutYouMode ? "primary" : "secondary"}
                 size="sm"
                 onClick={openAboutYou}
                 icon={<UserPen className="w-4 h-4" />}
@@ -710,46 +738,50 @@ export function Context() {
             ) : totalFiles === 0 && tree.folders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center px-4 gap-2">
                 <File className="w-8 h-8 text-text-3" />
-                <p className="text-sm text-text-2 font-medium">No context files</p>
-                <p className="text-xs text-text-3">Upload files or create a folder to get started.</p>
+                <p className="text-sm text-text-2 font-medium">
+                  No context files
+                </p>
+                <p className="text-xs text-text-3">
+                  Upload files or create a folder.
+                </p>
               </div>
             ) : (
               <>
                 <div role="tree" aria-label="Context files">
-                {/* Folder tree */}
-                {tree.folders.map((node) => (
-                  <TreeNodeItem
-                    key={node.id}
-                    node={node}
-                    level={0}
-                    expanded={expandedFolders}
-                    selectedFileId={selectedFile?.id ?? null}
-                    onToggleFolder={toggleFolder}
-                    onSelectFile={selectFile}
-                    onDeleteFolder={handleDeleteFolder}
-                    onFileDrop={handleFileDrop}
-                    onContextMenu={handleFileContextMenu}
-                  />
-                ))}
+                  {/* Folder tree */}
+                  {tree.folders.map((node) => (
+                    <TreeNodeItem
+                      key={node.id}
+                      node={node}
+                      level={0}
+                      expanded={expandedFolders}
+                      selectedFileId={selectedFile?.id ?? null}
+                      onToggleFolder={toggleFolder}
+                      onSelectFile={selectFile}
+                      onDeleteFolder={handleDeleteFolder}
+                      onFileDrop={handleFileDrop}
+                      onContextMenu={handleFileContextMenu}
+                    />
+                  ))}
 
-                {/* Root-level files */}
-                {tree.files.length > 0 && (
-                  <div role="group">
-                    {tree.folders.length > 0 && (
-                      <div className="mx-2 my-1 border-b border-border-0" />
-                    )}
-                    {tree.files.map((file) => (
-                      <FileItem
-                        key={file.id}
-                        file={file}
-                        level={0}
-                        selected={selectedFile?.id === file.id}
-                        onSelect={selectFile}
-                        onContextMenu={handleFileContextMenu}
-                      />
-                    ))}
-                  </div>
-                )}
+                  {/* Root-level files */}
+                  {tree.files.length > 0 && (
+                    <div role="group">
+                      {tree.folders.length > 0 && (
+                        <div className="mx-2 my-1 border-b border-border-0" />
+                      )}
+                      {tree.files.map((file) => (
+                        <FileItem
+                          key={file.id}
+                          file={file}
+                          level={0}
+                          selected={selectedFile?.id === file.id}
+                          onSelect={selectFile}
+                          onContextMenu={handleFileContextMenu}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Root drop zone — move files to root */}
@@ -757,13 +789,17 @@ export function Context() {
                   <div
                     className={`mx-2 mt-2 rounded-lg border-2 border-dashed py-3 text-center text-xs transition-colors ${
                       rootDragOver
-                        ? 'border-accent-primary bg-accent-muted/30 text-accent-text'
-                        : 'border-border-0 text-text-3'
+                        ? "border-accent-primary bg-accent-muted/30 text-accent-text"
+                        : "border-border-0 text-text-3"
                     }`}
                     onDragOver={(e) => {
-                      if (e.dataTransfer.types.includes('application/x-context-file')) {
+                      if (
+                        e.dataTransfer.types.includes(
+                          "application/x-context-file",
+                        )
+                      ) {
                         e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
+                        e.dataTransfer.dropEffect = "move";
                         setRootDragOver(true);
                       }
                     }}
@@ -800,7 +836,7 @@ export function Context() {
               className="hidden"
               onChange={(e) => {
                 if (e.target.files) handleUpload(e.target.files);
-                e.target.value = '';
+                e.target.value = "";
               }}
             />
           </div>
@@ -820,10 +856,12 @@ export function Context() {
                     <PanelLeft className="w-4 h-4" />
                   </button>
                   <UserPen className="w-5 h-5 text-accent-primary flex-shrink-0" />
-                  <span className="text-sm font-semibold text-text-0">About You</span>
+                  <span className="text-sm font-semibold text-text-0">
+                    About You
+                  </span>
                 </div>
                 <Button
-                  variant={aboutYouDirty ? 'primary' : 'ghost'}
+                  variant={aboutYouDirty ? "primary" : "ghost"}
                   size="sm"
                   loading={aboutYouSaving}
                   disabled={!aboutYouDirty}
@@ -838,7 +876,9 @@ export function Context() {
               <div className="flex-1 overflow-hidden flex flex-col">
                 <div className="px-3 md:px-5 pt-3 md:pt-4 pb-2">
                   <p className="text-xs text-text-3">
-                    Write about yourself, your preferences, and anything you want your agents to know. This is included in every chat as context.
+                    Write about yourself, your preferences, and anything you
+                    want your agents to know. This is included in every chat as
+                    context.
                   </p>
                 </div>
                 {aboutYouLoading ? (
@@ -873,7 +913,9 @@ export function Context() {
                 <File className="w-8 h-8 text-text-3" />
               </div>
               <div>
-                <p className="text-base font-semibold text-text-1 mb-1">Select a file</p>
+                <p className="text-base font-semibold text-text-1 mb-1">
+                  Select a file
+                </p>
                 <p className="text-sm text-text-3">
                   Choose a file from the sidebar to view or edit it.
                 </p>
@@ -905,8 +947,8 @@ export function Context() {
                       onChange={(e) => setRenameValue(e.target.value)}
                       onBlur={commitRename}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitRename();
-                        if (e.key === 'Escape') setRenamingFile(false);
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") setRenamingFile(false);
                       }}
                       className="text-sm font-semibold text-text-0 bg-surface-2 border border-accent-primary rounded-md px-2 py-0.5 outline-none min-w-0 flex-1"
                     />
@@ -931,7 +973,7 @@ export function Context() {
                   {/* Save button (text files only) */}
                   {isTextMime(selectedFile.mime_type) && (
                     <Button
-                      variant={isDirty ? 'primary' : 'ghost'}
+                      variant={isDirty ? "primary" : "ghost"}
                       size="sm"
                       loading={saving}
                       disabled={!isDirty}
@@ -989,9 +1031,15 @@ export function Context() {
                       <Database className="w-8 h-8 text-text-3" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-text-1 mb-1">{selectedFile.name}</p>
-                      <p className="text-xs text-text-3 mb-1">{selectedFile.mime_type}</p>
-                      <p className="text-xs text-text-3">{formatBytes(selectedFile.size_bytes)}</p>
+                      <p className="text-sm font-semibold text-text-1 mb-1">
+                        {selectedFile.name}
+                      </p>
+                      <p className="text-xs text-text-3 mb-1">
+                        {selectedFile.mime_type}
+                      </p>
+                      <p className="text-xs text-text-3">
+                        {formatBytes(selectedFile.size_bytes)}
+                      </p>
                     </div>
                     <a
                       href={contextApi.rawFileUrl(selectedFile.id)}
@@ -1023,23 +1071,25 @@ export function Context() {
         open={newFolderOpen}
         onClose={() => {
           setNewFolderOpen(false);
-          setNewFolderName('');
+          setNewFolderName("");
         }}
         title="New Folder"
         size="sm"
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-text-2 mb-1.5">Folder name</label>
+            <label className="block text-xs font-medium text-text-2 mb-1.5">
+              Folder name
+            </label>
             <input
               autoFocus
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFolder();
-                if (e.key === 'Escape') {
+                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Escape") {
                   setNewFolderOpen(false);
-                  setNewFolderName('');
+                  setNewFolderName("");
                 }
               }}
               className="w-full text-sm bg-surface-2 border border-border-1 rounded-lg px-3 py-2 text-text-0 outline-none focus:border-accent-primary transition-colors"
@@ -1052,7 +1102,7 @@ export function Context() {
               size="sm"
               onClick={() => {
                 setNewFolderOpen(false);
-                setNewFolderName('');
+                setNewFolderName("");
               }}
             >
               Cancel
@@ -1082,15 +1132,21 @@ export function Context() {
       >
         <div className="space-y-4">
           <p className="text-sm text-text-2">
-            Are you sure you want to delete{' '}
-            <span className="font-semibold text-text-0">{(fileToDelete || selectedFile)?.name}</span>? This cannot be
-            undone.
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-text-0">
+              {(fileToDelete || selectedFile)?.name}
+            </span>
+            ? This cannot be undone.
           </p>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => {
-              setDeleteFileOpen(false);
-              setFileToDelete(null);
-            }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDeleteFileOpen(false);
+                setFileToDelete(null);
+              }}
+            >
               Cancel
             </Button>
             <Button

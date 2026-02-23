@@ -249,6 +249,7 @@ export function Agents() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [page, setPage] = useState(0);
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
 
   const loadRoles = useCallback(() => {
     api
@@ -290,33 +291,8 @@ export function Agents() {
     (page + 1) * PAGE_SIZE,
   );
 
-  const renderGatewayCard = () => {
-    if (view === "grid") return (
-      <Card hover onClick={() => navigate("/agents/gateway")}>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-primary/15 text-accent-primary text-xs font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />
-            Always active
-          </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/20 text-accent-primary font-medium">Gateway</span>
-        </div>
-        <div className="flex items-center gap-4 mb-3">
-          <div className="relative flex-shrink-0">
-            <img src={builderRole?.avatar_path || "/gateway-avatar.png"} alt={gatewayName} className="w-14 h-14 rounded-2xl shadow-lg" />
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-accent-primary flex items-center justify-center ring-2 ring-surface-1">
-              <Shield className="w-3 h-3 text-white" />
-            </div>
-          </div>
-          <h3 className="text-xl font-bold text-text-0">{gatewayName}</h3>
-        </div>
-        <p className="text-sm text-text-2 line-clamp-1 mb-3 leading-snug">Routes conversations, builds tools, dashboards, and agents</p>
-        <div className="flex items-center gap-1">
-          <Cpu className="w-3 h-3 text-text-3" />
-          <span className="text-[10px] text-text-3 font-medium">Haiku 4.5</span>
-        </div>
-      </Card>
-    );
-    return (
+  const renderGatewayCard = () => (
+    <div className="mb-4">
       <Card hover onClick={() => navigate("/agents/gateway")}>
         <div className="flex items-center gap-3 md:gap-4">
           <div className="relative flex-shrink-0">
@@ -327,21 +303,21 @@ export function Agents() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-base font-bold pt-2 text-text-0 truncate">{gatewayName}</p>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary flex-shrink-0">Gateway</span>
+              <p className="text-base font-bold text-text-0 truncate">{gatewayName}</p>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/20 text-accent-primary font-medium">Gateway</span>
             </div>
             <p className="text-xs text-text-3 truncate">Routes conversations, builds tools, dashboards, and agents</p>
           </div>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
             <Cpu className="w-2.5 h-2.5" />Haiku 4.5
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-medium flex-shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Always active
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary text-[10px] font-medium flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />Always active
           </span>
         </div>
       </Card>
-    );
-  };
+    </div>
+  );
 
   const renderAgentContent = (items: AgentRole[]) => view === "grid" ? (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -469,13 +445,20 @@ export function Agents() {
               </Button>
             </div>
             <FolderFilter
-              folders={folderGrouping.folders}
+              folders={[...folderGrouping.folders, ...customFolders.filter(f => !folderGrouping.folders.includes(f))].sort((a, b) => a.localeCompare(b))}
               folderCounts={folderGrouping.folderCounts}
               unfiledCount={folderGrouping.unfiledCount}
               totalCount={folderGrouping.totalCount}
               selectedFolder={folderGrouping.selectedFolder}
               onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
-              onAddFolder={() => {}}
+              onAddFolder={(name) => {
+                if (!customFolders.includes(name)) {
+                  setCustomFolders(prev => [...prev, name]);
+                }
+                folderGrouping.setSelectedFolder(name);
+                setPage(0);
+                toast("success", `Folder "${name}" created — assign agents to it from their detail page`);
+              }}
             />
 
             {searchFiltered.length === 0 ? (
@@ -531,7 +514,7 @@ export function Agents() {
                   onPageChange={setPage}
                   label="agents"
                 />
-                {renderGatewayCard()}
+                {folderGrouping.selectedFolder === null && renderGatewayCard()}
                 {renderAgentContent(paginatedRoles)}
               </>
             )}

@@ -293,7 +293,7 @@ export const terminalApi = {
   delete: (id: string) => api.delete<void>(`/terminal/sessions/${id}`),
   listWorkbenches: () => api.get<Workbench[]>('/terminal/workbenches'),
   createWorkbench: (name: string) => api.post<Workbench>('/terminal/workbenches', { name }),
-  updateWorkbench: (id: string, name: string) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, { name }),
+  updateWorkbench: (id: string, data: { name: string; color?: string }) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, data),
   deleteWorkbench: (id: string) => api.delete<{ status: string }>(`/terminal/workbenches/${id}`),
 };
 
@@ -302,6 +302,7 @@ export interface SecretCheckResult {
   name: string;
   exists: boolean;
   placeholder: boolean;
+  valid: boolean;
 }
 
 export const secretsApi = {

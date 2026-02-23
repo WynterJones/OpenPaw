@@ -347,11 +347,10 @@ function SecretsPanel({ tool }: { tool: Tool }) {
   if (loading) return <p className="text-xs text-text-3">Checking secrets...</p>;
 
   const names = envVars.map(e => typeof e === 'string' ? e : e.name);
-  const missingOrPlaceholder = names.filter(name => {
+  const hasIssues = names.some(name => {
     const s = statuses.find(st => st.name === name);
-    return !s || !s.exists || s.placeholder;
+    return !s || !s.exists || s.placeholder || !s.valid;
   });
-  const allConfigured = missingOrPlaceholder.length === 0;
 
   return (
     <Card>
@@ -362,23 +361,26 @@ function SecretsPanel({ tool }: { tool: Tool }) {
       <div className="space-y-2">
         {names.map(name => {
           const s = statuses.find(st => st.name === name);
-          const configured = s && s.exists && !s.placeholder;
+          const configured = s && s.exists && !s.placeholder && s.valid;
+          const decryptFailed = s && s.exists && !s.valid;
           return (
             <div key={name} className="flex items-center gap-2 text-sm">
               {configured ? (
                 <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              ) : decryptFailed ? (
+                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
               ) : (
                 <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
               )}
               <code className="font-mono text-text-1">{name}</code>
-              <span className={`text-xs ${configured ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {configured ? 'Configured' : s?.placeholder ? 'Placeholder — needs real value' : 'Missing'}
+              <span className={`text-xs ${configured ? 'text-emerald-400' : decryptFailed ? 'text-red-400' : 'text-amber-400'}`}>
+                {configured ? 'Configured' : decryptFailed ? 'Cannot decrypt — re-enter value' : s?.placeholder ? 'Placeholder — needs real value' : 'Missing'}
               </span>
             </div>
           );
         })}
       </div>
-      {!allConfigured && (
+      {hasIssues && (
         <a href="/secrets" className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors">
           <KeyRound className="w-4 h-4" />
           Configure Secrets
@@ -718,7 +720,7 @@ export function Tools() {
       for (const [toolId, envNames] of toolEnvMap) {
         const hasMissing = envNames.some(name => {
           const s = statuses.find(st => st.name === name);
-          return !s || !s.exists || s.placeholder;
+          return !s || !s.exists || s.placeholder || !s.valid;
         });
         if (hasMissing) missing.add(toolId);
       }

@@ -638,43 +638,60 @@ type toolEnvVar struct {
 // missing contains the names of any required secrets that are absent or still placeholder.
 func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []string) {
 	if m.secrets == nil {
+		logger.Warn("Tool %s: secret decryptor is nil — secrets cannot be injected", toolID)
 		return nil, nil
 	}
 
 	envDefs := m.resolveToolEnvDefs(toolID)
 	if len(envDefs) == 0 {
+		logger.Info("Tool %s: no env vars defined, skipping secret injection", toolID)
 		return nil, nil
 	}
 
+	var injected, notFound, decryptFailed, placeholder int
 	for _, ev := range envDefs {
 		var encrypted string
 		err := m.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", ev.Name).Scan(&encrypted)
 		if err != nil {
+			notFound++
 			if ev.Required {
+				logger.Warn("Tool %s: required secret %q not found in database", toolID, ev.Name)
 				missing = append(missing, ev.Name)
+			} else {
+				logger.Warn("Tool %s: optional secret %q not found in database", toolID, ev.Name)
 			}
 			continue
 		}
 		plaintext, err := m.secrets.Decrypt(encrypted)
 		if err != nil {
-			logger.Warn("Failed to decrypt secret %s for tool %s: %v", ev.Name, toolID, err)
+			decryptFailed++
+			logger.Warn("Tool %s: failed to decrypt secret %q: %v", toolID, ev.Name, err)
 			if ev.Required {
 				missing = append(missing, ev.Name)
 			}
 			continue
 		}
 		if plaintext == "REPLACE_ME" {
+			placeholder++
 			if ev.Required {
+				logger.Warn("Tool %s: required secret %q is still a placeholder", toolID, ev.Name)
 				missing = append(missing, ev.Name)
+			} else {
+				logger.Warn("Tool %s: optional secret %q is still a placeholder", toolID, ev.Name)
 			}
 			continue
 		}
+		injected++
 		envVars = append(envVars, fmt.Sprintf("%s=%s", ev.Name, plaintext))
 	}
 
-	if len(envVars) > 0 {
-		logger.Info("Injected %d secrets for tool %s", len(envVars), toolID)
+	logger.Info("Tool %s secrets: %d defined, %d injected, %d not found, %d decrypt failed, %d placeholder",
+		toolID, len(envDefs), injected, notFound, decryptFailed, placeholder)
+
+	if injected == 0 && len(envDefs) > 0 {
+		logger.Warn("Tool %s has %d env vars defined but 0 secrets injected — check secrets configuration", toolID, len(envDefs))
 	}
+
 	return envVars, missing
 }
 
@@ -685,24 +702,30 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 	var librarySlug string
 	err := m.db.QueryRow("SELECT COALESCE(library_slug, '') FROM tools WHERE id = ?", toolID).Scan(&librarySlug)
 	if err != nil {
+		logger.Warn("Tool %s: failed to query library_slug: %v", toolID, err)
 		return nil
 	}
 
 	// Try built-in catalog first (all env vars treated as required)
 	if librarySlug != "" {
 		if cat, err := toollibrary.GetCatalogTool(librarySlug); err == nil && len(cat.Env) > 0 {
+			names := make([]string, len(cat.Env))
 			defs := make([]toolEnvVar, len(cat.Env))
 			for i, name := range cat.Env {
 				defs[i] = toolEnvVar{Name: name, Required: true}
+				names[i] = name
 			}
+			logger.Info("Tool %s: resolved %d env vars from catalog (slug=%s): %v", toolID, len(defs), librarySlug, names)
 			return defs
 		}
+		logger.Info("Tool %s: catalog lookup for slug %q returned no env vars, trying manifest", toolID, librarySlug)
 	}
 
 	// Fall back to manifest.json on disk
 	manifestPath := filepath.Join(m.toolsDir, toolID, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
+		logger.Info("Tool %s: no manifest.json found at %s, no env vars to resolve", toolID, manifestPath)
 		return nil
 	}
 
@@ -710,6 +733,7 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 		Env json.RawMessage `json:"env"`
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil || len(manifest.Env) == 0 {
+		logger.Info("Tool %s: manifest.json has no env field or failed to parse", toolID)
 		return nil
 	}
 
@@ -720,6 +744,7 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 	}
 	if json.Unmarshal(manifest.Env, &envObjs) == nil && len(envObjs) > 0 {
 		defs := make([]toolEnvVar, 0, len(envObjs))
+		names := make([]string, 0, len(envObjs))
 		for _, e := range envObjs {
 			if e.Name != "" {
 				required := true
@@ -727,9 +752,11 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 					required = *e.Required
 				}
 				defs = append(defs, toolEnvVar{Name: e.Name, Required: required})
+				names = append(names, e.Name)
 			}
 		}
 		if len(defs) > 0 {
+			logger.Info("Tool %s: resolved %d env vars from manifest.json: %v", toolID, len(defs), names)
 			return defs
 		}
 	}
@@ -741,9 +768,11 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 		for i, name := range envStrings {
 			defs[i] = toolEnvVar{Name: name, Required: true}
 		}
+		logger.Info("Tool %s: resolved %d env vars from manifest.json (string array): %v", toolID, len(defs), envStrings)
 		return defs
 	}
 
+	logger.Warn("Tool %s: manifest.json has env field but could not parse it", toolID)
 	return nil
 }
 

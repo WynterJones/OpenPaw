@@ -193,6 +193,7 @@ func (h *SecretsHandler) CheckNames(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Exists      bool   `json:"exists"`
 		Placeholder bool   `json:"placeholder"`
+		Valid       bool   `json:"valid"`
 	}
 
 	results := make([]secretStatus, 0, len(req.Names))
@@ -200,14 +201,16 @@ func (h *SecretsHandler) CheckNames(w http.ResponseWriter, r *http.Request) {
 		var encrypted string
 		err := h.db.QueryRow("SELECT encrypted_value FROM secrets WHERE name = ?", name).Scan(&encrypted)
 		if err != nil {
-			results = append(results, secretStatus{Name: name, Exists: false, Placeholder: false})
+			results = append(results, secretStatus{Name: name, Exists: false, Placeholder: false, Valid: false})
 			continue
 		}
-		isPlaceholder := false
-		if decrypted, decErr := h.manager.Decrypt(encrypted); decErr == nil && decrypted == "REPLACE_ME" {
-			isPlaceholder = true
+		decrypted, decErr := h.manager.Decrypt(encrypted)
+		if decErr != nil {
+			results = append(results, secretStatus{Name: name, Exists: true, Placeholder: false, Valid: false})
+			continue
 		}
-		results = append(results, secretStatus{Name: name, Exists: true, Placeholder: isPlaceholder})
+		isPlaceholder := decrypted == "REPLACE_ME"
+		results = append(results, secretStatus{Name: name, Exists: true, Placeholder: isPlaceholder, Valid: true})
 	}
 
 	writeJSON(w, http.StatusOK, results)

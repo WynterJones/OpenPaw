@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Columns2, Rows2 } from 'lucide-react';
+import { X, Plus, Columns2, Rows2, Pencil, Loader2 } from 'lucide-react';
 import { useWorkbench, type PanelNode } from './WorkbenchProvider';
 
 const TAB_COLORS = [
-  '', // none (default)
-  '#ef4444', // red
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#3b82f6', // blue
-  '#8b5cf6', // violet
-  '#ec4899', // pink
+  '',
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
 ];
 
 interface TabBarProps {
@@ -27,10 +27,10 @@ export function TabBar({ node }: TabBarProps) {
     createSession,
     splitPanel,
     updateSession,
+    busySessions,
   } = useWorkbench();
 
   const tabs = node.tabs || [];
-  const activeTab = node.activeTab;
 
   return (
     <div className="flex items-center bg-surface-1 border-b border-border-0 px-1.5 gap-0.5 h-9 overflow-x-auto shrink-0">
@@ -38,7 +38,8 @@ export function TabBar({ node }: TabBarProps) {
         const session = sessions.find((s) => s.id === sessionId);
         const title = session?.title || 'Terminal';
         const color = session?.color || '';
-        const isActive = sessionId === activeTab;
+        const isActive = sessionId === node.activeTab;
+        const isBusy = busySessions.has(sessionId);
 
         return (
           <Tab
@@ -48,6 +49,7 @@ export function TabBar({ node }: TabBarProps) {
             color={color}
             isActive={isActive}
             isGloballyActive={sessionId === activeSessionId}
+            isBusy={isBusy}
             panelId={node.id}
             onActivate={activateTab}
             onClose={closeSession}
@@ -92,6 +94,7 @@ interface TabProps {
   color: string;
   isActive: boolean;
   isGloballyActive: boolean;
+  isBusy: boolean;
   panelId: string;
   onActivate: (panelId: string, sessionId: string) => void;
   onClose: (sessionId: string) => Promise<void>;
@@ -103,48 +106,15 @@ function Tab({
   title,
   color,
   isActive,
+  isBusy,
   panelId,
   onActivate,
   onClose,
   onUpdate,
 }: TabProps) {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(title);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dotRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const handleDoubleClick = useCallback(() => {
-    setEditValue(title);
-    setEditing(true);
-  }, [title]);
-
-  const commitRename = useCallback(() => {
-    const trimmed = editValue.trim();
-    setEditing(false);
-    if (trimmed && trimmed !== title) {
-      onUpdate(sessionId, { title: trimmed });
-    }
-  }, [editValue, title, sessionId, onUpdate]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        commitRename();
-      } else if (e.key === 'Escape') {
-        setEditing(false);
-      }
-    },
-    [commitRename],
-  );
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const editBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleCloseClick = useCallback(
     (e: React.MouseEvent) => {
@@ -154,124 +124,150 @@ function Tab({
     [sessionId, onClose],
   );
 
-  const handleColorClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (dotRef.current) {
-        const rect = dotRef.current.getBoundingClientRect();
-        setPickerPos({ top: rect.bottom + 4, left: rect.left });
-      }
-      setShowColorPicker((v) => !v);
-    },
-    [],
-  );
-
-  const handleColorSelect = useCallback(
-    (c: string) => {
-      setShowColorPicker(false);
-      onUpdate(sessionId, { color: c });
-    },
-    [sessionId, onUpdate],
-  );
+  const openDropdown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (editBtnRef.current) {
+      const rect = editBtnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setShowDropdown(true);
+  }, []);
 
   return (
     <>
       <div
-        className={`group relative flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs cursor-pointer select-none transition-all shrink-0 max-w-48 ${
+        className={`group relative flex items-center gap-1 h-7 rounded-md text-xs cursor-pointer select-none transition-all shrink-0 max-w-48 border ${
           isActive
-            ? 'bg-surface-2 text-text-0 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]'
-            : 'text-text-3 hover:bg-surface-2/50 hover:text-text-1'
+            ? 'border-border-1 bg-surface-2 text-text-0 shadow-sm'
+            : 'border-transparent text-text-3 hover:border-border-0 hover:bg-surface-2/50 hover:text-text-1'
         }`}
         onClick={() => onActivate(panelId, sessionId)}
-        onDoubleClick={handleDoubleClick}
-        style={color ? { borderBottom: `2px solid ${color}` } : undefined}
+        style={color ? {
+          borderColor: isActive ? color : undefined,
+          background: isActive
+            ? `linear-gradient(135deg, ${color}15 0%, transparent 60%)`
+            : undefined,
+        } : undefined}
       >
-        {/* Color dot */}
-        <button
-          ref={dotRef}
-          onClick={handleColorClick}
-          className="flex-none w-2.5 h-2.5 rounded-full border border-border-1 hover:scale-125 transition-transform cursor-pointer shrink-0"
-          style={{ backgroundColor: color || 'var(--op-surface-3)' }}
-          title="Set tab color"
-        />
-
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={handleKeyDown}
-            className="bg-transparent border-none outline-none text-xs text-text-0 w-full min-w-12 p-0 caret-accent-primary"
-            onClick={(e) => e.stopPropagation()}
+        {/* Color accent bar */}
+        {color && (
+          <div
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-3.5 rounded-full"
+            style={{ backgroundColor: color }}
           />
-        ) : (
-          <span className="truncate">{title}</span>
         )}
+
+        {/* Busy indicator */}
+        {isBusy && (
+          <Loader2 className={`w-3 h-3 animate-spin shrink-0 ${color ? 'ml-2.5' : 'ml-2'}`} style={color ? { color } : { color: 'var(--op-accent-primary)' }} />
+        )}
+
+        <span className={`truncate ${isBusy ? '' : color ? 'pl-2.5' : 'pl-2'}`}>{title}</span>
+
+        {/* Edit button */}
+        <button
+          ref={editBtnRef}
+          onClick={openDropdown}
+          className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-4 h-4 rounded hover:bg-surface-3 transition-all shrink-0 cursor-pointer"
+          title="Edit terminal"
+        >
+          <Pencil className="w-2.5 h-2.5" />
+        </button>
 
         <button
           onClick={handleCloseClick}
-          className="flex items-center justify-center w-4 h-4 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-3 transition-all shrink-0 cursor-pointer"
+          className="flex items-center justify-center w-4 h-4 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-3 transition-all shrink-0 cursor-pointer mr-1"
           title="Close terminal"
         >
           <X className="w-3 h-3" />
         </button>
       </div>
 
-      {/* Color picker portal - renders above all content */}
-      {showColorPicker && <ColorPickerPortal
-        pos={pickerPos}
-        currentColor={color}
-        onSelect={handleColorSelect}
-        onClose={() => setShowColorPicker(false)}
-      />}
+      {showDropdown && (
+        <TabEditDropdown
+          pos={dropdownPos}
+          title={title}
+          color={color}
+          onRename={(newTitle) => onUpdate(sessionId, { title: newTitle })}
+          onColorChange={(newColor) => onUpdate(sessionId, { color: newColor })}
+          onClose={() => setShowDropdown(false)}
+        />
+      )}
     </>
   );
 }
 
-// ── Color picker rendered in a portal to avoid scroll issues ──
+// ── Edit dropdown for terminal tabs ──
 
-function ColorPickerPortal({
+function TabEditDropdown({
   pos,
-  currentColor,
-  onSelect,
+  title,
+  color,
+  onRename,
+  onColorChange,
   onClose,
 }: {
   pos: { top: number; left: number };
-  currentColor: string;
-  onSelect: (color: string) => void;
+  title: string;
+  color: string;
+  onRename: (name: string) => void;
+  onColorChange: (color: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState(title);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
+  const commitRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== title) onRename(trimmed);
+    onClose();
+  };
+
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] bg-surface-2 border border-border-1 rounded-lg p-2 shadow-xl flex gap-1.5"
+      className="fixed z-[9999] bg-surface-2 border border-border-1 rounded-lg shadow-xl p-2 flex flex-col gap-2 min-w-44"
       style={{ top: pos.top, left: pos.left }}
     >
-      {TAB_COLORS.map((c) => (
-        <button
-          key={c || 'none'}
-          onClick={() => onSelect(c)}
-          className="w-5 h-5 rounded-full border-2 hover:scale-125 transition-transform cursor-pointer"
-          style={{
-            backgroundColor: c || 'var(--op-surface-3)',
-            borderColor: currentColor === c ? 'var(--op-text-0)' : 'var(--op-border-1)',
-          }}
-          title={c || 'None'}
-        />
-      ))}
+      <input
+        ref={inputRef}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitRename();
+          if (e.key === 'Escape') onClose();
+        }}
+        className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-accent-primary caret-accent-primary"
+        placeholder="Terminal name"
+      />
+      <div className="flex gap-1.5 justify-center">
+        {TAB_COLORS.map((c) => (
+          <button
+            key={c || 'none'}
+            onClick={() => onColorChange(c)}
+            className="w-5 h-5 rounded-full border-2 hover:scale-125 transition-transform cursor-pointer"
+            style={{
+              backgroundColor: c || 'var(--op-surface-3)',
+              borderColor: color === c ? 'var(--op-text-0)' : 'var(--op-border-1)',
+            }}
+            title={c || 'None'}
+          />
+        ))}
+      </div>
     </div>,
     document.body,
   );

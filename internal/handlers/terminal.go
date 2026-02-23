@@ -30,6 +30,7 @@ type sessionResponse struct {
 type workbenchResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Color     string `json:"color"`
 	SortOrder int    `json:"sort_order"`
 	CreatedAt string `json:"created_at"`
 }
@@ -64,6 +65,7 @@ func toWorkbenchResponse(wb *terminal.Workbench) workbenchResponse {
 	return workbenchResponse{
 		ID:        wb.ID,
 		Name:      wb.Name,
+		Color:     wb.Color,
 		SortOrder: wb.SortOrder,
 		CreatedAt: wb.CreatedAt.Format(time.RFC3339),
 	}
@@ -202,11 +204,12 @@ func (h *TerminalHandler) CreateWorkbench(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, toWorkbenchResponse(wb))
 }
 
-// UpdateWorkbench updates the name of a workbench.
+// UpdateWorkbench updates the name and color of a workbench.
 func (h *TerminalHandler) UpdateWorkbench(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Color string `json:"color"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -216,7 +219,7 @@ func (h *TerminalHandler) UpdateWorkbench(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if err := h.terminalMgr.UpdateWorkbench(id, req.Name); err != nil {
+	if err := h.terminalMgr.UpdateWorkbench(id, req.Name, req.Color); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}

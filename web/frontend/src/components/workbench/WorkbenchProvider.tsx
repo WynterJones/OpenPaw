@@ -35,8 +35,10 @@ interface WorkbenchContextType {
   updatePanelSizes: (panelId: string, sizes: number[]) => void;
   createWorkbench: (name: string) => Promise<void>;
   renameWorkbench: (id: string, name: string) => Promise<void>;
+  updateWorkbenchColor: (id: string, color: string) => Promise<void>;
   deleteWorkbench: (id: string) => Promise<void>;
   switchWorkbench: (id: string) => void;
+  busySessions: Set<string>;
   loading: boolean;
 }
 
@@ -184,6 +186,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [rootPanel, setRootPanel] = useState<PanelNode | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busySessions, setBusySessions] = useState<Set<string>>(new Set());
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Sync terminal themes when design config changes ──
@@ -191,6 +194,21 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     terminalManager.refreshThemes();
   }, [config]);
+
+  // ── Track busy terminals via activity ──
+  useEffect(() => {
+    const handler = (sessionId: string, busy: boolean) => {
+      setBusySessions(prev => {
+        const next = new Set(prev);
+        if (busy) next.add(sessionId);
+        else next.delete(sessionId);
+        if (next.size === prev.size && [...next].every(id => prev.has(id))) return prev;
+        return next;
+      });
+    };
+    terminalManager.onBusyChange = handler;
+    return () => { terminalManager.onBusyChange = null; };
+  }, []);
 
   // ── Persist layout (debounced, per-workbench) ──
   const saveLayout = useCallback((panel: PanelNode | null, workbenchId: string | null) => {
@@ -465,11 +483,20 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const renameWorkbench = useCallback(async (id: string, name: string) => {
-    await terminalApi.updateWorkbench(id, name);
+    const wb = workbenches.find(w => w.id === id);
+    await terminalApi.updateWorkbench(id, { name, color: wb?.color });
     setWorkbenches((prev) =>
-      prev.map((wb) => (wb.id === id ? { ...wb, name } : wb)),
+      prev.map((w) => (w.id === id ? { ...w, name } : w)),
     );
-  }, []);
+  }, [workbenches]);
+
+  const updateWorkbenchColor = useCallback(async (id: string, color: string) => {
+    const wb = workbenches.find(w => w.id === id);
+    await terminalApi.updateWorkbench(id, { name: wb?.name || 'Workspace', color });
+    setWorkbenches((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, color } : w)),
+    );
+  }, [workbenches]);
 
   const deleteWorkbench = useCallback(async (id: string) => {
     await terminalApi.deleteWorkbench(id);
@@ -505,8 +532,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         updatePanelSizes,
         createWorkbench,
         renameWorkbench,
+        updateWorkbenchColor,
         deleteWorkbench,
         switchWorkbench,
+        busySessions,
         loading,
       }}
     >
