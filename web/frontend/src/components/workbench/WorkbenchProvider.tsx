@@ -28,6 +28,7 @@ interface WorkbenchContextType {
   rootPanel: PanelNode | null;
   activeSessionId: string | null;
   createSession: (panelId?: string) => Promise<void>;
+  launchSession: (opts: { title?: string; cwd?: string; command?: string; color?: string }) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
   splitPanel: (panelId: string, direction: 'horizontal' | 'vertical') => Promise<void>;
   activateTab: (panelId: string, sessionId: string) => void;
@@ -369,6 +370,44 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     [activeWorkbenchId],
   );
 
+  // ── Launch session (project repo) ──
+  const launchSession = useCallback(
+    async (opts: { title?: string; cwd?: string; command?: string; color?: string }) => {
+      const session = await terminalApi.create({
+        title: opts.title || 'Terminal',
+        workbench_id: activeWorkbenchId ?? undefined,
+        color: opts.color,
+        cwd: opts.cwd,
+        initial_command: opts.command,
+      });
+      setSessions((prev) => [...prev, session]);
+
+      setRootPanel((prev) => {
+        if (!prev) {
+          const panel: PanelNode = {
+            id: nextPanelId(),
+            type: 'leaf',
+            tabs: [session.id],
+            activeTab: session.id,
+          };
+          return panel;
+        }
+
+        const leaf = findFirstLeaf(prev);
+        if (!leaf) return prev;
+
+        return updatePanel(prev, leaf.id, (panel) => ({
+          ...panel,
+          tabs: [...(panel.tabs || []), session.id],
+          activeTab: session.id,
+        }));
+      });
+
+      setActiveSessionId(session.id);
+    },
+    [activeWorkbenchId],
+  );
+
   // ── Close session ──
   const closeSession = useCallback(async (sessionId: string) => {
     try {
@@ -525,6 +564,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         rootPanel,
         activeSessionId,
         createSession,
+        launchSession,
         closeSession,
         splitPanel,
         activateTab,

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -196,6 +198,49 @@ func (h *SystemHandler) Prerequisites(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"api_key_configured": apiKeyConfigured,
 	})
+}
+
+// PickFolder opens a native folder selection dialog and returns the chosen path.
+func (h *SystemHandler) PickFolder(w http.ResponseWriter, r *http.Request) {
+	var path string
+	var err error
+
+	switch runtime.GOOS {
+	case "darwin":
+		script := `tell application "System Events" to activate
+set chosenFolder to choose folder with prompt "Select project folder"
+return POSIX path of chosenFolder`
+		out, e := exec.Command("osascript", "-e", script).Output()
+		if e != nil {
+			writeError(w, http.StatusInternalServerError, "dialog cancelled or failed")
+			return
+		}
+		path = strings.TrimSpace(strings.TrimRight(string(out), "/\n"))
+	case "linux":
+		out, e := exec.Command("zenity", "--file-selection", "--directory", "--title=Select project folder").Output()
+		if e != nil {
+			writeError(w, http.StatusInternalServerError, "dialog cancelled or failed")
+			return
+		}
+		path = strings.TrimSpace(string(out))
+	default:
+		writeError(w, http.StatusNotImplemented, "folder picker not supported on this platform")
+		return
+	}
+
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "no folder selected")
+		return
+	}
+
+	// Verify the path exists
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		writeError(w, http.StatusBadRequest, "selected path is not a valid directory")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
 }
 
 func formatDuration(d time.Duration) string {

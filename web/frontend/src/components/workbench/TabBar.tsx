@@ -152,17 +152,17 @@ function Tab({
         {/* Color accent bar */}
         {color && (
           <div
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-3.5 rounded-full"
+            className="absolute left-1 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-full"
             style={{ backgroundColor: color }}
           />
         )}
 
         {/* Busy indicator */}
         {isBusy && (
-          <Loader2 className={`w-3 h-3 animate-spin shrink-0 ${color ? 'ml-2.5' : 'ml-2'}`} style={color ? { color } : { color: 'var(--op-accent-primary)' }} />
+          <Loader2 className={`w-3 h-3 animate-spin shrink-0 ${color ? 'ml-3' : 'ml-2'}`} style={color ? { color } : { color: 'var(--op-accent-primary)' }} />
         )}
 
-        <span className={`truncate ${isBusy ? '' : color ? 'pl-2.5' : 'pl-2'}`}>{title}</span>
+        <span className={`truncate ${isBusy ? '' : color ? 'pl-3.5' : 'pl-2'}`}>{title}</span>
 
         {/* Edit button */}
         <button
@@ -251,7 +251,7 @@ function TabEditDropdown({
           if (e.key === 'Enter') commitRename();
           if (e.key === 'Escape') onClose();
         }}
-        className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-accent-primary caret-accent-primary"
+        className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-border-1 caret-accent-primary"
         placeholder="Terminal name"
       />
       <div className="flex gap-1.5 justify-center">

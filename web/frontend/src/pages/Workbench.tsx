@@ -4,6 +4,7 @@ import { TerminalSquare, Plus, X, Pencil, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { WorkbenchProvider, useWorkbench } from '../components/workbench/WorkbenchProvider';
 import { PanelContainer } from '../components/workbench/PanelContainer';
+import { ProjectsButton } from '../components/workbench/ProjectsPanel';
 
 const TAB_COLORS = [
   '',
@@ -70,7 +71,7 @@ function WorkbenchEditDropdown({
           if (e.key === 'Enter') commitRename();
           if (e.key === 'Escape') onClose();
         }}
-        className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-accent-primary caret-accent-primary"
+        className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-border-1 caret-accent-primary"
         placeholder="Workspace name"
       />
       <div className="flex gap-1.5 justify-center">
@@ -165,12 +166,12 @@ function WorkbenchHeader() {
             {/* Color accent bar */}
             {color && (
               <div
-                className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-full"
+                className="absolute left-1 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full"
                 style={{ backgroundColor: color }}
               />
             )}
 
-            <span className={`truncate max-w-28 ${color ? 'pl-3' : 'pl-2.5'} pr-1`}>{wb.name}</span>
+            <span className={`truncate max-w-28 ${color ? 'pl-4' : 'pl-2.5'} pr-1`}>{wb.name}</span>
 
             {/* Busy indicator */}
             {busy && (
@@ -208,6 +209,12 @@ function WorkbenchHeader() {
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Projects dropdown */}
+      <ProjectsButton />
 
       {/* Edit dropdown */}
       {editingId && (() => {

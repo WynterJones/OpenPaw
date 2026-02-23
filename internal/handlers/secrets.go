@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -81,6 +82,7 @@ func (h *SecretsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	req.Value = strings.TrimSpace(req.Value)
 	if req.Name == "" || req.Value == "" {
 		writeError(w, http.StatusBadRequest, "name and value are required")
 		return
@@ -159,6 +161,7 @@ func (h *SecretsHandler) Rotate(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 
+	req.Value = strings.TrimSpace(req.Value)
 	if req.Value != "" {
 		encrypted, err := h.manager.Encrypt(req.Value)
 		if err != nil {

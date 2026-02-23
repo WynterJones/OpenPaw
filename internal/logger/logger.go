@@ -185,6 +185,33 @@ func Bye() {
 	write("")
 }
 
+func Tool(event, toolID string) {
+	var icon, eventColor string
+	switch event {
+	case "compiled":
+		icon = c(hotPink, "✓")
+		eventColor = hotPink
+	case "running":
+		icon = c(hotPink, "▸")
+		eventColor = hotPink
+	case "stopped":
+		icon = c(softPink, "■")
+		eventColor = softPink
+	case "error":
+		icon = c(brightRed, "✗")
+		eventColor = brightRed
+	default:
+		icon = c(pink, "·")
+		eventColor = pink
+	}
+	write("%s  %s %s %s",
+		ts(),
+		icon,
+		c(eventColor, fmt.Sprintf("%-12s", "tool:"+event)),
+		c(magenta, toolID),
+	)
+}
+
 func HTTP(method, path string, status int, dur time.Duration) {
 	statusStr := fmt.Sprintf("%d", status)
 	var coloredStatus string

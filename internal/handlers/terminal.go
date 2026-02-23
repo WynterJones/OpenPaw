@@ -87,11 +87,13 @@ func (h *TerminalHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 // CreateSession creates a new terminal/PTY session.
 func (h *TerminalHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title       string `json:"title"`
-		Cols        *int   `json:"cols"`
-		Rows        *int   `json:"rows"`
-		Color       string `json:"color"`
-		WorkbenchID string `json:"workbench_id"`
+		Title          string `json:"title"`
+		Cols           *int   `json:"cols"`
+		Rows           *int   `json:"rows"`
+		Color          string `json:"color"`
+		WorkbenchID    string `json:"workbench_id"`
+		Cwd            string `json:"cwd"`
+		InitialCommand string `json:"initial_command"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -111,7 +113,7 @@ func (h *TerminalHandler) CreateSession(w http.ResponseWriter, r *http.Request) 
 		rows = uint16(*req.Rows)
 	}
 
-	session, err := h.terminalMgr.CreateSession(req.Title, cols, rows, req.Color, req.WorkbenchID)
+	session, err := h.terminalMgr.CreateSession(req.Title, cols, rows, req.Color, req.WorkbenchID, req.Cwd, req.InitialCommand)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

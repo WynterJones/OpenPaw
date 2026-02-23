@@ -28,6 +28,7 @@ import type {
   WidgetPayload,
   TerminalSession,
   Workbench,
+  Project,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -285,7 +286,7 @@ export const terminalApi = {
     const qs = workbenchId ? `?workbench_id=${encodeURIComponent(workbenchId)}` : '';
     return api.get<TerminalSession[]>(`/terminal/sessions${qs}`);
   },
-  create: (body: { title?: string; cols?: number; rows?: number; color?: string; workbench_id?: string }) =>
+  create: (body: { title?: string; cols?: number; rows?: number; color?: string; workbench_id?: string; cwd?: string; initial_command?: string }) =>
     api.post<TerminalSession>('/terminal/sessions', body),
   get: (id: string) => api.get<TerminalSession>(`/terminal/sessions/${id}`),
   update: (id: string, data: { title?: string; color?: string }) =>
@@ -295,6 +296,16 @@ export const terminalApi = {
   createWorkbench: (name: string) => api.post<Workbench>('/terminal/workbenches', { name }),
   updateWorkbench: (id: string, data: { name: string; color?: string }) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, data),
   deleteWorkbench: (id: string) => api.delete<{ status: string }>(`/terminal/workbenches/${id}`),
+};
+
+// Projects API helpers
+export const projectsApi = {
+  list: () => api.get<Project[]>('/projects'),
+  create: (data: { name: string; color?: string; repos?: { name: string; folder_path: string; command: string }[] }) =>
+    api.post<Project>('/projects', data),
+  update: (id: string, data: { name: string; color?: string; repos?: { name: string; folder_path: string; command: string }[] }) =>
+    api.put<{ status: string }>(`/projects/${id}`, data),
+  delete: (id: string) => api.delete<{ status: string }>(`/projects/${id}`),
 };
 
 // Secrets API helpers

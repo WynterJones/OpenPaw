@@ -77,7 +77,8 @@ func detectShell() string {
 }
 
 // CreateSession spawns a new PTY session with the given title, dimensions, color, and workbench.
-func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenchID string) (*Session, error) {
+// Optional cwd overrides the working directory. Optional initialCommand is sent to the PTY after startup.
+func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenchID, cwd, initialCommand string) (*Session, error) {
 	id := uuid.New().String()
 	shell := detectShell()
 	now := time.Now().UTC()
@@ -89,10 +90,15 @@ func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenc
 		rows = 24
 	}
 
+	workDir := m.workDir
+	if cwd != "" {
+		workDir = cwd
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cmd := exec.CommandContext(ctx, shell)
-	cmd.Dir = m.workDir
+	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
@@ -143,6 +149,19 @@ func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenc
 		}
 		m.mu.Unlock()
 	}()
+
+	// Send initial command to the PTY after a brief delay for shell startup
+	if initialCommand != "" {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			m.mu.Lock()
+			sess, exists := m.sessions[id]
+			m.mu.Unlock()
+			if exists && sess.Ptmx != nil {
+				sess.Ptmx.Write([]byte(initialCommand + "\n"))
+			}
+		}()
+	}
 
 	logger.Success("Created terminal session %s (%s) using %s", id, title, shell)
 	return s, nil

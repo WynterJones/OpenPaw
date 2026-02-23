@@ -565,6 +565,23 @@ export interface Workbench {
   created_at: string;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  color: string;
+  repos: ProjectRepo[];
+  created_at: string;
+}
+
+export interface ProjectRepo {
+  id: string;
+  project_id: string;
+  name: string;
+  folder_path: string;
+  command: string;
+  sort_order: number;
+}
+
 export interface SubAgentTask {
   subagent_id: string;
   agent_slug: string;

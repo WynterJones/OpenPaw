@@ -121,6 +121,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
 	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
 	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port)
+	projectsHandler := handlers.NewProjectsHandler(s.DB)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -424,6 +425,14 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/workbenches/{id}", terminalHandler.DeleteWorkbench)
 			})
 
+			// Projects
+			r.Route("/projects", func(r chi.Router) {
+				r.Get("/", projectsHandler.List)
+				r.Post("/", projectsHandler.Create)
+				r.Put("/{id}", projectsHandler.Update)
+				r.Delete("/{id}", projectsHandler.Delete)
+			})
+
 			// Logs
 			r.Get("/logs", logsHandler.List)
 			r.Get("/logs/stats", logsHandler.Stats)
@@ -433,6 +442,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Get("/system/info", systemHandler.Info)
 			r.Get("/system/balance", systemHandler.Balance)
 			r.Delete("/system/data", systemHandler.DeleteData)
+			r.Post("/system/pick-folder", systemHandler.PickFolder)
 
 			// Settings
 			r.Get("/settings", settingsHandler.Get)

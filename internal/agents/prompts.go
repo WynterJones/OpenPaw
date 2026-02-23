@@ -210,6 +210,30 @@ WIDGET SYSTEM:
   The widget.js file receives window.WIDGET_DATA (your response data) and window.WIDGET_THEME (theme colors).
   Use --op-* CSS variables for all colors to match the app theme.
 
+UPSTREAM API AUTHENTICATION:
+When the tool connects to an external API that requires an API key:
+1. Before writing handler code, probe the API to discover the correct auth header.
+   Run a curl test against a known endpoint (health, root, or a list endpoint) using
+   the API key from the environment variable:
+
+   KEY=$(printenv <ENV_VAR_NAME>)
+   # Try X-API-Key header first (most common for internal APIs)
+   curl -s -o /dev/null -w "%%{http_code}" -H "X-API-Key: $KEY" <BASE_URL>/health
+   # If that returns 401/403, try Authorization: Bearer
+   curl -s -o /dev/null -w "%%{http_code}" -H "Authorization: Bearer $KEY" <BASE_URL>/health
+   # If that also fails, try Authorization: Token
+   curl -s -o /dev/null -w "%%{http_code}" -H "Authorization: Token $KEY" <BASE_URL>/health
+
+2. Use whichever header returns 200 (or any non-401/403 status).
+3. If ALL return 401/403, default to X-API-Key and note the issue in a log message.
+4. Always use the scaffolded apiClient variable (in handlers.go) which has redirect-following
+   disabled — some APIs redirect unauthenticated requests to an HTML login page instead of
+   returning 401.
+5. Common auth header patterns (try in this order):
+   - X-API-Key: <key>           (Rails APIs, internal services)
+   - Authorization: Bearer <key> (OAuth2, JWT-based APIs)
+   - Authorization: Token <key>  (GitHub-style APIs)
+
 RULES:
 1. DO NOT create: README.md, DEPLOYMENT.md, QUICKSTART.md, LICENSE, .gitignore, or any documentation/summary files.
 2. YOUR TEXT OUTPUT IS SHOWN TO THE USER in real-time. The user is non-technical and cannot edit files.
@@ -254,6 +278,30 @@ WIDGET SYSTEM:
   * Anything else → json-viewer (raw JSON display)
 - Override: Include "__widget" in JSON to force a type: {"__widget": {"type": "metric-card", "title": "CPU"}, "label": "CPU", "value": "72"}
 - Custom widget: Edit widget.js and set type to "custom". It receives WIDGET_DATA and WIDGET_THEME. Use --op-* CSS vars.
+
+UPSTREAM API AUTHENTICATION:
+When the tool connects to an external API that requires an API key:
+1. Before writing handler code, probe the API to discover the correct auth header.
+   Run a curl test against a known endpoint (health, root, or a list endpoint) using
+   the API key from the environment variable:
+
+   KEY=$(printenv <ENV_VAR_NAME>)
+   # Try X-API-Key header first (most common for internal APIs)
+   curl -s -o /dev/null -w "%%{http_code}" -H "X-API-Key: $KEY" <BASE_URL>/health
+   # If that returns 401/403, try Authorization: Bearer
+   curl -s -o /dev/null -w "%%{http_code}" -H "Authorization: Bearer $KEY" <BASE_URL>/health
+   # If that also fails, try Authorization: Token
+   curl -s -o /dev/null -w "%%{http_code}" -H "Authorization: Token $KEY" <BASE_URL>/health
+
+2. Use whichever header returns 200 (or any non-401/403 status).
+3. If ALL return 401/403, default to X-API-Key and note the issue in a log message.
+4. Always use the scaffolded apiClient variable (in handlers.go) which has redirect-following
+   disabled — some APIs redirect unauthenticated requests to an HTML login page instead of
+   returning 401.
+5. Common auth header patterns (try in this order):
+   - X-API-Key: <key>           (Rails APIs, internal services)
+   - Authorization: Bearer <key> (OAuth2, JWT-based APIs)
+   - Authorization: Token <key>  (GitHub-style APIs)
 
 RULES:
 1. DO NOT create: README.md, DEPLOYMENT.md, QUICKSTART.md, LICENSE, .gitignore, or any documentation/summary files.

@@ -130,7 +130,7 @@ func (m *Manager) Shutdown() {
 		}
 		closeLogFile(rt)
 		m.updateToolDB(id, "stopped", 0, 0)
-		logger.Info("Stopped tool %s", id)
+		logger.Tool("stopped", id)
 	}
 
 	m.mu.Lock()
@@ -196,7 +196,7 @@ func (m *Manager) CompileTool(toolID string) error {
 		logger.Warn("Failed to record integrity for tool %s: %v", toolID, err)
 	}
 
-	logger.Success("Compiled tool %s", toolID)
+	logger.Tool("compiled", toolID)
 	return nil
 }
 
@@ -221,7 +221,6 @@ func (m *Manager) StartTool(toolID string) error {
 	ctx, cancel := context.WithCancel(m.ctx)
 	cmd := exec.CommandContext(ctx, binaryPath)
 	cmd.Dir = toolDir
-	cmd.Env = append(filterEnv(os.Environ()), fmt.Sprintf("PORT=%d", port), fmt.Sprintf("TOOL_DATA_DIR=%s", m.toolDataDir))
 
 	// Inject secrets required by this tool; refuse to start if any are missing
 	secretEnvs, missingSecrets := m.getToolSecrets(toolID)
@@ -231,6 +230,28 @@ func (m *Manager) StartTool(toolID string) error {
 		m.setToolError(toolID, errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
+
+	// Build clean environment: strip any tool-declared env vars from parent env
+	// so stale/empty values from the parent process can't shadow injected secrets.
+	// On Unix, duplicate env keys resolve to the FIRST match, so we must remove
+	// parent entries before appending the injected values.
+	envDefs := m.resolveToolEnvDefs(toolID)
+	declaredKeys := make(map[string]struct{}, len(envDefs))
+	for _, ev := range envDefs {
+		declaredKeys[ev.Name] = struct{}{}
+	}
+	baseEnv := filterEnv(os.Environ())
+	cleanEnv := make([]string, 0, len(baseEnv))
+	for _, e := range baseEnv {
+		key := e
+		if idx := strings.Index(e, "="); idx >= 0 {
+			key = e[:idx]
+		}
+		if _, isDeclared := declaredKeys[key]; !isDeclared {
+			cleanEnv = append(cleanEnv, e)
+		}
+	}
+	cmd.Env = append(cleanEnv, fmt.Sprintf("PORT=%d", port), fmt.Sprintf("TOOL_DATA_DIR=%s", m.toolDataDir))
 	cmd.Env = append(cmd.Env, secretEnvs...)
 
 	logFile, err := os.OpenFile(
@@ -279,7 +300,6 @@ func (m *Manager) StartTool(toolID string) error {
 	// Wait for health check
 	go func() {
 		if err := m.WaitForHealth(toolID, 10*time.Second); err != nil {
-			logger.Warn("Tool %s health check failed: %v", toolID, err)
 			rt.Status = "running" // still running, just health check didn't pass yet
 		} else {
 			rt.Status = "running"
@@ -289,7 +309,7 @@ func (m *Manager) StartTool(toolID string) error {
 				"port":    port,
 				"pid":     rt.PID,
 			})
-			logger.Success("Tool %s running on port %d (pid %d)", toolID, port, rt.PID)
+			logger.Tool("running", toolID)
 		}
 	}()
 
@@ -330,7 +350,7 @@ func (m *Manager) StopTool(toolID string) error {
 		"status":  "stopped",
 	})
 
-	logger.Info("Stopped tool %s", toolID)
+	logger.Tool("stopped", toolID)
 	return nil
 }
 
@@ -506,9 +526,9 @@ func (m *Manager) monitorProcess(toolID string) {
 	closeLogFile(rt)
 
 	if err != nil {
-		logger.Warn("Tool %s exited unexpectedly: %v", toolID, err)
+		logger.Tool("error", toolID)
 	} else {
-		logger.Warn("Tool %s exited with code 0", toolID)
+		logger.Tool("stopped", toolID)
 	}
 
 	m.broadcast("tool_status", map[string]interface{}{
@@ -523,12 +543,12 @@ func (m *Manager) monitorProcess(toolID string) {
 	restartCount := rt.Restarts
 	if restartCount >= maxRetries {
 		m.setToolError(toolID, fmt.Sprintf("exceeded max restarts (%d)", maxRetries))
-		logger.Error("Tool %s exceeded max restarts, giving up", toolID)
+		logger.Tool("error", toolID)
 		return
 	}
 
 	backoff := backoffs[restartCount]
-	logger.Info("Restarting tool %s in %v (attempt %d/%d)", toolID, backoff, restartCount+1, maxRetries)
+	logger.Tool("restart", toolID)
 
 	select {
 	case <-time.After(backoff):
@@ -537,7 +557,7 @@ func (m *Manager) monitorProcess(toolID string) {
 	}
 
 	if err := m.StartTool(toolID); err != nil {
-		logger.Error("Failed to restart tool %s: %v", toolID, err)
+		logger.Tool("error", toolID)
 		m.setToolError(toolID, fmt.Sprintf("restart failed: %v", err))
 		return
 	}
@@ -638,13 +658,11 @@ type toolEnvVar struct {
 // missing contains the names of any required secrets that are absent or still placeholder.
 func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []string) {
 	if m.secrets == nil {
-		logger.Warn("Tool %s: secret decryptor is nil — secrets cannot be injected", toolID)
 		return nil, nil
 	}
 
 	envDefs := m.resolveToolEnvDefs(toolID)
 	if len(envDefs) == 0 {
-		logger.Info("Tool %s: no env vars defined, skipping secret injection", toolID)
 		return nil, nil
 	}
 
@@ -655,29 +673,30 @@ func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []str
 		if err != nil {
 			notFound++
 			if ev.Required {
-				logger.Warn("Tool %s: required secret %q not found in database", toolID, ev.Name)
 				missing = append(missing, ev.Name)
-			} else {
-				logger.Warn("Tool %s: optional secret %q not found in database", toolID, ev.Name)
 			}
 			continue
 		}
 		plaintext, err := m.secrets.Decrypt(encrypted)
 		if err != nil {
 			decryptFailed++
-			logger.Warn("Tool %s: failed to decrypt secret %q: %v", toolID, ev.Name, err)
 			if ev.Required {
 				missing = append(missing, ev.Name)
 			}
 			continue
 		}
+		plaintext = strings.TrimSpace(plaintext)
 		if plaintext == "REPLACE_ME" {
 			placeholder++
 			if ev.Required {
-				logger.Warn("Tool %s: required secret %q is still a placeholder", toolID, ev.Name)
 				missing = append(missing, ev.Name)
-			} else {
-				logger.Warn("Tool %s: optional secret %q is still a placeholder", toolID, ev.Name)
+			}
+			continue
+		}
+		if plaintext == "" {
+			notFound++
+			if ev.Required {
+				missing = append(missing, ev.Name)
 			}
 			continue
 		}
@@ -685,11 +704,8 @@ func (m *Manager) getToolSecrets(toolID string) (envVars []string, missing []str
 		envVars = append(envVars, fmt.Sprintf("%s=%s", ev.Name, plaintext))
 	}
 
-	logger.Info("Tool %s secrets: %d defined, %d injected, %d not found, %d decrypt failed, %d placeholder",
-		toolID, len(envDefs), injected, notFound, decryptFailed, placeholder)
-
-	if injected == 0 && len(envDefs) > 0 {
-		logger.Warn("Tool %s has %d env vars defined but 0 secrets injected — check secrets configuration", toolID, len(envDefs))
+	if len(missing) > 0 {
+		logger.Warn("Tool %s: %d missing secrets: %v", toolID, len(missing), missing)
 	}
 
 	return envVars, missing
@@ -709,23 +725,18 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 	// Try built-in catalog first (all env vars treated as required)
 	if librarySlug != "" {
 		if cat, err := toollibrary.GetCatalogTool(librarySlug); err == nil && len(cat.Env) > 0 {
-			names := make([]string, len(cat.Env))
 			defs := make([]toolEnvVar, len(cat.Env))
 			for i, name := range cat.Env {
 				defs[i] = toolEnvVar{Name: name, Required: true}
-				names[i] = name
 			}
-			logger.Info("Tool %s: resolved %d env vars from catalog (slug=%s): %v", toolID, len(defs), librarySlug, names)
 			return defs
 		}
-		logger.Info("Tool %s: catalog lookup for slug %q returned no env vars, trying manifest", toolID, librarySlug)
 	}
 
 	// Fall back to manifest.json on disk
 	manifestPath := filepath.Join(m.toolsDir, toolID, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		logger.Info("Tool %s: no manifest.json found at %s, no env vars to resolve", toolID, manifestPath)
 		return nil
 	}
 
@@ -733,7 +744,6 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 		Env json.RawMessage `json:"env"`
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil || len(manifest.Env) == 0 {
-		logger.Info("Tool %s: manifest.json has no env field or failed to parse", toolID)
 		return nil
 	}
 
@@ -756,7 +766,6 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 			}
 		}
 		if len(defs) > 0 {
-			logger.Info("Tool %s: resolved %d env vars from manifest.json: %v", toolID, len(defs), names)
 			return defs
 		}
 	}
@@ -768,11 +777,9 @@ func (m *Manager) resolveToolEnvDefs(toolID string) []toolEnvVar {
 		for i, name := range envStrings {
 			defs[i] = toolEnvVar{Name: name, Required: true}
 		}
-		logger.Info("Tool %s: resolved %d env vars from manifest.json (string array): %v", toolID, len(defs), envStrings)
 		return defs
 	}
 
-	logger.Warn("Tool %s: manifest.json has env field but could not parse it", toolID)
 	return nil
 }
 
@@ -798,7 +805,7 @@ func (m *Manager) FindToolsUsingSecret(secretName string) []string {
 func (m *Manager) setToolError(toolID, errMsg string) {
 	now := time.Now().UTC()
 	m.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID)
-	logger.Error("Tool %s: %s", toolID, errMsg)
+	logger.Tool("error", toolID)
 
 	m.broadcast("tool_status", map[string]interface{}{
 		"tool_id": toolID,
