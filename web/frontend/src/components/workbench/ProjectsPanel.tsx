@@ -115,8 +115,8 @@ function ProjectsDropdown({
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] bg-surface-2 border border-border-1 rounded-xl shadow-2xl flex flex-col min-w-72 max-w-96 max-h-[70vh] overflow-hidden"
-      style={{ top: pos.top, right: pos.right }}
+      className="fixed z-[9999] bg-surface-2 border border-border-1 rounded-xl shadow-2xl flex flex-col max-h-[70vh] overflow-hidden inset-x-2 sm:inset-x-auto sm:w-[500px]"
+      style={{ top: pos.top, right: window.innerWidth >= 640 ? pos.right : undefined }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border-0">

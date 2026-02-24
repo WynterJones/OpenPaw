@@ -700,7 +700,7 @@ export function Library() {
     <div className="flex flex-col h-full">
       <Header title="Library" />
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
-        <div className="flex items-center gap-2 mb-3 border-b border-border-0">
+        <div className="flex items-center gap-2 mb-3 border-b border-border-0 overflow-x-auto">
           {tabsWithCounts.map(t => (
             <button
               key={t.key}

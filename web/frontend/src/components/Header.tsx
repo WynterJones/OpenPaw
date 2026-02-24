@@ -129,9 +129,10 @@ interface HeaderProps {
   title: string;
   count?: number;
   actions?: React.ReactNode;
+  hideTitleOnMobile?: boolean;
 }
 
-export function Header({ title, count, actions }: HeaderProps) {
+export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps) {
   const connected = useConnectionStatus();
   const balance = useOpenRouterBalance();
   const { showMascot } = useDesign();
@@ -197,16 +198,8 @@ export function Header({ title, count, actions }: HeaderProps) {
   return (
     <header className="relative z-30 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
       <div className="relative min-w-0 flex-1 mr-2 flex items-center gap-2.5">
-        {showMascot && (
-          <img
-            src="/cat-toolbar.webp"
-            alt=""
-            className="w-auto object-contain pointer-events-none select-none md:hidden"
-            style={{ position: "relative", bottom: "-3px", height: "55px" }}
-          />
-        )}
         <h1
-          className="hidden md:block text-lg md:text-xl font-bold text-text-0 truncate"
+          className={`text-lg md:text-xl font-bold text-text-0 truncate ${hideTitleOnMobile ? 'hidden md:block' : ''}`}
           title={title}
         >
           {title}
@@ -258,7 +251,7 @@ export function Header({ title, count, actions }: HeaderProps) {
               aria-haspopup="true"
               className="flex items-center gap-2 p-1.5 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-md ring-2 ring-accent-primary/30 overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0">
+              <div className="w-8 h-8 rounded-md border border-border-1 overflow-hidden flex items-center justify-center bg-surface-2 flex-shrink-0">
                 {profilePic ? (
                   <img
                     src={profilePic}

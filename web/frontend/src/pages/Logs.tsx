@@ -275,36 +275,36 @@ export function Logs() {
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {stats && (
-          <div className="grid grid-cols-3 gap-3 mb-4 md:mb-6">
-            <Card>
+          <div className="flex gap-3 mb-4 md:mb-6 overflow-x-auto md:grid md:grid-cols-3">
+            <Card className="shrink-0 min-w-[140px] flex-1">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/10">
+                <div className="p-2 rounded-lg bg-emerald-500/10 shrink-0">
                   <DollarSign className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-text-3">Total est. Cost</p>
+                  <p className="text-xs text-text-3 whitespace-nowrap">Est. Cost</p>
                   <p className="text-lg font-semibold text-text-0 truncate">{formatCost(stats.total_cost_usd)}</p>
                 </div>
               </div>
             </Card>
-            <Card>
+            <Card className="shrink-0 min-w-[140px] flex-1">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10">
+                <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
                   <Zap className="w-4 h-4 text-amber-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-text-3">Total Tokens</p>
+                  <p className="text-xs text-text-3 whitespace-nowrap">Tokens</p>
                   <p className="text-lg font-semibold text-text-0 truncate">{formatNumber(stats.total_tokens)}</p>
                 </div>
               </div>
             </Card>
-            <Card>
+            <Card className="shrink-0 min-w-[140px] flex-1">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
+                <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
                   <Activity className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-text-3">Total Activity</p>
+                  <p className="text-xs text-text-3 whitespace-nowrap">Activity</p>
                   <p className="text-lg font-semibold text-text-0 truncate">{formatNumber(stats.total_activity)}</p>
                 </div>
               </div>

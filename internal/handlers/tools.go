@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -253,6 +254,7 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Endpoint string `json:"endpoint"`
+		Method   string `json:"method"`
 		Payload  string `json:"payload"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
@@ -273,9 +275,15 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If payload is a JSON object, append its fields as query parameters
-	// so tools that use GET with query params (e.g. ?city=Kingston) work correctly.
-	if req.Payload != "" {
+	// Determine how to send payload based on method.
+	// POST: send payload as JSON body (CallTool uses POST when payload is non-nil).
+	// GET (default): append payload fields as query parameters.
+	var callPayload []byte
+	method := strings.ToUpper(req.Method)
+	if method == "POST" && req.Payload != "" {
+		callPayload = []byte(req.Payload)
+	} else if req.Payload != "" {
+		// GET with payload — append as query parameters
 		var params map[string]interface{}
 		if json.Unmarshal([]byte(req.Payload), &params) == nil && len(params) > 0 {
 			q := url.Values{}
@@ -295,7 +303,7 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := h.toolMgr.CallTool(id, endpoint, nil)
+	data, err := h.toolMgr.CallTool(id, endpoint, callPayload)
 	if err != nil {
 		logger.Error("Tool call failed for %s endpoint %s: %v", id, endpoint, err)
 		writeError(w, http.StatusBadGateway, "tool call failed: "+err.Error())

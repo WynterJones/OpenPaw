@@ -174,7 +174,7 @@ function ProfileTab() {
         <h3 className="text-sm font-semibold text-text-1 mb-4">Account</h3>
         <div className="flex items-center gap-4 mb-6">
           <div className="relative group">
-            <div className="w-16 h-16 rounded-full ring-2 ring-accent-primary/30 overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0">
+            <div className="w-16 h-16 rounded-full border border-border-1 overflow-hidden flex items-center justify-center bg-surface-2 flex-shrink-0">
               {user?.avatar_path ? (
                 <img
                   src={user.avatar_path}

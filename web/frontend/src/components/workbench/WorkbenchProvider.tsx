@@ -39,6 +39,8 @@ interface WorkbenchContextType {
   updateWorkbenchColor: (id: string, color: string) => Promise<void>;
   deleteWorkbench: (id: string) => Promise<void>;
   switchWorkbench: (id: string) => void;
+  reorderWorkbenches: (workbenches: Workbench[]) => Promise<void>;
+  reorderTabs: (panelId: string, tabs: string[]) => void;
   busySessions: Set<string>;
   loading: boolean;
 }
@@ -555,6 +557,21 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkbenchId, sessions]);
 
+  const reorderWorkbenches = useCallback(async (reordered: Workbench[]) => {
+    setWorkbenches(reordered);
+    await terminalApi.reorderWorkbenches(reordered.map(w => w.id));
+  }, []);
+
+  const reorderTabs = useCallback((panelId: string, tabs: string[]) => {
+    setRootPanel((prev) => {
+      if (!prev) return prev;
+      return updatePanel(prev, panelId, (panel) => ({
+        ...panel,
+        tabs,
+      }));
+    });
+  }, []);
+
   return (
     <WorkbenchContext.Provider
       value={{
@@ -575,6 +592,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         updateWorkbenchColor,
         deleteWorkbench,
         switchWorkbench,
+        reorderWorkbenches,
+        reorderTabs,
         busySessions,
         loading,
       }}

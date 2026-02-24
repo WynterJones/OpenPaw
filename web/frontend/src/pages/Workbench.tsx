@@ -5,6 +5,8 @@ import { Button } from '../components/Button';
 import { WorkbenchProvider, useWorkbench } from '../components/workbench/WorkbenchProvider';
 import { PanelContainer } from '../components/workbench/PanelContainer';
 import { ProjectsButton } from '../components/workbench/ProjectsPanel';
+import { useDragReorder } from '../hooks/useDragReorder';
+import type { Workbench as WorkbenchType } from '../lib/api';
 
 const TAB_COLORS = [
   '',
@@ -104,6 +106,7 @@ function WorkbenchHeader() {
     renameWorkbench,
     updateWorkbenchColor,
     deleteWorkbench,
+    reorderWorkbenches,
     sessions,
     busySessions,
   } = useWorkbench();
@@ -111,6 +114,12 @@ function WorkbenchHeader() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const editBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  const { dragId, overId, handleDragStart } = useDragReorder<WorkbenchType>({
+    items: workbenches,
+    getId: (w) => w.id,
+    onReorder: reorderWorkbenches,
+  });
 
   const openEdit = useCallback((id: string) => {
     const btn = editBtnRefs.current.get(id);
@@ -146,16 +155,20 @@ function WorkbenchHeader() {
         const isActive = wb.id === activeWorkbenchId;
         const color = wb.color || '';
         const busy = isWorkbenchBusy(wb.id);
+        const isDragTarget = overId === wb.id && dragId !== wb.id;
+        const isBeingDragged = dragId === wb.id;
 
         return (
           <div
             key={wb.id}
-            onClick={() => switchWorkbench(wb.id)}
+            data-drag-id={wb.id}
+            onMouseDown={(e) => handleDragStart(wb.id, e)}
+            onClick={() => { if (!isBeingDragged) switchWorkbench(wb.id); }}
             className={`group relative flex items-center gap-1.5 h-8 rounded-lg text-xs cursor-pointer select-none transition-all shrink-0 border ${
               isActive
                 ? 'border-border-1 bg-surface-2 text-text-0 font-medium shadow-sm'
                 : 'border-transparent hover:border-border-0 text-text-3 hover:bg-surface-2/50 hover:text-text-1'
-            }`}
+            } ${isBeingDragged ? 'opacity-50' : ''} ${isDragTarget ? 'ring-2 ring-accent-primary/50' : ''}`}
             style={color ? {
               borderColor: isActive ? color : undefined,
               background: isActive

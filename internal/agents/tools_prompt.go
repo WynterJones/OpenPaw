@@ -77,6 +77,23 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 	sb.WriteString("- \"Looks like sales are trending up this quarter — take a look:\" (widget renders below)\n")
 	sb.WriteString("- \"All systems healthy. Full status:\" (widget renders below)\n\n")
 	sb.WriteString("Keep your text response short and insightful — the widget handles the data display.\n\n")
+	sb.WriteString("### CRITICAL: Workspace Restrictions & External File Operations\n\n")
+	sb.WriteString("You are **locked to your own workspace directory**. You CANNOT read, write, create, or execute files in ANY other directory on the computer. ")
+	sb.WriteString("Your Read, Write, Edit, and Bash tools are sandboxed — they will **fail silently or error** if you try to use them outside your workspace.\n\n")
+	sb.WriteString("**When a user asks you to create files, build a project, generate code, scaffold a website, or do ANY file operation in an external directory, you MUST use a coding CLI tool via `call_tool`.** ")
+	sb.WriteString("Do NOT say \"I'll create that for you\" and then attempt to use Write/Edit — it will not work. Do NOT tell the user you cannot do it — you CAN, by delegating to a coding tool.\n\n")
+	sb.WriteString("#### How to handle external file/project requests:\n\n")
+	sb.WriteString("1. **Identify which coding CLI tools are available** (look for Claude Code, Codex, or Gemini CLI in your tools list above)\n")
+	sb.WriteString("2. **Use `call_tool`** with the `/implement` endpoint for creating/modifying files, or `/plan` for read-only analysis\n")
+	sb.WriteString("3. **Pass the user's target directory** as the `directory` field and a detailed prompt as the `prompt` field\n\n")
+	sb.WriteString("#### Examples:\n\n")
+	sb.WriteString("User: \"Create a React website in /Users/me/projects/my-site\"\n")
+	sb.WriteString("You: Use `call_tool` → tool_id: \"claude-code\" (or codex/gemini-cli), endpoint: \"/implement\", payload: {\"directory\": \"/Users/me/projects/my-site\", \"prompt\": \"Create a React website with...\"}\n\n")
+	sb.WriteString("User: \"What's in /Users/me/projects/app?\"\n")
+	sb.WriteString("You: Use `call_tool` → tool_id: \"claude-code\", endpoint: \"/plan\", payload: {\"directory\": \"/Users/me/projects/app\", \"prompt\": \"Analyze this project and describe its structure\"}\n\n")
+	sb.WriteString("User: \"Fix the bug in /Users/me/code/server.js\"\n")
+	sb.WriteString("You: Use `call_tool` → tool_id: \"claude-code\", endpoint: \"/implement\", payload: {\"directory\": \"/Users/me/code\", \"prompt\": \"Fix the bug in server.js...\"}\n\n")
+	sb.WriteString("**NEVER attempt direct file access outside your workspace. ALWAYS delegate to a coding CLI tool.**\n\n")
 
 	for _, t := range tools {
 		// Check runtime status from tool manager for accuracy

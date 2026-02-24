@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	cliTimeout        = 40 * time.Minute
+	cliTimeout            = 40 * time.Minute
 	sensitivePathPrefixes = []string{
 		".ssh", ".aws", ".gnupg", ".config/gcloud",
 	}
@@ -25,7 +25,7 @@ var (
 	}
 )
 
-type claudeRequest struct {
+type geminiRequest struct {
 	Directory string `json:"directory"`
 	Prompt    string `json:"prompt"`
 	Model     string `json:"model"`
@@ -105,7 +105,7 @@ func validateDirectory(dir string) error {
 	return nil
 }
 
-func runClaude(req claudeRequest, extraArgs ...string) (map[string]interface{}, error) {
+func runGemini(req geminiRequest, extraArgs ...string) (map[string]interface{}, error) {
 	if err := validateDirectory(req.Directory); err != nil {
 		return nil, err
 	}
@@ -114,23 +114,24 @@ func runClaude(req claudeRequest, extraArgs ...string) (map[string]interface{}, 
 		return nil, fmt.Errorf("prompt is required")
 	}
 
-	claudePath, err := exec.LookPath("claude")
+	geminiPath, err := exec.LookPath("gemini")
 	if err != nil {
-		return nil, fmt.Errorf("claude CLI not found in PATH")
+		return nil, fmt.Errorf("gemini CLI not found in PATH")
 	}
 
 	absDir, _ := filepath.Abs(req.Directory)
 
-	args := []string{"-p", req.Prompt, "--output-format", "json"}
+	args := []string{"-o", "stream-json", "--approval-mode", "yolo"}
 	if req.Model != "" {
-		args = append(args, "--model", req.Model)
+		args = append(args, "-m", req.Model)
 	}
 	args = append(args, extraArgs...)
+	args = append(args, req.Prompt)
 
 	ctx, cancel := context.WithTimeout(context.Background(), cliTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, claudePath, args...)
+	cmd := exec.CommandContext(ctx, geminiPath, args...)
 	cmd.Dir = absDir
 
 	var stdout, stderr bytes.Buffer
@@ -141,16 +142,52 @@ func runClaude(req claudeRequest, extraArgs ...string) (map[string]interface{}, 
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("command timed out after %s", cliTimeout)
 		}
-		return nil, fmt.Errorf("claude command failed: %s (stderr: %s)", err, stderr.String())
+		return nil, fmt.Errorf("gemini command failed: %s (stderr: %s)", err, stderr.String())
 	}
 
 	output := stdout.String()
 
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &result); err == nil {
+	var lastResult map[string]interface{}
+	var lastMessage string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var msg map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &msg); err == nil {
+			msgType, _ := msg["type"].(string)
+			if msgType == "result" {
+				lastResult = msg
+			}
+			if msgType == "message" {
+				if role, _ := msg["role"].(string); role == "assistant" {
+					if delta, _ := msg["delta"].(bool); !delta {
+						if content, ok := msg["content"].(string); ok {
+							lastMessage = content
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if lastResult != nil {
+		result := map[string]interface{}{
+			"success":   true,
+			"result":    lastResult,
+			"directory": absDir,
+		}
+		if lastMessage != "" {
+			result["message"] = lastMessage
+		}
+		return result, nil
+	}
+
+	if lastMessage != "" {
 		return map[string]interface{}{
 			"success":   true,
-			"result":    result,
+			"message":   lastMessage,
 			"directory": absDir,
 		}, nil
 	}
@@ -163,13 +200,13 @@ func runClaude(req claudeRequest, extraArgs ...string) (map[string]interface{}, 
 }
 
 func handlePlan(w http.ResponseWriter, r *http.Request) {
-	var req claudeRequest
+	var req geminiRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	result, err := runClaude(req, "--allowedTools", "Read,Grep,Glob", "--max-turns", "5")
+	result, err := runGemini(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -180,13 +217,13 @@ func handlePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleImplement(w http.ResponseWriter, r *http.Request) {
-	var req claudeRequest
+	var req geminiRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	result, err := runClaude(req, "--dangerously-skip-permissions")
+	result, err := runGemini(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -197,13 +234,13 @@ func handleImplement(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAsk(w http.ResponseWriter, r *http.Request) {
-	var req claudeRequest
+	var req geminiRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	result, err := runClaude(req, "--dangerously-skip-permissions", "--max-turns", "1")
+	result, err := runGemini(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -214,18 +251,18 @@ func handleAsk(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
-	claudePath, err := exec.LookPath("claude")
+	geminiPath, err := exec.LookPath("gemini")
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"available": false,
-			"error":     "claude CLI not found in PATH",
+			"error":     "gemini CLI not found in PATH",
 		})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"available":           true,
-		"path":                claudePath,
+		"path":                geminiPath,
 		"allowed_directories": getAllowedDirectories(),
 	})
 }

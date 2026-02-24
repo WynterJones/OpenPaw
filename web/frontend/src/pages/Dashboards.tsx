@@ -280,7 +280,7 @@ export function Dashboards() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Dashboards" actions={
+      <Header title="Dashboards" hideTitleOnMobile actions={
         <div className="flex items-center gap-2">
           {/* Dashboard switcher dropdown */}
           <div className="relative">

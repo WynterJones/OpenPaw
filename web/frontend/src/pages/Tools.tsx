@@ -64,12 +64,6 @@ function ToolCard({ tool, onClick, needsSecrets }: { tool: Tool; onClick: () => 
       <div className="flex items-center gap-2 mb-3">
         {statusDot(tool.status)}
         <StatusBadge status={tool.status} />
-        {tool.library_slug && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center gap-1">
-            <Library className="w-2.5 h-2.5" />
-            {tool.library_slug}
-          </span>
-        )}
         {needsSecrets && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-1">
             <AlertTriangle className="w-2.5 h-2.5" />
@@ -108,11 +102,6 @@ function ToolRow({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-text-0 truncate">{tool.name}</p>
-            {tool.library_slug && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] bg-purple-500/15 text-purple-400 border border-purple-500/20 flex-shrink-0">
-                <Library className="w-2.5 h-2.5 inline" />
-              </span>
-            )}
           </div>
           <p className="text-xs text-text-3 truncate max-w-xs">
             {tool.description}
@@ -473,15 +462,105 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          aria-label="Back"
-          className="p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="flex-1 min-w-0">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="secondary" size="sm" onClick={onBack} icon={<ArrowLeft className="w-4 h-4" />}>
+            Back
+          </Button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {statusDot(tool.status)}
+            <StatusBadge status={tool.status} />
+          </div>
+          <div className="h-5 w-px bg-border-0 mx-0.5 hidden sm:block" />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => doAction("compile", "compiled")}
+            loading={loading === "compile"}
+            icon={<Hammer className="w-3.5 h-3.5" />}
+          >
+            Compile
+          </Button>
+          {isStopped && (
+            <Button
+              size="sm"
+              onClick={() => doAction("start", "started")}
+              loading={loading === "start"}
+              icon={<Play className="w-3.5 h-3.5" />}
+            >
+              Start
+            </Button>
+          )}
+          {isRunning && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => doAction("stop", "stopped")}
+              loading={loading === "stop"}
+              icon={<Square className="w-3.5 h-3.5" />}
+            >
+              Stop
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => doAction("restart", "restarted")}
+            loading={loading === "restart"}
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
+          >
+            Restart
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={toggleTool}
+            loading={loading === "toggle"}
+            icon={<Power className="w-3.5 h-3.5" />}
+          >
+            {tool.enabled ? "Disable" : "Enable"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleExport}
+            icon={<Download className="w-3.5 h-3.5" />}
+          >
+            Export
+          </Button>
+          <div className="flex-1" />
+          {confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-red-400">Delete?</span>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleDelete}
+                loading={loading === "delete"}
+              >
+                Confirm
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmDelete(true)}
+              icon={<Trash2 className="w-3.5 h-3.5" />}
+              className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+            >
+              Delete
+            </Button>
+          )}
+        </div>
+        <div>
           <div className="text-lg font-semibold text-text-0">
             <EditableField value={tool.name} onSave={v => updateField("name", v)} />
           </div>
@@ -495,10 +574,6 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
               onChange={(f) => updateField("folder", f)}
             />
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {statusDot(tool.status)}
-          <StatusBadge status={tool.status} />
         </div>
       </div>
 
@@ -594,88 +669,6 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => doAction("compile", "compiled")}
-          loading={loading === "compile"}
-          icon={<Hammer className="w-4 h-4" />}
-        >
-          Compile
-        </Button>
-        {isStopped && (
-          <Button
-            onClick={() => doAction("start", "started")}
-            loading={loading === "start"}
-            icon={<Play className="w-4 h-4" />}
-          >
-            Start
-          </Button>
-        )}
-        {isRunning && (
-          <Button
-            variant="secondary"
-            onClick={() => doAction("stop", "stopped")}
-            loading={loading === "stop"}
-            icon={<Square className="w-4 h-4" />}
-          >
-            Stop
-          </Button>
-        )}
-        <Button
-          variant="secondary"
-          onClick={() => doAction("restart", "restarted")}
-          loading={loading === "restart"}
-          icon={<RefreshCw className="w-4 h-4" />}
-        >
-          Restart
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={toggleTool}
-          loading={loading === "toggle"}
-          icon={<Power className="w-4 h-4" />}
-        >
-          {tool.enabled ? "Disable" : "Enable"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={handleExport}
-          icon={<Download className="w-4 h-4" />}
-        >
-          Export
-        </Button>
-        <div className="flex-1" />
-        {confirmDelete ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-red-400">Delete this tool?</span>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleDelete}
-              loading={loading === "delete"}
-            >
-              Confirm
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            onClick={() => setConfirmDelete(true)}
-            icon={<Trash2 className="w-4 h-4" />}
-            className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-          >
-            Delete
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
@@ -693,6 +686,7 @@ export function Tools() {
   const selectedToolRef = useRef<Tool | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [toolsMissingSecrets, setToolsMissingSecrets] = useState<Set<string>>(new Set());
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
 
   useEffect(() => {
     selectedToolRef.current = selectedTool;
@@ -866,7 +860,7 @@ export function Tools() {
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <ToolDetail
             tool={selectedTool}
-            allFolders={folderGrouping.folders}
+            allFolders={[...folderGrouping.folders, ...customFolders.filter(f => !folderGrouping.folders.includes(f))].sort((a, b) => a.localeCompare(b))}
             onBack={() => setSelectedTool(null)}
             onRefresh={refreshSelected}
             onDelete={() => { setSelectedTool(null); loadTools(); }}
@@ -898,13 +892,17 @@ export function Tools() {
               <ViewToggle view={view} onViewChange={setView} />
             </div>
             <FolderFilter
-              folders={folderGrouping.folders}
+              folders={[...folderGrouping.folders, ...customFolders.filter(f => !folderGrouping.folders.includes(f))].sort((a, b) => a.localeCompare(b))}
               folderCounts={folderGrouping.folderCounts}
               unfiledCount={folderGrouping.unfiledCount}
               totalCount={folderGrouping.totalCount}
               selectedFolder={folderGrouping.selectedFolder}
               onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
-              onAddFolder={() => {}}
+              onAddFolder={(name) => {
+                if (!customFolders.includes(name)) {
+                  setCustomFolders(prev => [...prev, name]);
+                }
+              }}
             />
             {loading ? (
               <div className="flex items-center justify-center py-16">

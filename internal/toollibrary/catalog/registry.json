@@ -16,7 +16,7 @@
   {
     "slug": "claude-code",
     "name": "Claude Code",
-    "description": "Delegate coding tasks to the Claude CLI. Analyze, plan, and implement in external codebases.",
+    "description": "Delegate coding tasks to the Claude CLI. Runs with --dangerously-skip-permissions for unattended execution.",
     "version": "1.0.0",
     "category": "AI",
     "icon": "terminal",
@@ -24,6 +24,36 @@
       "ai",
       "coding",
       "claude",
+      "cli"
+    ]
+  },
+  {
+    "slug": "codex",
+    "name": "Codex",
+    "description": "Delegate coding tasks to the OpenAI Codex CLI. Runs with --full-auto for unattended execution.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "terminal",
+    "tags": [
+      "ai",
+      "coding",
+      "openai",
+      "codex",
+      "cli"
+    ]
+  },
+  {
+    "slug": "gemini-cli",
+    "name": "Gemini CLI",
+    "description": "Delegate coding tasks to the Google Gemini CLI. Runs with --approval-mode yolo for unattended execution.",
+    "version": "1.0.0",
+    "category": "AI",
+    "icon": "terminal",
+    "tags": [
+      "ai",
+      "coding",
+      "google",
+      "gemini",
       "cli"
     ]
   },

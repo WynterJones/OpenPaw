@@ -111,13 +111,14 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 	}
 
 	// Create placeholder secrets for required env vars that don't exist yet
-	// (must happen BEFORE StartTool so the tool can see them at startup)
 	catalogTool, _ := toollibrary.GetCatalogTool(slug)
+	hasPlaceholderSecrets := false
 	if catalogTool != nil && len(catalogTool.Env) > 0 && h.secretsMgr != nil {
 		for _, envName := range catalogTool.Env {
 			var exists int
 			h.db.QueryRow("SELECT COUNT(*) FROM secrets WHERE name = ?", envName).Scan(&exists)
 			if exists == 0 {
+				hasPlaceholderSecrets = true
 				placeholder := "REPLACE_ME"
 				encrypted, encErr := h.secretsMgr.Encrypt(placeholder)
 				if encErr == nil {
@@ -137,9 +138,12 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("compile failed: %v", err))
 			return
 		}
-		if err := h.toolMgr.StartTool(toolID); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("start failed: %v", err))
-			return
+		// Skip starting if secrets are placeholders — user must configure them first
+		if !hasPlaceholderSecrets {
+			if err := h.toolMgr.StartTool(toolID); err != nil {
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("start failed: %v", err))
+				return
+			}
 		}
 	}
 

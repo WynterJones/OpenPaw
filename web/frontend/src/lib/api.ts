@@ -79,5 +79,5 @@ export const api = {
 
 // Re-export types and helpers for backwards compatibility
 export * from './types';
-export { contextApi, gatewayFiles, agentFiles, agentMemories, skills, threadMembers, agentSkills, browserApi, notificationsApi, heartbeatApi, agentLibrary, toolLibrary, toolExtra, skillLibrary, skillsSh, secretsApi, terminalApi, projectsApi, parseConfirmation, parseToolSummary, parseWidgets } from './api-helpers';
+export { contextApi, gatewayFiles, agentFiles, agentMemories, skills, threadMembers, agentSkills, browserApi, notificationsApi, heartbeatApi, agentLibrary, toolLibrary, toolExtra, skillLibrary, skillsSh, secretsApi, terminalApi, projectsApi, agentTasks, parseConfirmation, parseToolSummary, parseWidgets } from './api-helpers';
 export type { SecretCheckResult } from './api-helpers';

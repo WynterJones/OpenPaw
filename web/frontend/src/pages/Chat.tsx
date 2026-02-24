@@ -2,9 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
-  ChevronDown, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Loader2, Trash2, Pencil, Check, X,
+  ChevronDown, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Zap, Minimize2, Square, Users,
-  Paperclip, FileText, FolderOpen,
+  Paperclip, FileText, FolderOpen, FolderPlus,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -88,7 +88,7 @@ export function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [agent] = useState('');
-  const [showThreads, setShowThreads] = useState(true);
+  const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [workStatus, setWorkStatus] = useState<string | null>(null);
@@ -103,6 +103,7 @@ export function Chat() {
 
   // File attachment state
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [attachedDirectories, setAttachedDirectories] = useState<string[]>([]);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
   const autoResize = (el: HTMLTextAreaElement) => {
@@ -287,7 +288,8 @@ export function Chat() {
   const [compacting, setCompacting] = useState(false);
   const [showCompactConfirm, setShowCompactConfirm] = useState(false);
   const [members, setMembers] = useState<ThreadMember[]>([]);
-  const [showMembers, setShowMembers] = useState(true);
+  const [showMembers, setShowMembers] = useState(() => window.innerWidth >= 768);
+  const [showContext, setShowContext] = useState(() => window.innerWidth >= 768);
   const [routingIndicator, setRoutingIndicator] = useState<string | null>(null);
   const [activeAgentSlug, setActiveAgentSlug] = useState<string | null>(null);
   const [subAgentTasks, setSubAgentTasks] = useState<SubAgentTask[]>([]);
@@ -775,6 +777,12 @@ export function Chat() {
       }
     }
 
+    // Append attached directory paths
+    if (attachedDirectories.length > 0) {
+      const dirParts = attachedDirectories.map(d => `\n\n---\n**Directory: ${d}**`);
+      content += dirParts.join('');
+    }
+
     // Reset streaming state
     resetStreaming();
     setSubAgentTasks([]);
@@ -785,6 +793,7 @@ export function Chat() {
     setInput('');
     setAttachedContextFiles([]);
     setPendingAttachments([]);
+    setAttachedDirectories([]);
     if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
     setSending(true); setThinking(true);
     const userMsg: ChatMessage = { id: `temp-${Date.now()}`, thread_id: threadId, role: 'user', content, agent_role_slug: agent, cost_usd: 0, input_tokens: 0, output_tokens: 0, created_at: new Date().toISOString() };
@@ -867,9 +876,16 @@ export function Chat() {
     <div className="flex flex-col h-full">
       <Header title="Chat"
         actions={
-          <button onClick={() => setShowThreads(!showThreads)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showThreads ? 'Hide chat threads' : 'Show chat threads'}>
-            {showThreads ? <PanelLeftClose className="w-5 h-5" aria-hidden="true" /> : <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />}
-          </button>
+          <>
+            <button onClick={() => setShowThreads(!showThreads)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showThreads ? 'Hide chat threads' : 'Show chat threads'}>
+              {showThreads ? <PanelLeftClose className="w-5 h-5" aria-hidden="true" /> : <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />}
+            </button>
+            {activeThread && (
+              <button onClick={() => setShowContext(!showContext)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showContext ? 'Hide context' : 'Show context'}>
+                {showContext ? <PanelRightClose className="w-5 h-5" aria-hidden="true" /> : <PanelRightOpen className="w-5 h-5" aria-hidden="true" />}
+              </button>
+            )}
+          </>
         }
       />
       <div className="flex flex-1 overflow-hidden relative">
@@ -966,12 +982,12 @@ export function Chat() {
           {activeThread ? (
             <>
               {threadStats && threadStats.message_count > 0 && (
-                <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border-0 bg-surface-1/80 text-[11px] text-text-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 md:px-4 py-1.5 border-b border-border-0 bg-surface-1/80 text-[11px] text-text-3">
                   <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
-                  <span className="flex items-center gap-1"><Zap className="w-3 h-3" aria-hidden="true" />{((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0)).toLocaleString()} tokens</span>
-                  <div className="flex items-center gap-1.5 flex-1">
+                  <span className="flex items-center gap-1"><Zap className="w-3 h-3" aria-hidden="true" />{((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0)).toLocaleString()}</span>
+                  <div className="flex items-center gap-1.5">
                     <div
-                      className="flex-1 h-1.5 rounded-full bg-surface-3 overflow-hidden max-w-40"
+                      className="w-16 md:w-28 h-1.5 rounded-full bg-surface-3 overflow-hidden"
                       role="progressbar"
                       aria-valuenow={Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}
                       aria-valuemin={0}
@@ -989,28 +1005,30 @@ export function Chat() {
                         style={{ width: `${Math.min(100, (threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}%` }}
                       />
                     </div>
-                    <span>{Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}% of {threadStats.context_limit_tokens >= 1000000 ? `${(threadStats.context_limit_tokens / 1000000).toFixed(1)}M` : `${Math.round(threadStats.context_limit_tokens / 1000)}k`}</span>
+                    <span className="whitespace-nowrap">{Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}%<span className="hidden sm:inline"> of {threadStats.context_limit_tokens >= 1000000 ? `${(threadStats.context_limit_tokens / 1000000).toFixed(1)}M` : `${Math.round(threadStats.context_limit_tokens / 1000)}k`}</span></span>
                   </div>
-                  <button
-                    onClick={() => setShowCompactConfirm(true)}
-                    disabled={compacting}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50"
-                    title="Compact chat"
-                    aria-label="Compact chat"
-                  >
-                    {compacting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Minimize2 className="w-3 h-3" aria-hidden="true" />}
-                    Compact
-                  </button>
-                  <button
-                    onClick={() => setShowMembers(!showMembers)}
-                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${showMembers ? 'text-accent-primary bg-accent-muted' : 'text-text-2 hover:text-text-1 hover:bg-surface-2'}`}
-                    title={showMembers ? 'Hide members' : 'Show members'}
-                    aria-label={showMembers ? 'Hide members' : 'Show members'}
-                    aria-pressed={showMembers}
-                  >
-                    <Users className="w-3 h-3" aria-hidden="true" />
-                    {members.length > 0 && <span>{members.length}</span>}
-                  </button>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      onClick={() => setShowCompactConfirm(true)}
+                      disabled={compacting}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Compact chat"
+                      aria-label="Compact chat"
+                    >
+                      {compacting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Minimize2 className="w-3 h-3" aria-hidden="true" />}
+                      <span className="hidden sm:inline">Compact</span>
+                    </button>
+                    <button
+                      onClick={() => setShowMembers(!showMembers)}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${showMembers ? 'text-accent-primary bg-accent-muted' : 'text-text-2 hover:text-text-1 hover:bg-surface-2'}`}
+                      title={showMembers ? 'Hide members' : 'Show members'}
+                      aria-label={showMembers ? 'Hide members' : 'Show members'}
+                      aria-pressed={showMembers}
+                    >
+                      <Users className="w-3 h-3" aria-hidden="true" />
+                      {members.length > 0 && <span>{members.length}</span>}
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="flex-1 overflow-y-auto p-4 pb-[180px]">
@@ -1186,7 +1204,7 @@ export function Chat() {
                     }}
                   >
                   {/* Pending attachments / context files strip */}
-                  {(pendingAttachments.length > 0 || attachedContextFiles.length > 0) && (
+                  {(pendingAttachments.length > 0 || attachedContextFiles.length > 0 || attachedDirectories.length > 0) && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
                       {attachedContextFiles.map(cf => (
                         <span key={`ctx-${cf.id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-muted text-accent-text text-xs font-medium">
@@ -1194,6 +1212,18 @@ export function Chat() {
                           {cf.name}
                           <button
                             onClick={() => setAttachedContextFiles(prev => prev.filter(f => f.id !== cf.id))}
+                            className="ml-0.5 hover:text-red-400 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                      {attachedDirectories.map((dir, i) => (
+                        <span key={`dir-${i}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-3 text-text-2 text-xs font-medium">
+                          <FolderOpen className="w-3 h-3" />
+                          {dir.split('/').filter(Boolean).pop() || dir}
+                          <button
+                            onClick={() => setAttachedDirectories(prev => prev.filter((_, j) => j !== i))}
                             className="ml-0.5 hover:text-red-400 cursor-pointer"
                           >
                             <X className="w-3 h-3" />
@@ -1244,6 +1274,23 @@ export function Chat() {
                           }}
                         />
                       </label>
+                      <button
+                        className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+                        title="Attach directory"
+                        aria-label="Attach directory"
+                        onClick={async () => {
+                          try {
+                            const result = await api.post<{ path: string }>('/system/pick-folder', {});
+                            if (result.path && !attachedDirectories.includes(result.path)) {
+                              setAttachedDirectories(prev => [...prev, result.path]);
+                            }
+                          } catch {
+                            // dialog cancelled or failed — ignore
+                          }
+                        }}
+                      >
+                        <FolderPlus className="w-4 h-4" aria-hidden="true" />
+                      </button>
                     </div>
                     {(thinking || isStreaming) ? (
                       <button
@@ -1286,6 +1333,56 @@ export function Chat() {
               onRemove={removeMember}
             />
           </PagePanel>
+        )}
+        {activeThread && showContext && (
+          <>
+            <div className="md:hidden fixed inset-0 bg-black/40 z-20" onClick={() => setShowContext(false)} />
+            <div className="absolute md:relative right-0 z-30 w-[85vw] max-w-72 md:w-56 h-full flex flex-col border-l border-border-0 bg-surface-1">
+              <div className="p-3 border-b border-border-0 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-3">Context</span>
+                <button onClick={() => setShowContext(false)} className="md:hidden p-1 rounded text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {filteredContextItems.length === 0 ? (
+                  <p className="text-xs text-text-3 p-2">No context files</p>
+                ) : (
+                  filteredContextItems.map((item, i) => {
+                    if (item.kind === 'folder') {
+                      return (
+                        <div key={`folder-${i}`} className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-text-2 uppercase tracking-wider">
+                          <FolderOpen className="w-3 h-3" />
+                          {item.folder.name}
+                        </div>
+                      );
+                    }
+                    const file = item.file;
+                    const isAttached = attachedContextFiles.some(f => f.id === file.id);
+                    return (
+                      <button
+                        key={file.id}
+                        onClick={() => {
+                          if (isAttached) {
+                            setAttachedContextFiles(prev => prev.filter(f => f.id !== file.id));
+                          } else {
+                            setAttachedContextFiles(prev => [...prev, file]);
+                          }
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer truncate ${
+                          isAttached ? 'bg-accent-muted text-accent-text' : 'text-text-2 hover:bg-surface-2'
+                        }`}
+                        title={file.name}
+                      >
+                        <FileText className="w-3 h-3 inline mr-1.5 flex-shrink-0" />
+                        {file.name}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

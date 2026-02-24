@@ -312,6 +312,17 @@ func (m *Manager) UpdateWorkbench(id, name, color string) error {
 	return nil
 }
 
+// ReorderWorkbenches updates the sort_order of workbenches based on the given ID order.
+func (m *Manager) ReorderWorkbenches(ids []string) error {
+	for i, id := range ids {
+		_, err := m.db.Exec("UPDATE workbenches SET sort_order = ? WHERE id = ?", i, id)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteWorkbench destroys all sessions in the workbench and removes it.
 func (m *Manager) DeleteWorkbench(id string) error {
 	// Collect session IDs in this workbench

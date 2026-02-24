@@ -69,7 +69,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-20 sm:pb-4">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div
         ref={dialogRef}
@@ -77,7 +77,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full ${sizeStyles[size]} max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-surface-1 rounded-t-xl sm:rounded-xl border border-border-0 shadow-2xl focus:outline-none`}
+        className={`relative w-full ${sizeStyles[size]} max-h-[80vh] sm:max-h-[90vh] flex flex-col bg-surface-1 rounded-xl border border-border-0 shadow-2xl focus:outline-none`}
       >
         <div className="flex items-center justify-between px-4 md:px-5 py-3.5 md:py-4 border-b border-border-0 flex-shrink-0">
           <h3 id={titleId} className="text-base md:text-lg font-semibold text-text-0 truncate pr-2">{title}</h3>

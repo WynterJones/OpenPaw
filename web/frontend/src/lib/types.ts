@@ -582,6 +582,26 @@ export interface ProjectRepo {
   sort_order: number;
 }
 
+export type AgentTaskStatus = 'backlog' | 'doing' | 'blocked' | 'done';
+
+export interface AgentTask {
+  id: string;
+  agent_role_slug: string;
+  title: string;
+  description: string;
+  status: AgentTaskStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentTaskCounts {
+  backlog: number;
+  doing: number;
+  blocked: number;
+  done: number;
+}
+
 export interface SubAgentTask {
   subagent_id: string;
   agent_slug: string;

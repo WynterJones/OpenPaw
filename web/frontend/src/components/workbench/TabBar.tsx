@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Columns2, Rows2, Pencil, Loader2 } from 'lucide-react';
 import { useWorkbench, type PanelNode } from './WorkbenchProvider';
+import { useDragReorder } from '../../hooks/useDragReorder';
 
 const TAB_COLORS = [
   '',
@@ -27,36 +28,74 @@ export function TabBar({ node }: TabBarProps) {
     createSession,
     splitPanel,
     updateSession,
+    reorderTabs,
     busySessions,
   } = useWorkbench();
 
   const tabs = node.tabs || [];
 
+  const handleReorder = useCallback((reordered: string[]) => {
+    reorderTabs(node.id, reordered);
+  }, [node.id, reorderTabs]);
+
+  const { dragId, overId, handleDragStart } = useDragReorder<string>({
+    items: tabs,
+    getId: (id) => id,
+    onReorder: handleReorder,
+  });
+
   return (
     <div className="flex items-center bg-surface-1 border-b border-border-0 px-1.5 gap-0.5 h-9 overflow-x-auto shrink-0">
-      {tabs.map((sessionId) => {
-        const session = sessions.find((s) => s.id === sessionId);
-        const title = session?.title || 'Terminal';
-        const color = session?.color || '';
-        const isActive = sessionId === node.activeTab;
-        const isBusy = busySessions.has(sessionId);
+      {/* Mobile: select dropdown */}
+      <div className="flex items-center gap-1 md:hidden">
+        <select
+          value={node.activeTab || ''}
+          onChange={(e) => activateTab(node.id, e.target.value)}
+          className="bg-surface-2 border border-border-1 rounded-md text-xs text-text-0 pl-2 pr-6 py-1 outline-none cursor-pointer appearance-none truncate max-w-36"
+          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+        >
+          {tabs.map((sessionId) => {
+            const session = sessions.find((s) => s.id === sessionId);
+            return (
+              <option key={sessionId} value={sessionId}>
+                {session?.title || 'Terminal'}
+              </option>
+            );
+          })}
+        </select>
+      </div>
 
-        return (
-          <Tab
-            key={sessionId}
-            sessionId={sessionId}
-            title={title}
-            color={color}
-            isActive={isActive}
-            isGloballyActive={sessionId === activeSessionId}
-            isBusy={isBusy}
-            panelId={node.id}
-            onActivate={activateTab}
-            onClose={closeSession}
-            onUpdate={updateSession}
-          />
-        );
-      })}
+      {/* Desktop: draggable tabs */}
+      <div className="hidden md:contents">
+        {tabs.map((sessionId) => {
+          const session = sessions.find((s) => s.id === sessionId);
+          const title = session?.title || 'Terminal';
+          const color = session?.color || '';
+          const isActive = sessionId === node.activeTab;
+          const isBusy = busySessions.has(sessionId);
+          const isBeingDragged = dragId === sessionId;
+          const isDragTarget = overId === sessionId && dragId !== sessionId;
+
+          return (
+            <Tab
+              key={sessionId}
+              sessionId={sessionId}
+              title={title}
+              color={color}
+              isActive={isActive}
+              isGloballyActive={sessionId === activeSessionId}
+              isBusy={isBusy}
+              isBeingDragged={isBeingDragged}
+              isDragTarget={isDragTarget}
+              panelId={node.id}
+              onActivate={activateTab}
+              onClose={closeSession}
+              onUpdate={updateSession}
+              onDragStart={handleDragStart}
+            />
+          );
+        })}
+      </div>
 
       <button
         onClick={() => createSession(node.id)}
@@ -70,14 +109,14 @@ export function TabBar({ node }: TabBarProps) {
 
       <button
         onClick={() => splitPanel(node.id, 'horizontal')}
-        className="flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
+        className="hidden md:flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
         title="Split horizontally"
       >
         <Columns2 className="w-3.5 h-3.5" />
       </button>
       <button
         onClick={() => splitPanel(node.id, 'vertical')}
-        className="flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
+        className="hidden md:flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
         title="Split vertically"
       >
         <Rows2 className="w-3.5 h-3.5" />
@@ -95,10 +134,13 @@ interface TabProps {
   isActive: boolean;
   isGloballyActive: boolean;
   isBusy: boolean;
+  isBeingDragged: boolean;
+  isDragTarget: boolean;
   panelId: string;
   onActivate: (panelId: string, sessionId: string) => void;
   onClose: (sessionId: string) => Promise<void>;
   onUpdate: (sessionId: string, data: { title?: string; color?: string }) => Promise<void>;
+  onDragStart: (id: string, e: React.MouseEvent) => void;
 }
 
 function Tab({
@@ -107,10 +149,13 @@ function Tab({
   color,
   isActive,
   isBusy,
+  isBeingDragged,
+  isDragTarget,
   panelId,
   onActivate,
   onClose,
   onUpdate,
+  onDragStart,
 }: TabProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
@@ -136,12 +181,14 @@ function Tab({
   return (
     <>
       <div
+        data-drag-id={sessionId}
+        onMouseDown={(e) => onDragStart(sessionId, e)}
         className={`group relative flex items-center gap-1 h-7 rounded-md text-xs cursor-pointer select-none transition-all shrink-0 max-w-48 border ${
           isActive
             ? 'border-border-1 bg-surface-2 text-text-0 shadow-sm'
             : 'border-transparent text-text-3 hover:border-border-0 hover:bg-surface-2/50 hover:text-text-1'
-        }`}
-        onClick={() => onActivate(panelId, sessionId)}
+        } ${isBeingDragged ? 'opacity-50' : ''} ${isDragTarget ? 'ring-2 ring-accent-primary/50' : ''}`}
+        onClick={() => { if (!isBeingDragged) onActivate(panelId, sessionId); }}
         style={color ? {
           borderColor: isActive ? color : undefined,
           background: isActive

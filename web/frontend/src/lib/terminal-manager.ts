@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
+import { terminalApi } from './api-helpers';
 
 interface TerminalInstance {
   term: Terminal;
@@ -17,6 +18,8 @@ interface TerminalInstance {
   busyTimer: ReturnType<typeof setTimeout> | null;
   isBusy: boolean;
   initialGrace: boolean;
+  dropOverlay: HTMLDivElement | null;
+  pasteDisposable: { dispose: () => void } | null;
 }
 
 const encoder = new TextEncoder();
@@ -61,6 +64,8 @@ function buildTheme(): Record<string, string> {
   };
 }
 
+const dragCleanupMap = new WeakMap<HTMLElement, () => void>();
+
 class TerminalManager {
   private instances = new Map<string, TerminalInstance>();
   onBusyChange: ((sessionId: string, busy: boolean) => void) | null = null;
@@ -70,10 +75,11 @@ class TerminalManager {
     if (instance) return instance;
 
     const theme = buildTheme();
+    const isMobile = window.innerWidth < 768;
     const term = new Terminal({
       scrollback: 5000,
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: isMobile ? 11 : 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme,
       allowProposedApi: true,
@@ -116,6 +122,8 @@ class TerminalManager {
       busyTimer: null,
       isBusy: false,
       initialGrace: true,
+      dropOverlay: null,
+      pasteDisposable: null,
     };
 
     this.instances.set(sessionId, instance);
@@ -222,6 +230,10 @@ class TerminalManager {
       this.debouncedFit(sessionId);
     });
     instance.resizeObserver.observe(container);
+
+    // Set up drag-and-drop and image paste
+    this.setupDragDrop(sessionId, container);
+    this.setupImagePaste(sessionId);
   }
 
   detach(sessionId: string): void {
@@ -240,9 +252,23 @@ class TerminalManager {
       instance.fitTimer = null;
     }
 
+    // Clean up drag-and-drop listeners
+    const parent = instance.containerEl.parentElement;
+    if (parent) {
+      dragCleanupMap.get(parent)?.();
+      dragCleanupMap.delete(parent);
+    }
+    instance.dropOverlay = null;
+
+    // Clean up paste listener
+    if (instance.pasteDisposable) {
+      instance.pasteDisposable.dispose();
+      instance.pasteDisposable = null;
+    }
+
     // Remove from parent but keep alive
-    if (instance.containerEl.parentElement) {
-      instance.containerEl.parentElement.removeChild(instance.containerEl);
+    if (parent) {
+      parent.removeChild(instance.containerEl);
     }
   }
 
@@ -325,6 +351,191 @@ class TerminalManager {
 
   has(sessionId: string): boolean {
     return this.instances.has(sessionId);
+  }
+
+  private writeToTerminal(sessionId: string, text: string): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance?.ws || instance.ws.readyState !== WebSocket.OPEN) return;
+    instance.ws.send(encoder.encode(text));
+  }
+
+  private shellEscape(path: string): string {
+    if (/^[\w./@:-]+$/.test(path)) return path;
+    return "'" + path.replace(/'/g, "'\\''") + "'";
+  }
+
+  private createDropOverlay(container: HTMLElement): HTMLDivElement {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: absolute; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      border: 2px dashed var(--op-accent, #E84BA5);
+      border-radius: 8px; pointer-events: none; opacity: 0;
+      transition: opacity 150ms ease;
+    `;
+    const label = document.createElement('span');
+    label.style.cssText = `
+      color: var(--op-accent-text, #F472B6);
+      font-size: 14px; font-weight: 600; font-family: inherit;
+    `;
+    label.textContent = 'Drop to insert path';
+    overlay.appendChild(label);
+    container.style.position = 'relative';
+    container.appendChild(overlay);
+    return overlay;
+  }
+
+  private setupDragDrop(sessionId: string, container: HTMLElement): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance) return;
+
+    if (instance.dropOverlay) {
+      instance.dropOverlay.remove();
+    }
+    const overlay = this.createDropOverlay(container);
+    instance.dropOverlay = overlay;
+
+    let dragCounter = 0;
+
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter++;
+      if (e.dataTransfer?.types.includes('Files')) {
+        overlay.style.opacity = '1';
+      }
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        overlay.style.opacity = '0';
+      }
+    };
+
+    const onDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
+      overlay.style.opacity = '0';
+
+      if (!e.dataTransfer) return;
+
+      const paths: string[] = [];
+      const items = e.dataTransfer.items;
+      const files = e.dataTransfer.files;
+
+      if (items.length > 0 || files.length > 0) {
+        const labelEl = overlay.querySelector('span')!;
+        labelEl.textContent = 'Resolving...';
+        overlay.style.opacity = '1';
+
+        for (let i = 0; i < items.length; i++) {
+          try {
+            const entry = items[i]?.webkitGetAsEntry?.();
+            if (entry?.isDirectory) {
+              // Resolve directory path via server-side Spotlight/fallback
+              const result = await terminalApi.resolvePath(entry.name, true);
+              paths.push(result.path);
+            } else if (files[i]) {
+              const result = await terminalApi.upload(files[i]);
+              paths.push(result.path);
+            }
+          } catch {
+            // Skip failed items
+          }
+        }
+
+        overlay.style.opacity = '0';
+        labelEl.textContent = 'Drop to insert path';
+      }
+
+      if (paths.length > 0) {
+        const escaped = paths.map(p => this.shellEscape(p)).join(' ');
+        this.writeToTerminal(sessionId, escaped);
+        instance.term.focus();
+      }
+    };
+
+    container.addEventListener('dragenter', onDragEnter);
+    container.addEventListener('dragover', onDragOver);
+    container.addEventListener('dragleave', onDragLeave);
+    container.addEventListener('drop', onDrop);
+
+    dragCleanupMap.set(container, () => {
+      container.removeEventListener('dragenter', onDragEnter);
+      container.removeEventListener('dragover', onDragOver);
+      container.removeEventListener('dragleave', onDragLeave);
+      container.removeEventListener('drop', onDrop);
+      overlay.remove();
+    });
+  }
+
+  private setupImagePaste(sessionId: string): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance) return;
+
+    if (instance.pasteDisposable) {
+      instance.pasteDisposable.dispose();
+    }
+
+    const textarea = instance.containerEl.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
+    if (!textarea) return;
+
+    const onPaste = async (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+
+      const items = e.clipboardData.items;
+      const imageItems: DataTransferItem[] = [];
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          imageItems.push(items[i]);
+        }
+      }
+
+      if (imageItems.length === 0) return;
+
+      // Prevent xterm from handling the paste (it would insert garbled binary)
+      e.preventDefault();
+      e.stopPropagation();
+
+      const paths: string[] = [];
+      for (const item of imageItems) {
+        const blob = item.getAsFile();
+        if (!blob) continue;
+
+        const ext = blob.type.split('/')[1] || 'png';
+        const file = new File([blob], `pasted-image.${ext}`, { type: blob.type });
+
+        try {
+          const result = await terminalApi.upload(file);
+          paths.push(result.path);
+        } catch {
+          // Skip failed uploads
+        }
+      }
+
+      if (paths.length > 0) {
+        const escaped = paths.map(p => this.shellEscape(p)).join(' ');
+        this.writeToTerminal(sessionId, escaped);
+        instance.term.focus();
+      }
+    };
+
+    textarea.addEventListener('paste', onPaste, true);
+    instance.pasteDisposable = {
+      dispose: () => textarea.removeEventListener('paste', onPaste, true),
+    };
   }
 
   refreshThemes(): void {

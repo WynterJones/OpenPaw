@@ -82,6 +82,7 @@ export function Skills() {
   const [page, setPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
 
   const loadSkills = useCallback(() => {
     skillsApi.list()
@@ -195,20 +196,19 @@ export function Skills() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {editing ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setEditing(null)} aria-label="Close editor" className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer">
-                  <X className="w-5 h-5" />
-                </button>
-                <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
-                <div className="w-[160px]">
-                  <FolderAssign
-                    value={editing.folder || ''}
-                    folders={folderGrouping.folders}
-                    onChange={(f) => handleFolderChange(editing, f)}
-                  />
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setEditing(null)} icon={<X className="w-3.5 h-3.5" />}>
+                Close
+              </Button>
+              <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
+              <div className="w-[160px]">
+                <FolderAssign
+                  value={editing.folder || ''}
+                  folders={folderGrouping.folders}
+                  onChange={(f) => handleFolderChange(editing, f)}
+                />
               </div>
+              <div className="flex-1" />
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="danger" onClick={() => setDeleteTarget(editing.name)} icon={<Trash2 className="w-3.5 h-3.5" />}>
                   Delete
@@ -218,14 +218,14 @@ export function Skills() {
                 </Button>
               </div>
             </div>
-            <Card>
+            <div className="rounded-xl border border-border-0 bg-surface-1 p-2 md:p-4">
               <textarea
                 value={editContent}
                 onChange={e => setEditContent(e.target.value)}
-                className="w-full min-h-[500px] rounded-lg border border-border-1 bg-surface-0 text-text-1 px-4 py-3 text-[13px] font-mono placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
+                className="w-full min-h-[500px] rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 md:px-4 md:py-3 text-[13px] font-mono placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
                 spellCheck={false}
               />
-            </Card>
+            </div>
           </div>
         ) : loading ? (
           <LoadingSpinner message="Loading skills..." />
@@ -237,13 +237,17 @@ export function Skills() {
                   <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />} className="flex-shrink-0">Add Skill</Button>
                 </div>
                 <FolderFilter
-                  folders={folderGrouping.folders}
+                  folders={[...folderGrouping.folders, ...customFolders.filter(f => !folderGrouping.folders.includes(f))].sort((a, b) => a.localeCompare(b))}
                   folderCounts={folderGrouping.folderCounts}
                   unfiledCount={folderGrouping.unfiledCount}
                   totalCount={folderGrouping.totalCount}
                   selectedFolder={folderGrouping.selectedFolder}
                   onSelect={(f) => { folderGrouping.setSelectedFolder(f); setPage(0); }}
-                  onAddFolder={() => {}}
+                  onAddFolder={(name) => {
+                    if (!customFolders.includes(name)) {
+                      setCustomFolders(prev => [...prev, name]);
+                    }
+                  }}
                 />
 
                 {searchFiltered.length === 0 ? (

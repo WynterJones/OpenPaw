@@ -45,6 +45,8 @@ type Stats struct {
 	BrowserSessions int `json:"browser_sessions"`
 	AgentSkills     int `json:"agent_skills"`
 	Workbenches     int `json:"workbenches"`
+	Projects        int `json:"projects"`
+	AgentTasks      int `json:"agent_tasks"`
 }
 
 func exportData(db *database.DB, dataDir, destDir string) (int, error) {
@@ -162,6 +164,18 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 	if n, err := exportWorkbenches(db, destDir); err == nil {
 		files = append(files, n...)
 		stats.Workbenches = len(n)
+	}
+
+	// Projects
+	if n, err := exportProjects(db, destDir); err == nil {
+		files = append(files, n...)
+		stats.Projects = len(n)
+	}
+
+	// Agent tasks
+	if n, err := exportAgentTasks(db, destDir); err == nil {
+		files = append(files, n...)
+		stats.AgentTasks = len(n)
 	}
 
 	// Avatars
@@ -1032,7 +1046,7 @@ func exportAgentSkills(dataDir, destDir string) ([]string, error) {
 }
 
 func exportWorkbenches(db *database.DB, destDir string) ([]string, error) {
-	rows, err := db.Query("SELECT id, name, sort_order, created_at FROM workbenches ORDER BY sort_order")
+	rows, err := db.Query("SELECT id, name, sort_order, color, created_at FROM workbenches ORDER BY sort_order")
 	if err != nil {
 		return nil, err
 	}
@@ -1040,14 +1054,14 @@ func exportWorkbenches(db *database.DB, destDir string) ([]string, error) {
 
 	var workbenches []map[string]interface{}
 	for rows.Next() {
-		var id, name string
+		var id, name, color string
 		var sortOrder int
 		var createdAt time.Time
-		if rows.Scan(&id, &name, &sortOrder, &createdAt) != nil {
+		if rows.Scan(&id, &name, &sortOrder, &color, &createdAt) != nil {
 			continue
 		}
 		workbenches = append(workbenches, map[string]interface{}{
-			"id": id, "name": name, "sort_order": sortOrder, "created_at": createdAt,
+			"id": id, "name": name, "sort_order": sortOrder, "color": color, "created_at": createdAt,
 		})
 	}
 
@@ -1057,6 +1071,98 @@ func exportWorkbenches(db *database.DB, destDir string) ([]string, error) {
 
 	path := "workbenches.json"
 	if err := writeJSONFile(filepath.Join(destDir, path), workbenches); err != nil {
+		return nil, err
+	}
+	return []string{path}, nil
+}
+
+func exportProjects(db *database.DB, destDir string) ([]string, error) {
+	rows, err := db.Query("SELECT id, name, color, created_at FROM projects ORDER BY created_at")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type projectExport struct {
+		ID        string                   `json:"id"`
+		Name      string                   `json:"name"`
+		Color     string                   `json:"color"`
+		CreatedAt time.Time                `json:"created_at"`
+		Repos     []map[string]interface{} `json:"repos"`
+	}
+
+	var projects []projectExport
+	for rows.Next() {
+		var p projectExport
+		if rows.Scan(&p.ID, &p.Name, &p.Color, &p.CreatedAt) != nil {
+			continue
+		}
+		p.Repos = []map[string]interface{}{}
+		projects = append(projects, p)
+	}
+
+	if len(projects) == 0 {
+		return nil, nil
+	}
+
+	// Load repos
+	repoRows, err := db.Query("SELECT id, project_id, name, folder_path, command, sort_order FROM project_repos ORDER BY sort_order")
+	if err == nil {
+		defer repoRows.Close()
+		repoMap := make(map[string][]map[string]interface{})
+		for repoRows.Next() {
+			var id, projectID, name, folderPath, command string
+			var sortOrder int
+			if repoRows.Scan(&id, &projectID, &name, &folderPath, &command, &sortOrder) != nil {
+				continue
+			}
+			repoMap[projectID] = append(repoMap[projectID], map[string]interface{}{
+				"id": id, "project_id": projectID, "name": name,
+				"folder_path": folderPath, "command": command, "sort_order": sortOrder,
+			})
+		}
+		for i := range projects {
+			if repos, ok := repoMap[projects[i].ID]; ok {
+				projects[i].Repos = repos
+			}
+		}
+	}
+
+	path := "projects.json"
+	if err := writeJSONFile(filepath.Join(destDir, path), projects); err != nil {
+		return nil, err
+	}
+	return []string{path}, nil
+}
+
+func exportAgentTasks(db *database.DB, destDir string) ([]string, error) {
+	rows, err := db.Query("SELECT id, agent_role_slug, title, description, status, sort_order, created_at, updated_at FROM agent_tasks ORDER BY agent_role_slug, sort_order")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []map[string]interface{}
+	for rows.Next() {
+		var id, slug, title, desc, status string
+		var sortOrder int
+		var createdAt, updatedAt time.Time
+		if rows.Scan(&id, &slug, &title, &desc, &status, &sortOrder, &createdAt, &updatedAt) != nil {
+			continue
+		}
+		tasks = append(tasks, map[string]interface{}{
+			"id": id, "agent_role_slug": slug, "title": title,
+			"description": desc, "status": status, "sort_order": sortOrder,
+			"created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+
+	path := "agent_tasks.json"
+	if err := writeJSONFile(filepath.Join(destDir, path), tasks); err != nil {
 		return nil, err
 	}
 	return []string{path}, nil

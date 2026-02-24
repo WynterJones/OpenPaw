@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { terminalManager } from '../../lib/terminal-manager';
+import { useEffect, useRef } from "react";
+import { terminalManager } from "../../lib/terminal-manager";
 
 interface TerminalViewProps {
   sessionId: string;
@@ -7,7 +7,11 @@ interface TerminalViewProps {
   onExit?: (sessionId: string) => void;
 }
 
-export function TerminalView({ sessionId, isActive, onExit }: TerminalViewProps) {
+export function TerminalView({
+  sessionId,
+  isActive,
+  onExit,
+}: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Acquire terminal and attach/detach DOM
@@ -45,7 +49,7 @@ export function TerminalView({ sessionId, isActive, onExit }: TerminalViewProps)
   return (
     <div
       ref={containerRef}
-      className="h-full w-full"
+      className="h-full w-full p-1 md:p-4"
       style={{ minHeight: 100 }}
     />
   );

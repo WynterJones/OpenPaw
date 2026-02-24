@@ -1,36 +1,36 @@
 {
   "id": "{{.ToolID}}",
   "name": "{{.Name | jsonEscape}}",
-  "description": "Delegate coding tasks to the Claude CLI. Runs with --dangerously-skip-permissions for unattended execution. Analyze, plan, and implement in external codebases.",
+  "description": "Delegate coding tasks to the Google Gemini CLI. Runs with --approval-mode yolo for unattended execution. Analyze, plan, and implement in external codebases.",
   "version": "1.0.0",
   "health_check": "/health",
   "endpoints": [
     {
       "method": "POST",
       "path": "/plan",
-      "description": "Read-only analysis of a codebase (uses Read, Grep, Glob only)",
-      "body": {"directory": "Absolute path to project directory", "prompt": "Analysis prompt", "model": "Optional model name (e.g. sonnet)"},
-      "response": {"success": "boolean", "result": "Claude analysis result", "mode": "plan"}
+      "description": "Read-only analysis of a codebase",
+      "body": {"directory": "Absolute path to project directory", "prompt": "Analysis prompt", "model": "Optional model name (e.g. gemini-2.5-flash)"},
+      "response": {"success": "boolean", "result": "Gemini analysis result", "mode": "plan"}
     },
     {
       "method": "POST",
       "path": "/implement",
       "description": "Full implementation with all tools available",
       "body": {"directory": "Absolute path to project directory", "prompt": "Implementation prompt", "model": "Optional model name"},
-      "response": {"success": "boolean", "result": "Claude implementation result", "mode": "implement"}
+      "response": {"success": "boolean", "result": "Gemini implementation result", "mode": "implement"}
     },
     {
       "method": "POST",
       "path": "/ask",
       "description": "Quick single-turn question",
       "body": {"directory": "Absolute path to project directory", "prompt": "Question to ask", "model": "Optional model name"},
-      "response": {"success": "boolean", "result": "Claude response", "mode": "ask"}
+      "response": {"success": "boolean", "result": "Gemini response", "mode": "ask"}
     },
     {
       "method": "GET",
       "path": "/status",
-      "description": "Check if Claude CLI is available",
-      "response": {"available": "boolean", "path": "Path to claude binary"}
+      "description": "Check if Gemini CLI is available",
+      "response": {"available": "boolean", "path": "Path to gemini binary"}
     }
   ],
   "env": [],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { Bot, Plus, Upload, X, Shield, Library, Cpu } from "lucide-react";
+import { Bot, Plus, Upload, X, Shield, Cpu, ClipboardList } from "lucide-react";
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -16,7 +16,7 @@ import { FolderSection } from "../components/FolderSection";
 import { useFolderGrouping } from "../hooks/useFolderGrouping";
 import { useToast } from "../components/Toast";
 import { Toggle } from "../components/Toggle";
-import { api, type AgentRole } from "../lib/api";
+import { api, agentTasks, type AgentRole } from "../lib/api";
 
 const PRESET_AVATARS = [
   "/avatars/engineer.webp",
@@ -250,6 +250,7 @@ export function Agents() {
   const [view, setView] = useState<ViewMode>("grid");
   const [page, setPage] = useState(0);
   const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [taskCounts, setTaskCounts] = useState<Record<string, number>>({});
 
   const loadRoles = useCallback(() => {
     api
@@ -261,6 +262,7 @@ export function Agents() {
 
   useEffect(() => {
     loadRoles();
+    agentTasks.allCounts().then(setTaskCounts).catch(() => {});
   }, [loadRoles]);
 
   const handleSearch = (val: string) => {
@@ -323,24 +325,27 @@ export function Agents() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {items.map((role) => (
         <Card key={role.slug} hover onClick={() => navigate(`/agents/${role.slug}`)}>
-          <div className="flex items-center gap-2 mb-3">
-            {role.library_slug && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center gap-1">
-                <Library className="w-2.5 h-2.5" />Library
-              </span>
-            )}
-            <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="relative">
+            <div className="absolute top-0 right-0" onClick={(e) => e.stopPropagation()}>
               <Toggle enabled={role.enabled} onChange={() => toggleRole(role.slug, { stopPropagation: () => {} } as React.MouseEvent)} label="Enable agent" />
             </div>
           </div>
           <div className="flex items-center gap-4 mb-3">
             <img src={role.avatar_path} alt={role.name} className="w-14 h-14 rounded-2xl shadow-lg flex-shrink-0" />
-            <h3 className="text-xl font-bold text-text-0">{role.name}</h3>
+            <h3 className="text-xl font-bold text-text-0 pr-14">{role.name}</h3>
           </div>
           <p className="text-sm text-text-2 line-clamp-1 mb-3 leading-snug">{role.description}</p>
-          <div className="flex items-center gap-1">
-            <Cpu className="w-3 h-3 text-text-3" />
-            <span className="text-[10px] text-text-3 font-medium">{formatModelName(role.model)}</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-3 font-medium">
+              <Cpu className="w-3 h-3" />
+              {formatModelName(role.model)}
+            </span>
+            {(taskCounts[role.slug] || 0) > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px] font-medium">
+                <ClipboardList className="w-2.5 h-2.5" />
+                {taskCounts[role.slug]} {taskCounts[role.slug] === 1 ? 'task' : 'tasks'}
+              </span>
+            )}
           </div>
         </Card>
       ))}
@@ -354,17 +359,17 @@ export function Agents() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-base font-bold pt-2 text-text-0 truncate">{role.name}</p>
-                {role.library_slug && (
-                  <span className="px-1.5 py-0.5 rounded text-[9px] bg-purple-500/15 text-purple-400 border border-purple-500/20 flex-shrink-0 flex items-center gap-0.5">
-                    <Library className="w-2.5 h-2.5" />
-                  </span>
-                )}
               </div>
               <p className="text-xs text-text-3 truncate">{role.description}</p>
             </div>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
               <Cpu className="w-2.5 h-2.5" />{formatModelName(role.model)}
             </span>
+            {(taskCounts[role.slug] || 0) > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px] font-medium flex-shrink-0">
+                <ClipboardList className="w-2.5 h-2.5" />{taskCounts[role.slug]}
+              </span>
+            )}
             <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
               {!role.is_preset && (
                 <button onClick={(e) => deleteRole(role.slug, role.name, e)} className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer" title="Delete agent">

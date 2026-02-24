@@ -66,7 +66,7 @@ func New(db *database.DB, toolsDir, toolDataDir string, broadcast BroadcastFunc,
 		broadcast:    broadcast,
 		ctx:          ctx,
 		cancel:       cancel,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   &http.Client{Timeout: 45 * time.Minute},
 		healthClient: &http.Client{Timeout: 2 * time.Second},
 		secrets:      secrets,
 	}

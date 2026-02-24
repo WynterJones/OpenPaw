@@ -120,8 +120,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentLibraryHandler := handlers.NewAgentLibraryHandler(s.DB, dataDir)
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
 	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
-	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port)
+	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
+	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -270,6 +271,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/", agentRolesHandler.List)
 				r.Post("/", agentRolesHandler.Create)
 				r.Post("/upload-avatar", agentRolesHandler.UploadAvatar)
+				// Task counts across all agents (before {slug} to avoid conflict)
+				r.Get("/task-counts", agentTasksHandler.AllCounts)
 				// Gateway file endpoints (before {slug} to avoid conflict)
 				r.Get("/gateway/files", agentRolesHandler.GetGatewayFiles)
 				r.Get("/gateway/files/*", agentRolesHandler.GetGatewayFile)
@@ -295,6 +298,14 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/{slug}/skills/{name}", skillsHandler.UpdateAgentSkill)
 				r.Delete("/{slug}/skills/{name}", skillsHandler.RemoveSkillFromAgent)
 				r.Post("/{slug}/skills/{name}/publish", skillsHandler.PublishAgentSkill)
+				// Agent tasks (Kanban board)
+				r.Get("/{slug}/tasks/counts", agentTasksHandler.Counts)
+				r.Put("/{slug}/tasks/reorder", agentTasksHandler.Reorder)
+				r.Delete("/{slug}/tasks/clear-done", agentTasksHandler.ClearDone)
+				r.Get("/{slug}/tasks", agentTasksHandler.List)
+				r.Post("/{slug}/tasks", agentTasksHandler.Create)
+				r.Put("/{slug}/tasks/{taskId}", agentTasksHandler.Update)
+				r.Delete("/{slug}/tasks/{taskId}", agentTasksHandler.Delete)
 			})
 
 			// Agent Memories
@@ -419,10 +430,13 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/sessions/{id}", terminalHandler.GetSession)
 				r.Put("/sessions/{id}", terminalHandler.UpdateSession)
 				r.Delete("/sessions/{id}", terminalHandler.DeleteSession)
+				r.Post("/upload", terminalHandler.UploadFile)
+				r.Post("/resolve-path", terminalHandler.ResolvePath)
 				r.Get("/workbenches", terminalHandler.ListWorkbenches)
 				r.Post("/workbenches", terminalHandler.CreateWorkbench)
 				r.Put("/workbenches/{id}", terminalHandler.UpdateWorkbench)
 				r.Delete("/workbenches/{id}", terminalHandler.DeleteWorkbench)
+				r.Put("/workbenches-reorder", terminalHandler.ReorderWorkbenches)
 			})
 
 			// Projects

@@ -391,6 +391,9 @@ func (m *Manager) executeForAgent(slug, model string) {
 		threadInstructions = "You have no active thread. Use create_chat if you need to communicate with the user."
 	}
 
+	// Build task board summary
+	taskBoardSummary := m.buildTaskBoardSummary(slug)
+
 	// Add heartbeat-mode instructions
 	systemPrompt += fmt.Sprintf(`
 
@@ -398,24 +401,56 @@ func (m *Manager) executeForAgent(slug, model string) {
 
 ## HEARTBEAT MODE
 
-You are running in **heartbeat mode** — a periodic, autonomous check-in.
+You are running in **heartbeat mode** — a periodic, autonomous wake-up. You have a maximum of **5 turns**, so be focused and efficient.
 
 Current time: %s
 
+### Your Workflow
+
+Every heartbeat, follow this loop:
+
+1. **Check your task board** (shown below). Look at what's in "doing" and "blocked" first.
+2. **Pick 1-2 tasks to advance.** Move a "backlog" item to "doing" before you start working on it. When you finish, move it to "done".
+3. **If a task is blocked**, note WHY in a chat message to the user so they can help unblock you.
+4. **If you completed something significant** (finished a multi-step task, resolved a blocked item, accomplished a goal), send a message in chat to let the user know what was done and what you learned.
+5. **If your board is empty** (no backlog, no doing, no blocked), message the user to ask for more work or suggest tasks based on your role and recent context.
+6. **If everything is quiet** and you have nothing actionable, use no_action with a clear reason.
+
+### Writing Good Tasks
+
+When creating tasks for yourself, write them so your future self (waking up fresh) can understand and act on them:
+
+- **Title**: Short, action-oriented. Start with a verb. e.g. "Review error logs from last 24h", "Draft weekly summary for user", "Check if API key rotation is due"
+- **Description**: Include enough context that you don't need to remember anything. Add specifics: file paths, thread IDs, dates, what "done" looks like.
+- **Break big work into steps**: Instead of "Reorganize everything", create: "List files that need cleanup" → "Draft reorganization plan" → "Send plan to user for approval"
+- **Use status correctly**:
+  - **backlog**: Queued for later. You'll get to it in a future heartbeat.
+  - **doing**: You're actively working on this RIGHT NOW in this heartbeat cycle.
+  - **blocked**: You can't proceed without user input, external info, or another task finishing. Always explain the blocker in the description or in a chat message.
+  - **done**: Completed. Move tasks here when finished.
+
+### When to Communicate
+
+- **Send a chat message** when: you completed something the user should know about, you're blocked and need help, you have no tasks and want direction, or you have a suggestion or finding worth sharing.
+- **Send a notification** for: quick FYI items that don't need a conversation (e.g. "Daily check complete, all good").
+- **Prefer send_message** over create_chat when you have an active thread — it keeps the conversation in one place.
+
 ### Tools
 
-- **create_notification**: Send a notification to the user. Parameters: title (required), body, priority (low/normal/high), link
+- **task_list**: List all your current tasks. Call this to refresh your view.
+- **task_create**: Create a task. Parameters: title (required), description, status (default: backlog)
+- **task_move**: Move a task to a new column. Parameters: task_id (required), status (required)
 - **create_chat**: Start a NEW chat thread. Parameters: title (required), message (required)
-- **send_message**: Send a message to an EXISTING chat thread. Parameters: thread_id (required), message (required). Returns error if thread was deleted — fall back to create_chat.
-- **no_action**: Signal that you have nothing to do right now. Parameters: reason (required)
-- **Memory tools**: memory_save, memory_search, memory_list, memory_update, memory_forget, memory_stats
+- **send_message**: Send a message to an EXISTING thread. Parameters: thread_id (required), message (required). If the thread was deleted, fall back to create_chat.
+- **create_notification**: Quick notification to the user. Parameters: title (required), body, priority (low/normal/high), link
+- **no_action**: Nothing to do. Parameters: reason (required)
+- **Memory tools**: memory_save, memory_search, memory_list, memory_update, memory_forget, memory_stats — use these to remember things across heartbeats.
 
 ### Thread Status
 
 %s
-
-Read your heartbeat instructions below and decide what actions to take. If there's nothing to do, use no_action.
-Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions)
+%s
+Now read your heartbeat instructions below and take action.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions, taskBoardSummary)
 
 	// Run agent loop with heartbeat tools
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -454,6 +489,30 @@ Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now()
 				Name:        "no_action",
 				Description: "Signal that there is nothing to do right now",
 				Parameters:  json.RawMessage(`{"type":"object","properties":{"reason":{"type":"string","description":"Why no action is needed"}},"required":["reason"]}`),
+			},
+		},
+		{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        "task_create",
+				Description: "Create a task on your Kanban board",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"title":{"type":"string","description":"Task title"},"description":{"type":"string","description":"Task description"},"status":{"type":"string","enum":["backlog","doing","blocked","done"],"description":"Initial status (default: backlog)"}},"required":["title"]}`),
+			},
+		},
+		{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        "task_move",
+				Description: "Move a task to a different status column",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string","description":"ID of the task to move"},"status":{"type":"string","enum":["backlog","doing","blocked","done"],"description":"New status"}},"required":["task_id","status"]}`),
+			},
+		},
+		{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        "task_list",
+				Description: "List all your current tasks",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 			},
 		},
 	}
@@ -593,6 +652,65 @@ Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now()
 			actionsTaken = append(actionsTaken, "no_action: "+params.Reason)
 			return llm.ToolResult{Output: "OK, no action taken"}
 		},
+		"task_create": func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+			var params struct {
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Status      string `json:"status"`
+			}
+			if err := json.Unmarshal(input, &params); err != nil {
+				return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+			}
+			if params.Title == "" {
+				return llm.ToolResult{Output: "title is required", IsError: true}
+			}
+			if params.Status == "" {
+				params.Status = "backlog"
+			}
+			id := uuid.New().String()
+			now := time.Now().UTC()
+			var maxOrder int
+			m.db.QueryRow("SELECT COALESCE(MAX(sort_order), -1) FROM agent_tasks WHERE agent_role_slug = ? AND status = ?", slug, params.Status).Scan(&maxOrder)
+			_, err := m.db.Exec(
+				"INSERT INTO agent_tasks (id, agent_role_slug, title, description, status, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				id, slug, params.Title, params.Description, params.Status, maxOrder+1, now, now,
+			)
+			if err != nil {
+				return llm.ToolResult{Output: "Failed to create task: " + err.Error(), IsError: true}
+			}
+			actionsTaken = append(actionsTaken, "task_create: "+params.Title)
+			return llm.ToolResult{Output: fmt.Sprintf("Task created: %s (status: %s)", id, params.Status)}
+		},
+		"task_move": func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+			var params struct {
+				TaskID string `json:"task_id"`
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(input, &params); err != nil {
+				return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+			}
+			if params.TaskID == "" || params.Status == "" {
+				return llm.ToolResult{Output: "task_id and status are required", IsError: true}
+			}
+			validStatuses := map[string]bool{"backlog": true, "doing": true, "blocked": true, "done": true}
+			if !validStatuses[params.Status] {
+				return llm.ToolResult{Output: "invalid status — use backlog, doing, blocked, or done", IsError: true}
+			}
+			now := time.Now().UTC()
+			result, err := m.db.Exec("UPDATE agent_tasks SET status = ?, updated_at = ? WHERE id = ? AND agent_role_slug = ?", params.Status, now, params.TaskID, slug)
+			if err != nil {
+				return llm.ToolResult{Output: "Failed to move task: " + err.Error(), IsError: true}
+			}
+			n, _ := result.RowsAffected()
+			if n == 0 {
+				return llm.ToolResult{Output: "Task not found", IsError: true}
+			}
+			actionsTaken = append(actionsTaken, "task_move: "+params.TaskID+" → "+params.Status)
+			return llm.ToolResult{Output: fmt.Sprintf("Task moved to %s", params.Status)}
+		},
+		"task_list": func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+			return llm.ToolResult{Output: m.buildTaskBoardSummary(slug)}
+		},
 	}
 
 	// Register memory handlers
@@ -640,6 +758,65 @@ Keep actions concise and purposeful. You have a maximum of 5 turns.`, time.Now()
 		fmt.Sprintf("status=%s actions=%d tokens=%d+%d cost=$%.4f", status, len(actionsTaken), inputTokens, outputTokens, costUSD))
 
 	logger.Info("Heartbeat %s for %s: %d actions, $%.4f", status, slug, len(actionsTaken), costUSD)
+}
+
+func (m *Manager) buildTaskBoardSummary(slug string) string {
+	rows, err := m.db.Query(
+		"SELECT id, title, description, status FROM agent_tasks WHERE agent_role_slug = ? AND status != 'done' ORDER BY CASE status WHEN 'doing' THEN 0 WHEN 'blocked' THEN 1 WHEN 'backlog' THEN 2 END, sort_order ASC",
+		slug,
+	)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+
+	var doing, blocked, backlog []string
+	for rows.Next() {
+		var id, title, description, status string
+		if rows.Scan(&id, &title, &description, &status) != nil {
+			continue
+		}
+		line := fmt.Sprintf("- **%s** (id: %s)", title, id)
+		if description != "" {
+			// Truncate long descriptions
+			desc := description
+			if len(desc) > 120 {
+				desc = desc[:120] + "..."
+			}
+			line += "\n  " + desc
+		}
+		switch status {
+		case "doing":
+			doing = append(doing, line)
+		case "blocked":
+			blocked = append(blocked, line)
+		default:
+			backlog = append(backlog, line)
+		}
+	}
+
+	if len(doing) == 0 && len(blocked) == 0 && len(backlog) == 0 {
+		return "\n### Task Board\n\nYour board is empty. Consider creating tasks for yourself based on your role, or message the user to ask what you should work on.\n"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n### Task Board\n")
+	if len(doing) > 0 {
+		sb.WriteString("\n**DOING** (pick up where you left off):\n")
+		sb.WriteString(strings.Join(doing, "\n"))
+		sb.WriteString("\n")
+	}
+	if len(blocked) > 0 {
+		sb.WriteString("\n**BLOCKED** (needs user help or external input):\n")
+		sb.WriteString(strings.Join(blocked, "\n"))
+		sb.WriteString("\n")
+	}
+	if len(backlog) > 0 {
+		sb.WriteString("\n**BACKLOG** (ready to start):\n")
+		sb.WriteString(strings.Join(backlog, "\n"))
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func (m *Manager) finishExecution(execID, status, actionsTaken, output, errMsg string, costUSD float64, inputTokens, outputTokens int) {

@@ -313,7 +313,9 @@ Key files you can modify:
 - skills/*/SKILL.md — your skill definitions
 
 Your memories are stored in a database. Use the memory_* tools to save, search, list, update, and forget memories.
-You CANNOT modify files outside your workspace directory.`, agentDir))
+
+**File access is sandboxed to this directory ONLY.** You cannot read, write, or execute files anywhere else on the computer.
+If a user asks you to create files, build a project, or work on code in another directory, you MUST use a coding CLI tool (Claude Code, Codex, or Gemini CLI) via call_tool — do NOT attempt direct file operations outside your workspace.`, agentDir))
 
 	if len(parts) == 0 {
 		return "", fmt.Errorf("no identity files found for agent: %s", slug)
