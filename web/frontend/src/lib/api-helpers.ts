@@ -32,6 +32,8 @@ import type {
   TerminalSession,
   Workbench,
   Project,
+  TodoList,
+  TodoItem,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -360,6 +362,32 @@ export interface SecretCheckResult {
 export const secretsApi = {
   checkNames: (names: string[]) => api.post<SecretCheckResult[]>('/secrets/check', { names }),
   ensurePlaceholders: (secrets: { name: string; description: string }[]) => api.post<{ created: number }>('/secrets/ensure', { secrets }),
+};
+
+// Todo Lists API helpers
+export const todoApi = {
+  list: () => api.get<TodoList[]>('/todo-lists'),
+  summary: () => api.get<{ id: string; name: string; color: string; total_items: number; completed_items: number }[]>('/todo-lists/summary'),
+  get: (id: string) => api.get<{ list: TodoList; items: TodoItem[] }>(`/todo-lists/${id}`),
+  create: (data: { name: string; description?: string; color?: string }) =>
+    api.post<TodoList>('/todo-lists', data),
+  update: (id: string, data: { name?: string; description?: string; color?: string; sort_order?: number }) =>
+    api.put<TodoList>(`/todo-lists/${id}`, data),
+  delete: (id: string) => api.delete(`/todo-lists/${id}`),
+  listItems: (id: string, completed?: boolean) => {
+    const params = completed !== undefined ? `?completed=${completed}` : '';
+    return api.get<TodoItem[]>(`/todo-lists/${id}/items${params}`);
+  },
+  createItem: (listId: string, data: { title: string; notes?: string; due_date?: string }) =>
+    api.post<TodoItem>(`/todo-lists/${listId}/items`, data),
+  updateItem: (listId: string, itemId: string, data: { title?: string; notes?: string; due_date?: string }) =>
+    api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}`, data),
+  toggleItem: (listId: string, itemId: string, body?: { agent_slug?: string; agent_note?: string }) =>
+    api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}/toggle`, body || {}),
+  deleteItem: (listId: string, itemId: string) =>
+    api.delete(`/todo-lists/${listId}/items/${itemId}`),
+  reorderItems: (listId: string, items: { id: string; sort_order: number }[]) =>
+    api.put<{ status: string }>(`/todo-lists/${listId}/items/reorder`, { items }),
 };
 
 // Heartbeat API helpers

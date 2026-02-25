@@ -337,10 +337,11 @@ type SetupHandler struct {
 	auth       *auth.Service
 	secretsMgr *secrets.Manager
 	client     *llm.Client
+	dataDir    string
 }
 
-func NewSetupHandler(db *database.DB, authService *auth.Service, secretsMgr *secrets.Manager, client *llm.Client) *SetupHandler {
-	return &SetupHandler{db: db, auth: authService, secretsMgr: secretsMgr, client: client}
+func NewSetupHandler(db *database.DB, authService *auth.Service, secretsMgr *secrets.Manager, client *llm.Client, dataDir string) *SetupHandler {
+	return &SetupHandler{db: db, auth: authService, secretsMgr: secretsMgr, client: client, dataDir: dataDir}
 }
 
 func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
@@ -457,4 +458,74 @@ func (h *SetupHandler) Init(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:   now,
 		},
 	})
+}
+
+func (h *SetupHandler) Personalize(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name       string `json:"name"`
+		AvatarPath string `json:"avatar_path"`
+		Goal       string `json:"goal"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Pounce"
+	}
+
+	avatarPath := strings.TrimSpace(req.AvatarPath)
+	if avatarPath == "" {
+		avatarPath = "/avatars/avatar-4.webp"
+	}
+
+	// Update builder agent role with name and avatar
+	_, err := h.db.Exec(
+		"UPDATE agent_roles SET name = ?, avatar_path = ?, updated_at = ? WHERE slug = 'builder'",
+		name, avatarPath, time.Now().UTC(),
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update agent")
+		return
+	}
+
+	// Write GOAL.md if goal provided
+	goal := strings.TrimSpace(req.Goal)
+	if goal != "" {
+		goalPath := filepath.Join(h.dataDir, "gateway", agents.FileGoal)
+		os.MkdirAll(filepath.Dir(goalPath), 0755)
+		if err := os.WriteFile(goalPath, []byte(goal), 0644); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to write goal")
+			return
+		}
+	}
+
+	// Generate SOUL.md from name + goal using a fast model
+	if h.client != nil && h.client.IsConfigured() {
+		soulPrompt := fmt.Sprintf(
+			"Generate a short personality file (SOUL.md) for an AI assistant named %q. "+
+				"Include an emoji that represents them, a one-word vibe, and 3-4 bullet points about their personality and speaking style. "+
+				"Keep it under 15 lines. Use markdown.",
+			name,
+		)
+		if goal != "" {
+			soulPrompt += fmt.Sprintf("\n\nTheir primary goal is: %s\nWeave this goal into their identity.", goal)
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+
+		soul, _, err := h.client.RunOneShot(ctx, "google/gemini-2.0-flash-001", "You write concise AI personality profiles.", soulPrompt)
+		if err == nil && strings.TrimSpace(soul) != "" {
+			soulPath := filepath.Join(h.dataDir, "gateway", agents.FileSoul)
+			os.WriteFile(soulPath, []byte(strings.TrimSpace(soul)), 0644)
+		}
+	}
+
+	// Delete BOOTSTRAP.md to skip chat-based onboarding
+	agents.DeleteGatewayBootstrap(h.dataDir)
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "personalization complete"})
 }

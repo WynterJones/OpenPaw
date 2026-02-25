@@ -47,6 +47,8 @@ type Stats struct {
 	Workbenches     int `json:"workbenches"`
 	Projects        int `json:"projects"`
 	AgentTasks      int `json:"agent_tasks"`
+	TodoLists       int `json:"todo_lists"`
+	TodoItems       int `json:"todo_items"`
 }
 
 func exportData(db *database.DB, dataDir, destDir string) (int, error) {
@@ -176,6 +178,13 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 	if n, err := exportAgentTasks(db, destDir); err == nil {
 		files = append(files, n...)
 		stats.AgentTasks = len(n)
+	}
+
+	// Todo lists
+	if n, lists, items, err := exportTodoLists(db, destDir); err == nil {
+		files = append(files, n...)
+		stats.TodoLists = lists
+		stats.TodoItems = items
 	}
 
 	// Avatars
@@ -1166,6 +1175,76 @@ func exportAgentTasks(db *database.DB, destDir string) ([]string, error) {
 		return nil, err
 	}
 	return []string{path}, nil
+}
+
+func exportTodoLists(db *database.DB, destDir string) ([]string, int, int, error) {
+	// Export lists
+	listRows, err := db.Query("SELECT id, name, description, color, sort_order, created_at, updated_at FROM todo_lists ORDER BY sort_order")
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer listRows.Close()
+
+	var lists []map[string]interface{}
+	for listRows.Next() {
+		var id, name, desc, color string
+		var sortOrder int
+		var createdAt, updatedAt time.Time
+		if listRows.Scan(&id, &name, &desc, &color, &sortOrder, &createdAt, &updatedAt) != nil {
+			continue
+		}
+		lists = append(lists, map[string]interface{}{
+			"id": id, "name": name, "description": desc, "color": color,
+			"sort_order": sortOrder, "created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	listRows.Close()
+
+	if len(lists) == 0 {
+		return nil, 0, 0, nil
+	}
+
+	// Export items
+	itemRows, err := db.Query(
+		`SELECT id, list_id, title, notes, completed, sort_order, due_date,
+		        last_actor_agent_slug, last_actor_note, created_at, updated_at, completed_at
+		 FROM todo_items ORDER BY list_id, sort_order`)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer itemRows.Close()
+
+	var items []map[string]interface{}
+	for itemRows.Next() {
+		var id, listID, title, notes, lastActorNote string
+		var completed, sortOrder int
+		var dueDate, lastActorSlug, completedAt *string
+		var createdAt, updatedAt time.Time
+		if itemRows.Scan(&id, &listID, &title, &notes, &completed, &sortOrder, &dueDate,
+			&lastActorSlug, &lastActorNote, &createdAt, &updatedAt, &completedAt) != nil {
+			continue
+		}
+		items = append(items, map[string]interface{}{
+			"id": id, "list_id": listID, "title": title, "notes": notes,
+			"completed": completed == 1, "sort_order": sortOrder,
+			"due_date": dueDate, "last_actor_agent_slug": lastActorSlug,
+			"last_actor_note": lastActorNote,
+			"created_at": createdAt, "updated_at": updatedAt, "completed_at": completedAt,
+		})
+	}
+
+	var files []string
+
+	path := "todo_lists.json"
+	if err := writeJSONFile(filepath.Join(destDir, path), map[string]interface{}{
+		"lists": lists,
+		"items": items,
+	}); err != nil {
+		return nil, 0, 0, err
+	}
+	files = append(files, path)
+
+	return files, len(lists), len(items), nil
 }
 
 func copyFile(src, dst string) error {

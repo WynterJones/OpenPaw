@@ -111,9 +111,14 @@ func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, curren
 	}
 
 	history := h.fetchThreadHistory(threadID)
-	resp, _, err := h.agentManager.GatewayAnalyze(ctx, evalMessage, threadID, history, hints)
+	resp, usage, err := h.agentManager.GatewayAnalyze(ctx, evalMessage, threadID, history, hints)
 	if err != nil {
 		return
+	}
+
+	var gatewayCostUSD float64
+	if usage != nil {
+		gatewayCostUSD = usage.CostUSD
 	}
 
 	// If gateway decided the mentioned agent should respond, hand off to them
@@ -121,7 +126,7 @@ func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, curren
 		h.addThreadMember(threadID, mentionedSlug)
 		h.broadcastRoutingIndicator(threadID, mentionedSlug)
 		h.broadcastStatus(threadID, "thinking", "Thinking...")
-		h.handleRoleChatWithDepth(ctx, threadID, agentResponse, mentionedSlug, depth+1)
+		h.handleRoleChatWithDepth(ctx, threadID, agentResponse, mentionedSlug, depth+1, gatewayCostUSD)
 	}
 }
 

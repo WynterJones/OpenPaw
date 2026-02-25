@@ -612,3 +612,32 @@ export interface SubAgentTask {
   cost_usd?: number;
   streaming_text?: string;
 }
+
+export interface TodoList {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  sort_order: number;
+  total_items: number;
+  completed_items: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TodoItem {
+  id: string;
+  list_id: string;
+  title: string;
+  notes: string;
+  completed: boolean;
+  sort_order: number;
+  due_date: string | null;
+  last_actor_agent_slug: string | null;
+  last_actor_agent_name: string | null;
+  last_actor_avatar: string | null;
+  last_actor_note: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}

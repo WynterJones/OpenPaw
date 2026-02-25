@@ -28,6 +28,7 @@ const (
 // Gateway-specific files
 const (
 	FileBootstrap = "BOOTSTRAP.md"
+	FileGoal      = "GOAL.md"
 )
 
 var identityFiles = []string{
@@ -335,7 +336,7 @@ func ListMemoryFiles(dataDir, slug string) ([]MemoryFile, error) {
 		return nil, err
 	}
 
-	var files []MemoryFile
+	files := []MemoryFile{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
@@ -413,7 +414,7 @@ func ReadGatewayFiles(dataDir string) (map[string]string, error) {
 	dir := GatewayDirPath(dataDir)
 	result := make(map[string]string)
 
-	gatewayFiles := []string{FileSoul, FileUser, FileHeartbeat}
+	gatewayFiles := []string{FileSoul, FileUser, FileHeartbeat, FileGoal}
 	for _, fname := range gatewayFiles {
 		content, err := os.ReadFile(filepath.Join(dir, fname))
 		if err != nil {
@@ -479,7 +480,7 @@ func ListGatewayMemoryFiles(dataDir string) ([]MemoryFile, error) {
 		return nil, err
 	}
 
-	var files []MemoryFile
+	files := []MemoryFile{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
@@ -521,6 +522,11 @@ func AssembleGatewayContext(dataDir string, memMgr *memory.Manager) string {
 		parts = append(parts, "## WHAT YOU KNOW ABOUT THE USER\n\n"+strings.TrimSpace(string(content)))
 	}
 
+	// GOAL
+	if content, err := os.ReadFile(filepath.Join(dir, FileGoal)); err == nil && strings.TrimSpace(string(content)) != "" {
+		parts = append(parts, "## YOUR SHARED GOAL\n\n"+strings.TrimSpace(string(content)))
+	}
+
 	// Memory — use DB-backed memory if available, fall back to file
 	if memMgr != nil {
 		memMgr.EnsureMigrated("gateway")
@@ -559,6 +565,7 @@ func isGatewayAllowedFile(filename string) bool {
 		FileSoul:      true,
 		FileUser:      true,
 		FileHeartbeat: true,
+		FileGoal:      true,
 	}
 	if allowed[filename] {
 		return true

@@ -97,7 +97,7 @@ func (s *Server) setupMiddleware() {
 
 func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, port int) {
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
-	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient)
+	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, dataDir)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
 	secretsHandler := handlers.NewSecretsHandler(s.DB, s.Secrets, toolMgr)
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
@@ -123,6 +123,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
+	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -141,6 +142,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				}
 				agentRolesHandler.SeedPresets(w, req)
 			})
+			r.With(mw.Auth(s.Auth), mw.CSRFProtection, mw.RateLimit(5, time.Minute)).Post("/personalize", setupHandler.Personalize)
 		})
 
 		// Public design config (needed before login for UI theming)
@@ -445,6 +447,22 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/", projectsHandler.Create)
 				r.Put("/{id}", projectsHandler.Update)
 				r.Delete("/{id}", projectsHandler.Delete)
+			})
+
+			// Todo Lists
+			r.Route("/todo-lists", func(r chi.Router) {
+				r.Get("/", todoListsHandler.ListLists)
+				r.Get("/summary", todoListsHandler.Summary)
+				r.Post("/", todoListsHandler.CreateList)
+				r.Get("/{id}", todoListsHandler.GetList)
+				r.Put("/{id}", todoListsHandler.UpdateList)
+				r.Delete("/{id}", todoListsHandler.DeleteList)
+				r.Get("/{id}/items", todoListsHandler.ListItems)
+				r.Post("/{id}/items", todoListsHandler.CreateItem)
+				r.Put("/{id}/items/reorder", todoListsHandler.ReorderItems)
+				r.Put("/{id}/items/{itemId}", todoListsHandler.UpdateItem)
+				r.Put("/{id}/items/{itemId}/toggle", todoListsHandler.ToggleItem)
+				r.Delete("/{id}/items/{itemId}", todoListsHandler.DeleteItem)
 			})
 
 			// Logs

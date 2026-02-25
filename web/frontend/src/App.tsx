@@ -1,5 +1,5 @@
-import { lazy, Suspense, type ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DesignProvider } from './contexts/DesignContext';
 import { ToastProvider } from './components/Toast';
@@ -24,6 +24,7 @@ const Browser = lazy(() => import('./pages/Browser').then(m => ({ default: m.Bro
 const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const HeartbeatMonitor = lazy(() => import('./pages/HeartbeatMonitor').then(m => ({ default: m.HeartbeatMonitor })));
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
+const TodoLists = lazy(() => import('./pages/TodoLists').then(m => ({ default: m.TodoLists })));
 
 const DocsLayout = lazy(() => import('./components/docs/DocsLayout').then(m => ({ default: m.DocsLayout })));
 const DocsHome = lazy(() => import('./pages/docs/DocsHome').then(m => ({ default: m.DocsHome })));
@@ -33,6 +34,47 @@ const Features = lazy(() => import('./pages/docs/Features').then(m => ({ default
 const DesktopApp = lazy(() => import('./pages/docs/DesktopApp').then(m => ({ default: m.DesktopApp })));
 const UseCases = lazy(() => import('./pages/docs/UseCases').then(m => ({ default: m.UseCases })));
 const Architecture = lazy(() => import('./pages/docs/Architecture').then(m => ({ default: m.Architecture })));
+
+const pageTitles: Record<string, string> = {
+  '/chat': 'Chat',
+  '/tools': 'Tools',
+  '/agents': 'Agents',
+  '/agents/gateway': 'Gateway',
+  '/skills': 'Skills',
+  '/secrets': 'Secrets',
+  '/dashboards': 'Dashboard',
+  '/scheduler': 'Scheduler',
+  '/logs': 'Logs',
+  '/context': 'Context',
+  '/browser': 'Browser',
+  '/workbench': 'Workbench',
+  '/heartbeat': 'Heartbeat',
+  '/library': 'Library',
+  '/todo-lists': 'Todo Lists',
+  '/settings': 'Settings',
+  '/login': 'Login',
+  '/setup': 'Setup',
+  '/docs': 'Docs',
+  '/docs/get-started': 'Get Started',
+  '/docs/how-it-works': 'How It Works',
+  '/docs/features': 'Features',
+  '/docs/desktop': 'Desktop App',
+  '/docs/use-cases': 'Use Cases',
+  '/docs/architecture': 'Architecture',
+};
+
+function PageTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const title = pageTitles[pathname]
+      ?? pageTitles[pathname.replace(/\/[^/]+$/, '')]
+      ?? 'OpenPaw';
+    document.title = title === 'OpenPaw' ? title : `${title} ~ OpenPaw`;
+  }, [pathname]);
+
+  return null;
+}
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -86,6 +128,7 @@ function AppRoutes() {
         <Route path="/workbench" element={<Workbench />} />
         <Route path="/heartbeat" element={<HeartbeatMonitor />} />
         <Route path="/library" element={<Library />} />
+        <Route path="/todo-lists" element={<TodoLists />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />
@@ -97,6 +140,7 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
+      <PageTitle />
       <DesignProvider>
         <ToastProvider>
           <AuthProvider>

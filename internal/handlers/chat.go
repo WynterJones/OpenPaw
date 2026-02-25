@@ -403,18 +403,25 @@ func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
 
 	var totalCost float64
 	var totalInput, totalOutput, msgCount int
-	var totalContentLen int
 	err := h.db.QueryRow(
 		`SELECT COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-		        COUNT(*), COALESCE(SUM(LENGTH(content)), 0)
+		        COUNT(*)
 		 FROM chat_messages WHERE thread_id = ?`, threadID,
-	).Scan(&totalCost, &totalInput, &totalOutput, &msgCount, &totalContentLen)
+	).Scan(&totalCost, &totalInput, &totalOutput, &msgCount)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get thread stats")
 		return
 	}
 
-	contextUsed := totalContentLen / 4
+	// Use the most recent assistant message's input_tokens as context usage.
+	// This is the actual number of tokens sent to the model on the last turn,
+	// which is the best proxy for current context window usage.
+	var contextUsed int
+	h.db.QueryRow(
+		`SELECT COALESCE(input_tokens, 0) FROM chat_messages
+		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0
+		 ORDER BY created_at DESC LIMIT 1`, threadID,
+	).Scan(&contextUsed)
 	contextLimit := h.getEffectiveContextLimit()
 
 	autoCompactEnabled := false
@@ -558,14 +565,14 @@ func (h *ChatHandler) shouldAutoCompact(threadID string) bool {
 		return false
 	}
 
-	var totalContentLen int
+	var contextUsed int
 	if err := h.db.QueryRow(
-		"SELECT COALESCE(SUM(LENGTH(content)), 0) FROM chat_messages WHERE thread_id = ?", threadID,
-	).Scan(&totalContentLen); err != nil {
+		`SELECT COALESCE(input_tokens, 0) FROM chat_messages
+		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0
+		 ORDER BY created_at DESC LIMIT 1`, threadID,
+	).Scan(&contextUsed); err != nil || contextUsed == 0 {
 		return false
 	}
-
-	contextUsed := totalContentLen / 4
 	contextLimit := h.getEffectiveContextLimit()
 	if contextLimit <= 0 {
 		return false

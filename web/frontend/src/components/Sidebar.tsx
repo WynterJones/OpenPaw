@@ -13,6 +13,7 @@ import {
   Monitor,
   Heart,
   TerminalSquare,
+  ListTodo,
   ChevronRight,
   PanelLeftClose,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const navGroups: NavGroup[] = [
       { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
       { to: "/browser", icon: Monitor, label: "Browsers" },
       { to: "/context", icon: BookOpen, label: "Context" },
+      { to: "/todo-lists", icon: ListTodo, label: "Todo Lists" },
     ],
   },
   {

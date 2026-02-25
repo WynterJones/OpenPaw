@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, ArrowLeft, Check, Server, UserPlus, Sparkles, AlertTriangle, CheckCircle, Key } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Check, Server, UserPlus, Sparkles, AlertTriangle, CheckCircle, Key, PawPrint } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { api, type User } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 
+const PRESET_AVATARS = Array.from({ length: 45 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
 
 export function Setup() {
   const navigate = useNavigate();
@@ -22,6 +23,11 @@ export function Setup() {
   const [port, setPort] = useState('41295');
   const [apiKey, setApiKey] = useState('');
   const enabledRoles = ['builder'];
+
+  const [agentName, setAgentName] = useState('Pounce');
+  const [agentAvatar, setAgentAvatar] = useState('/avatars/avatar-4.webp');
+  const [agentGoal, setAgentGoal] = useState('');
+  const [setupComplete, setSetupComplete] = useState(false);
 
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
 
@@ -62,11 +68,13 @@ export function Setup() {
     } else if (step === 2) {
       setStep(3);
     } else if (step === 3) {
-      if (validateStep3()) handleSubmit();
+      if (validateStep3()) handleInit();
+    } else if (step === 4) {
+      handlePersonalize();
     }
   };
 
-  const handleSubmit = async () => {
+  const handleInit = async () => {
     setLoading(true);
     try {
       await api.post<{ user: User }>('/setup/init', {
@@ -78,9 +86,26 @@ export function Setup() {
         api_key: apiKey || undefined,
       });
       await login(username, password);
-      navigate('/chat');
+      setSetupComplete(true);
+      setStep(4);
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Setup failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePersonalize = async () => {
+    setLoading(true);
+    try {
+      await api.post('/setup/personalize', {
+        name: agentName.trim() || 'Pounce',
+        avatar_path: agentAvatar,
+        goal: agentGoal.trim() || undefined,
+      });
+      navigate('/chat');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Personalization failed');
     } finally {
       setLoading(false);
     }
@@ -172,9 +197,77 @@ export function Setup() {
         </div>
       ),
     },
+    {
+      icon: <PawPrint className="w-6 h-6" />,
+      title: 'Meet Your Agent',
+      content: (
+        <div className="space-y-5 max-w-md mx-auto">
+          <div className="text-center">
+            <img
+              src={agentAvatar}
+              alt={agentName}
+              className="w-20 h-20 mx-auto rounded-2xl shadow-lg shadow-black/20 mb-3"
+            />
+            <h2 className="text-xl font-bold text-text-0">Meet Your Agent</h2>
+            <p className="text-sm text-text-2 mt-1">
+              Name your AI assistant, pick an avatar, and set a goal.
+            </p>
+          </div>
+
+          <Input
+            label="Agent Name"
+            value={agentName}
+            onChange={e => setAgentName(e.target.value)}
+            placeholder="Pounce"
+            autoFocus
+          />
+
+          <div>
+            <label className="block text-xs font-medium text-text-2 mb-1.5">Avatar</label>
+            <div className="max-h-36 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2">
+              <div className="grid grid-cols-9 gap-1.5">
+                {PRESET_AVATARS.map((path, i) => (
+                  <button
+                    key={path}
+                    onClick={() => setAgentAvatar(path)}
+                    aria-label={`Select avatar ${i + 1}`}
+                    aria-pressed={agentAvatar === path}
+                    className={`aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                      agentAvatar === path
+                        ? 'border-accent-primary ring-2 ring-accent-primary/20 scale-105'
+                        : 'border-transparent hover:border-border-0 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={path} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-2 mb-1.5">
+              What are you building?
+            </label>
+            <textarea
+              value={agentGoal}
+              onChange={e => setAgentGoal(e.target.value)}
+              placeholder="e.g. A SaaS dashboard for tracking sales metrics, A personal blog with CMS, An inventory management system..."
+              rows={3}
+              className="w-full rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 text-sm placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
+            />
+            <p className="text-[11px] text-text-3 mt-1">
+              This becomes a shared goal that shapes how your agent thinks and responds. You can change it anytime.
+            </p>
+          </div>
+        </div>
+      ),
+    },
   ];
 
   const currentStep = steps[step];
+
+  const canGoBack = step > 0 && !setupComplete;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative">
@@ -204,7 +297,7 @@ export function Setup() {
           <div className="mb-8">{currentStep.content}</div>
 
           <div className="flex items-center justify-between">
-            {step > 0 ? (
+            {canGoBack ? (
               <Button variant="ghost" onClick={() => { setStep(step - 1); setErrors({}); }} icon={<ArrowLeft className="w-4 h-4" />}>Back</Button>
             ) : (
               <div />

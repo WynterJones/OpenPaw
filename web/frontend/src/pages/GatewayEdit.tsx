@@ -19,6 +19,7 @@ interface FileTab {
 
 const FILE_TABS: FileTab[] = [
   { key: 'soul', label: 'Soul', filename: 'SOUL.md', description: 'Personality, name, tone, values — the core of who the gateway is.' },
+  { key: 'goal', label: 'Goal', filename: 'GOAL.md', description: 'Your shared goal — what you and the agent are working toward together.' },
   { key: 'user', label: 'User', filename: 'USER.md', description: 'What the gateway knows about you, learned from conversations.' },
   { key: 'heartbeat', label: 'Heartbeat', filename: 'HEARTBEAT.md', description: 'Periodic self-check instructions. Empty = skip.' },
 ];
@@ -60,7 +61,7 @@ export function GatewayEdit() {
   const loadMemory = useCallback(async () => {
     try {
       const mem = await gatewayFiles.listMemory();
-      setMemoryFiles(mem);
+      setMemoryFiles(mem ?? []);
       const result = await gatewayFiles.get('memory/memory.md');
       setMemoryContent(result.content);
       setMemoryDirty(false);

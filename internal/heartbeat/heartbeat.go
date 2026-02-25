@@ -393,6 +393,7 @@ func (m *Manager) executeForAgent(slug, model string) {
 
 	// Build task board summary
 	taskBoardSummary := m.buildTaskBoardSummary(slug)
+	todoSummary := m.buildHeartbeatTodoSummary()
 
 	// Add heartbeat-mode instructions
 	systemPrompt += fmt.Sprintf(`
@@ -445,12 +446,18 @@ When creating tasks for yourself, write them so your future self (waking up fres
 - **create_notification**: Quick notification to the user. Parameters: title (required), body, priority (low/normal/high), link
 - **no_action**: Nothing to do. Parameters: reason (required)
 - **Memory tools**: memory_save, memory_search, memory_list, memory_update, memory_forget, memory_stats — use these to remember things across heartbeats.
+- **todo_list_all**: List all user todo lists
+- **todo_list_items**: View items in a todo list
+- **todo_add_item**: Add an item to a todo list
+- **todo_check_item**: Mark a todo item as completed
+- **todo_uncheck_item**: Mark a todo item as incomplete
 
 ### Thread Status
 
 %s
 %s
-Now read your heartbeat instructions below and take action.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions, taskBoardSummary)
+%s
+Now read your heartbeat instructions below and take action.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions, taskBoardSummary, todoSummary)
 
 	// Run agent loop with heartbeat tools
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -516,6 +523,9 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 			},
 		},
 	}
+
+	// Append todo tools
+	extraTools = append(extraTools, agents.BuildTodoToolDefs()...)
 
 	// Append memory tools if available
 	if m.agentMgr.MemoryMgr != nil {
@@ -720,6 +730,11 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 		}
 	}
 
+	// Register todo handlers
+	for name, handler := range agents.MakeTodoToolHandlers(m.db, slug, m.broadcast) {
+		extraHandlers[name] = handler
+	}
+
 	result, err := m.agentMgr.Client().RunAgentLoop(ctx, llm.AgentConfig{
 		Model:         llm.ResolveModel(model, llm.ModelSonnet),
 		System:        systemPrompt,
@@ -817,6 +832,32 @@ func (m *Manager) buildTaskBoardSummary(slug string) string {
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+func (m *Manager) buildHeartbeatTodoSummary() string {
+	rows, err := m.db.Query(`
+		SELECT tl.name,
+			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id) as total,
+			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as done
+		FROM todo_lists tl ORDER BY tl.sort_order ASC`)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+
+	var lines []string
+	for rows.Next() {
+		var name string
+		var total, done int
+		if rows.Scan(&name, &total, &done) != nil {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("- %s (%d items, %d done)", name, total, done))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n### User Todo Lists\nThe user has todo lists you can manage with todo_* tools:\n" + strings.Join(lines, "\n") + "\n"
 }
 
 func (m *Manager) finishExecution(execID, status, actionsTaken, output, errMsg string, costUSD float64, inputTokens, outputTokens int) {

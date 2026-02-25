@@ -163,15 +163,15 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 		case string(agents.WorkOrderToolBuild):
 			resp.Action = "build_tool"
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleBuildTool(confirmCtx, threadID, userID, resp)
+			h.handleBuildTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
 		case string(agents.WorkOrderToolUpdate):
 			resp.Action = "update_tool"
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleUpdateTool(confirmCtx, threadID, userID, resp)
+			h.handleUpdateTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
 		case string(agents.WorkOrderDashboardBuild), string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
 			resp.Action = "build_custom_dashboard"
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleBuildCustomDashboard(confirmCtx, threadID, userID, resp)
+			h.handleBuildCustomDashboard(confirmCtx, threadID, userID, resp, 0, 0, 0)
 		}
 	}()
 

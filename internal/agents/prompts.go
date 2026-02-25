@@ -37,10 +37,11 @@ Keywords: "build", "create", "make", "set up", "develop", "I need a tool", "can 
 Example:
 {"action":"build_tool","thread_title":"Weather Tool","work_order":{"title":"Weather Service","description":"Fetch weather data from Open-Meteo API","requirements":"Build a Go HTTP tool that..."}}
 
-### 2. User @mention
+### 2. User @mention (MANDATORY OVERRIDE)
 
-If the ROUTING CONTEXT shows a "User @mentioned" agent, route to that agent — the user explicitly chose them.
-Use action "route" with "assigned_agent" set to the mentioned agent's slug.
+If the ROUTING CONTEXT shows a "User @mentioned" agent, you MUST route to that agent — no exceptions.
+The user explicitly tagged this agent and their intent is unambiguous.
+Use action "route" with "assigned_agent" set to the mentioned agent's slug. Do NOT override this with a different agent or use "guide".
 
 ### 3. Conversation Continuation
 
@@ -58,6 +59,7 @@ If none of the above apply (new topic, different expertise needed, or no last re
 
 - Use action "route" with "assigned_agent" set to the best agent's slug.
 - Match by expertise: Pick the agent whose description best matches the request.
+- Todo list requests (viewing, adding, checking off items) can be handled by any agent — all have todo_* tools.
 - **If no agents exist or none match well, use action "guide"** (see below).
 
 ### 5. Agent @mention Evaluation

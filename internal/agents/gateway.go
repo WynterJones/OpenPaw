@@ -73,10 +73,21 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 
 	prompt := promptBuilder.String()
 
+	// Inject todo list tools into gateway
+	todoSection := buildTodoPromptSection(m.db)
+	if todoSection != "" {
+		prompt += "\n\n---\n\n" + todoSection
+	}
+
+	todoTools := BuildTodoToolDefs()
+	todoHandlers := MakeTodoToolHandlers(m.db, "pounce", m.broadcast)
+
 	result, err := m.client.RunAgentLoop(ctx, llm.AgentConfig{
-		Model:    llm.ResolveModel(m.GatewayModel, llm.ModelHaiku),
-		System:   "",
-		MaxTurns: 1,
+		Model:         llm.ResolveModel(m.GatewayModel, llm.ModelHaiku),
+		System:        "",
+		MaxTurns:      3,
+		ExtraTools:    todoTools,
+		ExtraHandlers: todoHandlers,
 		OnEvent: func(ev StreamEvent) {
 			if ev.Type == EventTextDelta && ev.Text != "" {
 				m.broadcast("gateway_thinking", map[string]interface{}{
@@ -259,6 +270,19 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		for name, handler := range m.MemoryMgr.MakeMemoryHandlers(agentRoleSlug) {
 			cfg.ExtraHandlers[name] = handler
 		}
+	}
+
+	// Inject todo list tools
+	todoSection := buildTodoPromptSection(m.db)
+	if todoSection != "" {
+		cfg.System += "\n\n---\n\n" + todoSection
+	}
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildTodoToolDefs()...)
+	if cfg.ExtraHandlers == nil {
+		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+	}
+	for name, handler := range MakeTodoToolHandlers(m.db, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
 	}
 
 	// Inject delegate_task if other agents are available for delegation

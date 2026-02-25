@@ -14,6 +14,7 @@ import {
   Monitor,
   Heart,
   TerminalSquare,
+  ListTodo,
   MoreHorizontal,
 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ const moreItems = [
   { to: '/workbench', icon: TerminalSquare, label: 'Workbench' },
   { to: '/browser', icon: Monitor, label: 'Browser' },
   { to: '/context', icon: BookOpen, label: 'Context' },
+  { to: '/todo-lists', icon: ListTodo, label: 'Todo Lists' },
   { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },

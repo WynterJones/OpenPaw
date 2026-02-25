@@ -153,7 +153,21 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
-	// Priority 2: Check for bootstrap mode (first-time onboarding)
+	// Priority 2: User @mentioned an agent — route directly, skip gateway
+	if mentionSlug := h.extractMention(content); mentionSlug != "" {
+		if isFirstMsg {
+			go h.generateThreadTitle(threadID, content)
+		}
+		h.db.LogAudit(userID, "routing_mention", "agent", "agent_role", mentionSlug, "@"+mentionSlug)
+		h.addThreadMember(threadID, mentionSlug)
+		h.beginAgentWork(threadID, mentionSlug)
+		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+		defer roleChatCancel()
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, mentionSlug, 0)
+		return
+	}
+
+	// Priority 3: Check for bootstrap mode (first-time onboarding)
 	if agents.GatewayHasBootstrap(h.dataDir) {
 		h.broadcastStatus(threadID, "analyzing", "Setting up...")
 		history := h.fetchThreadHistory(threadID)
@@ -202,7 +216,7 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
-	// Priority 3: ALL other messages go through the gateway with routing hints
+	// Priority 4: ALL other messages go through the gateway with routing hints
 	h.broadcastStatus(threadID, "analyzing", "Analyzing your request...")
 
 	// Build routing hints for the gateway
@@ -278,15 +292,15 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		case "build_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleBuildTool(parentCtx, threadID, userID, resp)
+			h.handleBuildTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "update_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleUpdateTool(parentCtx, threadID, userID, resp)
+			h.handleUpdateTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "build_dashboard", "build_custom_dashboard":
 			h.broadcastRoutingIndicator(threadID, "builder")
 			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleBuildCustomDashboard(parentCtx, threadID, userID, resp)
+			h.handleBuildCustomDashboard(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "create_agent":
 			h.handleCreateAgent(threadID, userID, resp)
 		case "create_skill":
@@ -306,7 +320,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		h.beginAgentWork(threadID, resp.AssignedAgent)
 		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0)
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0, gatewayCostUSD)
 	} else {
 		// No assigned agent and no work order — use gateway message if available, else fallback
 		fallbackMsg := resp.Message
@@ -322,7 +336,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 
 const maxMentionDepth = 3
 
-func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int) {
+func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, extraCostUSD ...float64) {
 	// Look up the role from the database
 	var systemPrompt, model string
 	var identityInitialized bool
@@ -387,6 +401,10 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		inTok = int(usage.InputTokens)
 		outTok = int(usage.OutputTokens)
 	}
+	// Add gateway routing cost if provided (so total message cost includes the gateway analysis)
+	if len(extraCostUSD) > 0 {
+		costUSD += extraCostUSD[0]
+	}
 	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON)
 
 	// Notify frontend the message is saved before clearing streaming state
@@ -405,7 +423,7 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	}
 }
 
-func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse) {
+func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
 	// Create a tool record
 	toolID := uuid.New().String()
 	now := time.Now().UTC()
@@ -428,7 +446,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_tool: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔨 Building **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔨 Building **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
@@ -437,7 +455,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	}
 }
 
-func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse) {
+func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
 	// Look up the existing tool by ID (if gateway provided it) or by name
 	var toolID string
 	if resp.WorkOrder.ToolID != "" {
@@ -474,7 +492,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "update_tool: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔧 Updating **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔧 Updating **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
@@ -527,7 +545,7 @@ func (h *ChatHandler) handleBuildDashboard(ctx context.Context, threadID, userID
 	}
 }
 
-func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse) {
+func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
 	dashboardID := uuid.New().String()
 	dashboardDir := filepath.Join(h.dashboardsDir, dashboardID)
 
@@ -568,7 +586,7 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_custom_dashboard: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building custom dashboard **"+resp.WorkOrder.Title+"**. This may take a few minutes.", 0, 0, 0)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building custom dashboard **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnCustomDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
