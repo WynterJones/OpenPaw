@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,7 @@ type Manager struct {
 	MemoryMgr            MemoryManager
 	BrowserMgr           BrowserManager
 	FalClient            *fal.Client
+	FrontendFS           fs.FS
 	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
 	manifestCache        sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState

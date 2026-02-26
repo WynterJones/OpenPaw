@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,13 +22,14 @@ import (
 )
 
 type AgentRolesHandler struct {
-	db        *database.DB
-	dataDir   string
-	llmClient *llm.Client
+	db         *database.DB
+	dataDir    string
+	llmClient  *llm.Client
+	frontendFS fs.FS
 }
 
-func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client) *AgentRolesHandler {
-	return &AgentRolesHandler{db: db, dataDir: dataDir, llmClient: llmClient}
+func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client, frontendFS fs.FS) *AgentRolesHandler {
+	return &AgentRolesHandler{db: db, dataDir: dataDir, llmClient: llmClient, frontendFS: frontendFS}
 }
 
 var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -521,7 +523,7 @@ func (h *AgentRolesHandler) DescribeAvatar(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	imageDataURI, err := llm.ResolveImageToBase64(h.dataDir, req.AvatarPath)
+	imageDataURI, err := llm.ResolveImageToBase64(h.dataDir, req.AvatarPath, h.frontendFS)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to resolve avatar image: "+err.Error())
 		return

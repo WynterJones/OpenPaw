@@ -101,7 +101,7 @@ func (m *Manager) generateImageGemini(ctx context.Context, prompt, model, size s
 	// Resolve local image URLs to base64 data URIs
 	var resolvedImages []string
 	for _, img := range images {
-		resolved, err := llm.ResolveImageToBase64(m.DataDir, img)
+		resolved, err := llm.ResolveImageToBase64(m.DataDir, img, m.FrontendFS)
 		if err != nil {
 			return llm.ToolResult{Output: "Failed to resolve image " + img + ": " + err.Error(), IsError: true}
 		}

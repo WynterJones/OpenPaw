@@ -42,6 +42,7 @@ type Server struct {
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
 	TerminalMgr  *terminal.Manager
+	FrontendFS   fs.FS
 }
 
 type Config struct {
@@ -79,6 +80,7 @@ func New(cfg Config) *Server {
 		BackupMgr:    cfg.BackupMgr,
 		MemoryMgr:    cfg.MemoryMgr,
 		TerminalMgr:  cfg.TerminalMgr,
+		FrontendFS:   cfg.FrontendFS,
 	}
 
 	s.setupMiddleware()
@@ -105,7 +107,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
-	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient)
+	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	skillsHandler := handlers.NewSkillsHandler(dataDir)

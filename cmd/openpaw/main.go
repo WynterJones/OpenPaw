@@ -248,6 +248,7 @@ func main() {
 
 	agentMgr := agents.NewManager(db, toolsDir, broadcastFn, llmClient)
 	agentMgr.DataDir = cfg.DataDir
+	agentMgr.FrontendFS = frontendFS
 
 	// Wire notification function (creates notification + broadcasts)
 	notifyFn := func(title, body, priority, sourceAgentSlug, sourceType, link string) {

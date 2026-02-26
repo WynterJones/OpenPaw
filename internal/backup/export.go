@@ -36,6 +36,7 @@ type Stats struct {
 	Secrets         int `json:"secrets"`
 	Avatars         int `json:"avatars"`
 	Backgrounds     int `json:"backgrounds"`
+	Media           int `json:"media"`
 	ChatThreads     int `json:"chat_threads"`
 	ChatMessages    int `json:"chat_messages"`
 	ChatAttachments int `json:"chat_attachments"`
@@ -197,6 +198,12 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 	if n, err := exportBackgrounds(dataDir, destDir); err == nil {
 		files = append(files, n...)
 		stats.Backgrounds = countPrefix(n, "backgrounds/")
+	}
+
+	// Media library (generated images)
+	if n, err := exportMedia(db, dataDir, destDir); err == nil {
+		files = append(files, n...)
+		stats.Media = countPrefix(n, "media/")
 	}
 
 	// Write manifest
@@ -779,6 +786,66 @@ func copyDirFiles(srcDir, dstDir, prefix string) ([]string, error) {
 			files = append(files, prefix+entry.Name())
 		}
 	}
+	return files, nil
+}
+
+func exportMedia(db *database.DB, dataDir, destDir string) ([]string, error) {
+	var files []string
+
+	rows, err := db.Query(
+		`SELECT id, thread_id, message_id, source, source_model, media_type, url, filename, mime_type, width, height, size_bytes, prompt, metadata, created_at
+		 FROM media ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var mediaItems []map[string]interface{}
+	for rows.Next() {
+		var id, threadID, messageID, source, sourceModel, mediaType, url, filename, mimeType, prompt, metadata, createdAt string
+		var width, height, sizeBytes int
+		if rows.Scan(&id, &threadID, &messageID, &source, &sourceModel, &mediaType, &url, &filename, &mimeType, &width, &height, &sizeBytes, &prompt, &metadata, &createdAt) != nil {
+			continue
+		}
+		mediaItems = append(mediaItems, map[string]interface{}{
+			"id": id, "thread_id": threadID, "message_id": messageID,
+			"source": source, "source_model": sourceModel, "media_type": mediaType,
+			"url": url, "filename": filename, "mime_type": mimeType,
+			"width": width, "height": height, "size_bytes": sizeBytes,
+			"prompt": prompt, "metadata": metadata, "created_at": createdAt,
+		})
+	}
+	rows.Close()
+
+	if len(mediaItems) == 0 {
+		return nil, nil
+	}
+
+	os.MkdirAll(filepath.Join(destDir, "media"), 0755)
+
+	// Export metadata
+	path := "media/metadata.json"
+	if err := writeJSONFile(filepath.Join(destDir, path), mediaItems); err != nil {
+		return nil, err
+	}
+	files = append(files, path)
+
+	// Copy media files from disk
+	mediaDir := filepath.Join(dataDir, "..", "media")
+	blobDst := filepath.Join(destDir, "media", "files")
+	os.MkdirAll(blobDst, 0755)
+
+	for _, item := range mediaItems {
+		fname, ok := item["filename"].(string)
+		if !ok || fname == "" {
+			continue
+		}
+		srcPath := filepath.Join(mediaDir, fname)
+		if err := copyFile(srcPath, filepath.Join(blobDst, fname)); err == nil {
+			files = append(files, "media/files/"+fname)
+		}
+	}
+
 	return files, nil
 }
 
