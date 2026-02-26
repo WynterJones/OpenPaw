@@ -48,3 +48,10 @@ type WSAgentStream struct {
 	ThreadID    string      `json:"thread_id"`
 	Event       interface{} `json:"event"`
 }
+
+// WSMessageReacted is the payload for "message_reacted" broadcasts.
+type WSMessageReacted struct {
+	ThreadID  string     `json:"thread_id"`
+	MessageID string     `json:"message_id"`
+	Reactions []Reaction `json:"reactions"`
+}

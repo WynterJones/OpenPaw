@@ -136,16 +136,23 @@ type ChatThread struct {
 }
 
 type ChatMessage struct {
-	ID            string    `json:"id"`
-	ThreadID      string    `json:"thread_id"`
-	Role          string    `json:"role"`
-	Content       string    `json:"content"`
-	AgentRoleSlug string    `json:"agent_role_slug"`
-	CostUSD       float64   `json:"cost_usd"`
-	InputTokens   int       `json:"input_tokens"`
-	OutputTokens  int       `json:"output_tokens"`
-	WidgetData    *string   `json:"widget_data,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            string     `json:"id"`
+	ThreadID      string     `json:"thread_id"`
+	Role          string     `json:"role"`
+	Content       string     `json:"content"`
+	AgentRoleSlug string     `json:"agent_role_slug"`
+	CostUSD       float64    `json:"cost_usd"`
+	InputTokens   int        `json:"input_tokens"`
+	OutputTokens  int        `json:"output_tokens"`
+	WidgetData    *string    `json:"widget_data,omitempty"`
+	Reactions     []Reaction `json:"reactions,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+type Reaction struct {
+	Emoji  string `json:"emoji"`
+	Source string `json:"source"`
+	Count  int    `json:"count"`
 }
 
 type Settings struct {
@@ -178,6 +185,7 @@ type AgentRole struct {
 	SystemPrompt         string    `json:"system_prompt"`
 	Model                string    `json:"model"`
 	AvatarPath           string    `json:"avatar_path"`
+	AvatarDescription    string    `json:"avatar_description"`
 	Enabled              bool      `json:"enabled"`
 	SortOrder            int       `json:"sort_order"`
 	IsPreset             bool      `json:"is_preset"`

@@ -65,6 +65,7 @@ export function AgentEdit() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [initializing, setInitializing] = useState(false);
+  const [describing, setDescribing] = useState(false);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -76,6 +77,7 @@ export function AgentEdit() {
   const [modelSearch, setModelSearch] = useState('');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [avatarPath, setAvatarPath] = useState('');
+  const [avatarDescription, setAvatarDescription] = useState('');
 
   // Top-level tab
   const [activeTab, setActiveTab] = useState<TopTab>('about');
@@ -184,6 +186,7 @@ export function AgentEdit() {
         setModel(data.model);
         setSystemPrompt(data.system_prompt);
         setAvatarPath(data.avatar_path);
+        setAvatarDescription(data.avatar_description || '');
         setFolder(data.folder || '');
 
         if (data.identity_initialized) {
@@ -233,6 +236,23 @@ export function AgentEdit() {
     }
   };
 
+  const handleAutoDescribe = async () => {
+    if (!avatarPath) {
+      toast('error', 'Select an avatar first');
+      return;
+    }
+    setDescribing(true);
+    try {
+      const result = await api.post<{ description: string }>('/agent-roles/describe-avatar', { avatar_path: avatarPath });
+      setAvatarDescription(result.description);
+      toast('success', 'Description generated');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to describe avatar');
+    } finally {
+      setDescribing(false);
+    }
+  };
+
   const handleFolderChange = async (newFolder: string) => {
     if (!slug) return;
     setFolder(newFolder);
@@ -259,6 +279,7 @@ export function AgentEdit() {
         system_prompt: systemPrompt,
         model,
         avatar_path: avatarPath,
+        avatar_description: avatarDescription.trim(),
         folder,
       });
       setRole(updated);
@@ -500,6 +521,7 @@ export function AgentEdit() {
     model !== role.model ||
     systemPrompt !== role.system_prompt ||
     avatarPath !== role.avatar_path ||
+    avatarDescription !== (role.avatar_description || '') ||
     folder !== (role.folder || '')
   );
 
@@ -668,6 +690,32 @@ export function AgentEdit() {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="w-full mt-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="avatar-description" className="block text-xs font-medium text-text-2">Visual Description</label>
+                    <button
+                      onClick={handleAutoDescribe}
+                      disabled={describing || !avatarPath}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-accent-primary hover:bg-accent-muted transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {describing ? (
+                        <div className="w-3 h-3 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3" />
+                      )}
+                      Auto-describe
+                    </button>
+                  </div>
+                  <textarea
+                    id="avatar-description"
+                    value={avatarDescription}
+                    onChange={e => setAvatarDescription(e.target.value)}
+                    placeholder="Describe what this agent looks like for image generation (e.g. 'A friendly orange tabby cat with green eyes wearing a tiny lab coat')"
+                    rows={3}
+                    className="block w-full rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 text-sm placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
+                  />
+                  <p className="text-[11px] text-text-3 mt-1">Used when the agent generates images of itself.</p>
                 </div>
               </div>
             </Card>

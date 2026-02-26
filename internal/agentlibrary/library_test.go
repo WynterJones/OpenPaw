@@ -2,6 +2,7 @@ package agentlibrary
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -76,10 +77,12 @@ func TestLoadRegistryModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRegistry() error: %v", err)
 	}
-	validModels := map[string]bool{"sonnet": true, "haiku": true, "opus": true}
+	legacyModels := map[string]bool{"sonnet": true, "haiku": true, "opus": true}
 	for _, agent := range agents {
-		if !validModels[agent.Model] {
-			t.Errorf("agent %q: invalid model %q (expected sonnet, haiku, or opus)", agent.Slug, agent.Model)
+		if agent.Model == "" {
+			t.Errorf("agent %q: model is empty", agent.Slug)
+		} else if !legacyModels[agent.Model] && !strings.Contains(agent.Model, "/") {
+			t.Errorf("agent %q: invalid model %q (expected legacy name or OpenRouter model ID)", agent.Slug, agent.Model)
 		}
 	}
 }

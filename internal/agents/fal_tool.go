@@ -32,6 +32,7 @@ func BuildGenerateImageDef(falAvailable bool) llm.ToolDef {
 			"provider": map[string]interface{}{"type": "string", "description": providerDesc, "enum": providerEnum},
 			"model":    map[string]interface{}{"type": "string", "description": "Model override. For fal: flux-dev, flux-schnell, flux-pro. Leave empty for default."},
 			"size":     map[string]interface{}{"type": "string", "description": "Image size. For gemini: 1024x1024, 1536x1024, 1024x1536. For fal: square_hd, landscape_16_9, portrait_16_9, etc."},
+			"images":   map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional array of input image URLs for reference. Use local paths like /api/v1/media/{id}/file for media library images, /api/v1/uploads/avatars/{filename} for uploaded avatars, or /avatars/avatar-N.webp for preset avatars. The model will use these as visual reference alongside your text prompt."},
 		},
 		"required": []string{"prompt"},
 	})
@@ -53,10 +54,11 @@ func BuildGenerateImageFalDef() llm.ToolDef {
 func (m *Manager) makeGenerateImageHandler() llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var req struct {
-			Prompt   string `json:"prompt"`
-			Provider string `json:"provider"`
-			Model    string `json:"model"`
-			Size     string `json:"size"`
+			Prompt   string   `json:"prompt"`
+			Provider string   `json:"provider"`
+			Model    string   `json:"model"`
+			Size     string   `json:"size"`
+			Images   []string `json:"images"`
 		}
 		if err := json.Unmarshal(input, &req); err != nil {
 			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
@@ -74,7 +76,7 @@ func (m *Manager) makeGenerateImageHandler() llm.ToolHandler {
 		case "fal":
 			return m.generateImageFal(ctx, req.Prompt, req.Model, req.Size)
 		default:
-			return m.generateImageGemini(ctx, req.Prompt, req.Model, req.Size)
+			return m.generateImageGemini(ctx, req.Prompt, req.Model, req.Size, req.Images)
 		}
 	}
 }
@@ -84,19 +86,29 @@ func (m *Manager) makeGenerateImageFalHandler() llm.ToolHandler {
 	return m.makeGenerateImageHandler()
 }
 
-func (m *Manager) generateImageGemini(ctx context.Context, prompt, model, size string) llm.ToolResult {
+func (m *Manager) generateImageGemini(ctx context.Context, prompt, model, size string, images []string) llm.ToolResult {
 	if m.client == nil || !m.client.IsConfigured() {
 		return llm.ToolResult{Output: "OpenRouter API key not configured. Set it up in Settings.", IsError: true}
 	}
 
 	if model == "" {
-		model = "google/gemini-2.5-flash-image"
+		model = "google/gemini-2.5-flash-image-preview"
 	}
 	if size == "" {
 		size = "1024x1024"
 	}
 
-	result, err := m.client.GenerateImage(ctx, model, prompt, size)
+	// Resolve local image URLs to base64 data URIs
+	var resolvedImages []string
+	for _, img := range images {
+		resolved, err := llm.ResolveImageToBase64(m.DataDir, img)
+		if err != nil {
+			return llm.ToolResult{Output: "Failed to resolve image " + img + ": " + err.Error(), IsError: true}
+		}
+		resolvedImages = append(resolvedImages, resolved)
+	}
+
+	result, err := m.client.GenerateImage(ctx, model, prompt, size, resolvedImages)
 	if err != nil {
 		return llm.ToolResult{Output: "Image generation failed: " + err.Error(), IsError: true}
 	}

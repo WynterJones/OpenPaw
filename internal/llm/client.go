@@ -203,6 +203,43 @@ func (c *Client) doRequest(ctx context.Context, reqBody ChatCompletionRequest) (
 	return &result, nil
 }
 
+// doRawRequest sends a non-streaming POST with pre-marshaled JSON body to chat completions.
+// Used for multimodal requests where the content field is an array rather than a string.
+func (c *Client) doRawRequest(ctx context.Context, body []byte) (*ChatCompletionResponse, error) {
+	key := c.getAPIKey()
+	if key == "" {
+		return nil, fmt.Errorf("API client not configured")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("HTTP-Referer", "https://openpaw.dev")
+	req.Header.Set("X-Title", "OpenPaw")
+
+	resp, err := c.nonStreamingClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(errBody))
+	}
+
+	var result ChatCompletionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // ChatCompletionResponse is the response from the chat completions endpoint.
 type ChatCompletionResponse struct {
 	ID      string `json:"id"`

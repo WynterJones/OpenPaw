@@ -19,16 +19,17 @@ import (
 var catalogFS embed.FS
 
 type CatalogAgent struct {
-	Slug       string   `json:"slug"`
-	Name       string   `json:"name"`
-	Description string  `json:"description"`
-	Version    string   `json:"version"`
-	Category   string   `json:"category"`
-	Icon       string   `json:"icon"`
-	Tags       []string `json:"tags"`
-	Model      string   `json:"model"`
-	AvatarPath string   `json:"avatar_path"`
-	Installed  bool     `json:"installed"`
+	Slug              string   `json:"slug"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	Version           string   `json:"version"`
+	Category          string   `json:"category"`
+	Icon              string   `json:"icon"`
+	Tags              []string `json:"tags"`
+	Model             string   `json:"model"`
+	AvatarPath        string   `json:"avatar_path"`
+	AvatarDescription string   `json:"avatar_description"`
+	Installed         bool     `json:"installed"`
 }
 
 func LoadRegistry() ([]CatalogAgent, error) {
@@ -106,9 +107,9 @@ func InstallAgent(db *database.DB, slug, dataDir string) (string, error) {
 	// Insert the agent_roles record
 	now := time.Now().UTC()
 	_, err = db.Exec(
-		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, library_slug, library_version, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?, ?, ?)`,
-		id, slug, cat.Name, cat.Description, "", cat.Model, cat.AvatarPath, sortOrder, cat.Slug, cat.Version, now, now,
+		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, library_slug, library_version, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?, ?, ?)`,
+		id, slug, cat.Name, cat.Description, "", cat.Model, cat.AvatarPath, cat.AvatarDescription, sortOrder, cat.Slug, cat.Version, now, now,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert agent_roles record: %w", err)

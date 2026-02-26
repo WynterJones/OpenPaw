@@ -17,6 +17,12 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	agentList := m.buildAgentList()
 	gatewayPrompt := GatewayRoutingPromptFor(m.GatewayName())
 
+	// Inject gateway identity (SOUL, USER, GOAL, memory)
+	gatewayIdentity := AssembleGatewayContext(m.DataDir, m.MemoryMgr)
+	if gatewayIdentity != "" {
+		gatewayPrompt = gatewayIdentity + "\n\n---\n\n" + gatewayPrompt
+	}
+
 	// Inject current date/time
 	gatewayPrompt += fmt.Sprintf("\n\n## CURRENT TIME\n%s\n", time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"))
 
@@ -182,12 +188,13 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 // RoleChatTools are the tools available to agents with identity files.
 var RoleChatTools = []string{"Read", "Write", "Edit"}
 
-func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug string) (string, *llm.UsageInfo, string, error) {
+func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, error) {
 	resolvedModel := llm.ResolveModel(model, llm.ModelSonnet)
 
 	// Build history messages for multi-turn conversation.
 	// Messages from OTHER agents are re-attributed as user-role context so the
 	// current agent doesn't mistakenly think it authored them.
+	// Each message is prefixed with [msg_id:xxx] so agents can reference them for reactions.
 	var historyMsgs []llm.HistoryMessage
 	for _, msg := range history {
 		role := msg.Role
@@ -197,6 +204,10 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		}
 		if role != "user" && role != "assistant" {
 			continue
+		}
+		// Prepend message ID so agents can reference messages for reactions
+		if msg.ID != "" {
+			content = fmt.Sprintf("[msg_id:%s]\n%s", msg.ID, content)
 		}
 		// If an assistant message came from a different agent, present it as
 		// third-party context so the current agent knows it didn't say this.
@@ -244,6 +255,17 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			}
 			if threadID == "" {
 				return
+			}
+			// Accumulate stream state for recovery when switching threads
+			switch ev.Type {
+			case EventTextDelta:
+				if ev.Text != "" {
+					m.UpdateStreamText(threadID, agentRoleSlug, ev.Text)
+				}
+			case EventToolStart:
+				m.UpdateStreamTool(threadID, StreamTool{Name: ev.ToolName, ID: ev.ToolID, Done: false})
+			case EventToolEnd:
+				m.UpdateStreamTool(threadID, StreamTool{Name: ev.ToolName, ID: ev.ToolID, Done: true})
 			}
 			m.broadcast("agent_stream", map[string]interface{}{
 				"thread_id":       threadID,
@@ -311,7 +333,20 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		if falAvailable {
 			falNote = " You also have access to FAL FLUX models — but ONLY use provider 'fal' when the user explicitly requests FAL or FLUX."
 		}
-		cfg.System += "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses Gemini Flash by default." + falNote + "\n"
+		cfg.System += "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses Gemini Flash by default. The tool supports an `images` parameter — pass local image URLs as visual references." + falNote + "\n"
+		if avatarDescription != "" || avatarPath != "" {
+			cfg.System += fmt.Sprintf("\n## YOUR VISUAL IDENTITY\nYour name is %s.", agentName)
+			if avatarDescription != "" {
+				cfg.System += " " + avatarDescription
+			}
+			if avatarPath != "" {
+				cfg.System += fmt.Sprintf("\nYour avatar image is available at: %s", avatarPath)
+				cfg.System += "\nWhen asked to create images of yourself, use the generate_image tool with your avatar URL in the images array for visual reference, combined with your description in the prompt."
+			} else if avatarDescription != "" {
+				cfg.System += "\nWhen asked to create images of yourself, incorporate this description into your image prompt."
+			}
+			cfg.System += "\n"
+		}
 	}
 
 	// Inject delegate_task if other agents are available for delegation
@@ -324,6 +359,16 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers["delegate_task"] = m.makeDelegateTaskHandler(threadID, agentRoleSlug)
 		cfg.System += "\n\n" + buildDelegationPromptSection(availableAgents)
 	}
+
+	// Inject reaction tools so agents can react to messages with emoji
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildReactionToolDefs()...)
+	if cfg.ExtraHandlers == nil {
+		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+	}
+	for name, handler := range MakeReactionToolHandlers(m.db, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+	cfg.System += "\n\n" + buildReactionPromptSection()
 
 	result, err := m.client.RunAgentLoop(ctx, cfg, userMessage)
 	if err != nil {
@@ -363,12 +408,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
 func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (response, usedThreadID string, err error) {
-	var systemPrompt, model string
+	var systemPrompt, model, agentName, avatarDescription, avatarPath string
 	var identityInitialized bool
 	err = m.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized)
+	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath)
 	if err != nil {
 		return "", "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
 	}
@@ -419,7 +464,7 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 		}
 	}
 
-	result, usage, _, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug)
+	result, usage, _, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug, agentName, avatarDescription, avatarPath)
 	if chatErr != nil {
 		return "", threadID, fmt.Errorf("scheduled prompt failed: %w", chatErr)
 	}

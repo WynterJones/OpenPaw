@@ -325,7 +325,7 @@ func (m *Manager) makeCallToolHandler() llm.ToolHandler {
 			payload = []byte(params.Payload)
 		}
 
-		result, err := m.ToolMgr.CallTool(params.ToolID, params.Endpoint, payload)
+		result, err := m.ToolMgr.CallToolWithContext(ctx, params.ToolID, params.Endpoint, payload)
 		if err != nil {
 			return llm.ToolResult{Output: "Tool call failed: " + err.Error(), IsError: true}
 		}

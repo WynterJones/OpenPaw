@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type HistoryMessage struct {
@@ -206,7 +207,30 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 				ToolInput: toolInput,
 			})
 
+			// Run tool execution with a progress ticker for long-running calls
+			progressDone := make(chan struct{})
+			go func() {
+				ticker := time.NewTicker(10 * time.Second)
+				defer ticker.Stop()
+				elapsed := 0
+				for {
+					select {
+					case <-ticker.C:
+						elapsed += 10
+						emit(StreamEvent{
+							Type:     EventToolDelta,
+							ToolName: tc.Function.Name,
+							ToolID:   tc.ID,
+							Text:     fmt.Sprintf("[still running... %ds elapsed]", elapsed),
+						})
+					case <-progressDone:
+						return
+					}
+				}
+			}()
+
 			result := executor.Execute(ctx, tc.Function.Name, inputJSON)
+			close(progressDone)
 
 			emit(StreamEvent{
 				Type:       EventToolEnd,
@@ -218,6 +242,10 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 			// Strip large base64 data before adding to LLM context.
 			// The widget collector already captured the full output via OnEvent.
 			llmContent := StripBinaryFields(result.Output)
+
+			// Truncate large current-turn tool output to prevent context flooding.
+			// The widget collector already captured the full output via OnEvent.
+			llmContent = truncateToolOutput(llmContent, 8192)
 
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
@@ -346,4 +374,19 @@ func StripBinaryFields(output string) string {
 		return output
 	}
 	return string(b)
+}
+
+// truncateToolOutput caps tool output size for the LLM context window.
+// Keeps the first headBytes and last tailBytes with a truncation notice in between.
+// The full output is already captured by the widget collector via OnEvent.
+func truncateToolOutput(output string, maxBytes int) string {
+	if len(output) <= maxBytes {
+		return output
+	}
+	headBytes := maxBytes * 2 / 3 // ~5.3KB of 8KB
+	tailBytes := maxBytes / 4     // ~2KB of 8KB
+	truncatedKB := (len(output) - headBytes - tailBytes) / 1024
+	return output[:headBytes] +
+		fmt.Sprintf("\n\n...[truncated %dKB of tool output for context management — full output displayed in widget]...\n\n", truncatedKB) +
+		output[len(output)-tailBytes:]
 }

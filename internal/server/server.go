@@ -105,7 +105,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
-	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir)
+	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	skillsHandler := handlers.NewSkillsHandler(dataDir)
@@ -280,6 +280,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/", agentRolesHandler.List)
 				r.Post("/", agentRolesHandler.Create)
 				r.Post("/upload-avatar", agentRolesHandler.UploadAvatar)
+				r.Post("/describe-avatar", agentRolesHandler.DescribeAvatar)
 				// Task counts across all agents (before {slug} to avoid conflict)
 				r.Get("/task-counts", agentTasksHandler.AllCounts)
 				// Gateway file endpoints (before {slug} to avoid conflict)
@@ -355,6 +356,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/threads/{id}/stop", chatHandler.StopThread)
 				r.Get("/threads/{id}/members", chatHandler.ListThreadMembers)
 				r.Delete("/threads/{id}/members/{slug}", chatHandler.RemoveThreadMember)
+				r.Post("/messages/{messageId}/reactions", chatHandler.ToggleReaction)
 			})
 
 			// Context

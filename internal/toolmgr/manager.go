@@ -384,7 +384,9 @@ func (m *Manager) WaitForHealth(toolID string, timeout time.Duration) error {
 	return fmt.Errorf("health check timed out after %v", timeout)
 }
 
-func (m *Manager) CallTool(toolID, endpoint string, payload []byte) ([]byte, error) {
+// CallToolWithContext calls a tool endpoint with context propagation, allowing
+// the caller to cancel in-flight HTTP requests (e.g. when a chat thread is stopped).
+func (m *Manager) CallToolWithContext(ctx context.Context, toolID, endpoint string, payload []byte) ([]byte, error) {
 	m.mu.RLock()
 	rt, exists := m.tools[toolID]
 	m.mu.RUnlock()
@@ -404,7 +406,7 @@ func (m *Manager) CallTool(toolID, endpoint string, payload []byte) ([]byte, err
 		method = "POST"
 	}
 
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -428,6 +430,11 @@ func (m *Manager) CallTool(toolID, endpoint string, payload []byte) ([]byte, err
 	}
 
 	return respBody, nil
+}
+
+// CallTool calls a tool endpoint without context propagation (backward compat).
+func (m *Manager) CallTool(toolID, endpoint string, payload []byte) ([]byte, error) {
+	return m.CallToolWithContext(context.Background(), toolID, endpoint, payload)
 }
 
 type ProxyResponse struct {

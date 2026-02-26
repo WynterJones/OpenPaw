@@ -360,6 +360,7 @@ export function Chat() {
 
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [activeThreadIds, setActiveThreadIds] = useState<Set<string>>(new Set());
+  const [unreadThreadIds, setUnreadThreadIds] = useState<Set<string>>(new Set());
   const [threadStats, setThreadStats] = useState<ThreadStats | null>(null);
   const [compacting, setCompacting] = useState(false);
   const [showCompactConfirm, setShowCompactConfirm] = useState(false);
@@ -421,12 +422,34 @@ export function Chat() {
       loadMembers(threadId);
     }
 
+    // Live-update emoji reactions
+    if (msg.type === 'message_reacted' && isActiveThread) {
+      const messageId = payload?.message_id as string;
+      const reactions = payload?.reactions as { emoji: string; source: string; count: number }[] | undefined;
+      if (messageId) {
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: reactions || [] } : m));
+      }
+    }
+
     // Live-update todo lists when agents modify them
     if (msg.type === 'todo_updated') {
       loadTodoLists();
       const listId = payload?.list_id as string;
       if (listId && todoExpandedListRef.current === listId) {
         loadTodoItems(listId);
+      }
+    }
+
+    // Track unread messages for non-active threads
+    if (!isActiveThread && threadId) {
+      if (msg.type === 'agent_status') {
+        const status = payload?.status as string;
+        if (status === 'message_saved' || status === 'done') {
+          setUnreadThreadIds(prev => { const next = new Set(prev); next.add(threadId); return next; });
+        }
+      }
+      if (msg.type === 'agent_completed') {
+        setUnreadThreadIds(prev => { const next = new Set(prev); next.add(threadId); return next; });
       }
     }
 
@@ -670,6 +693,12 @@ export function Chat() {
     setActiveAgentSlug(null);
 
     if (activeThread) {
+      // Clear unread indicator when switching to a thread
+      setUnreadThreadIds(prev => {
+        if (!prev.has(activeThread)) return prev;
+        const next = new Set(prev); next.delete(activeThread); return next;
+      });
+
       // Immediately clear stale sidebar indicator; status check / WebSocket will restore if truly active
       setActiveThreadIds(prev => {
         if (!prev.has(activeThread)) return prev;
@@ -754,6 +783,12 @@ export function Chat() {
   const removeMember = async (slug: string) => {
     if (!activeThread) return;
     try { await threadMembers.remove(activeThread, slug); loadMembers(activeThread); } catch (e) { console.warn('removeMember failed:', e); }
+  };
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      const data = await api.post<{ message_id: string; reactions: { emoji: string; source: string; count: number }[] }>(`/chat/messages/${messageId}/reactions`, { emoji });
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: data.reactions } : m));
+    } catch (e) { console.warn('handleReaction failed:', e); }
   };
 
   const loadTodoLists = async () => {
@@ -1014,7 +1049,7 @@ export function Chat() {
             {pagedThreads.length === 0 ? (
               <div className="text-center py-8 text-sm text-text-3">No chats yet</div>
             ) : pagedThreads.map(thread => (
-              <div key={thread.id} aria-current={activeThread === thread.id ? 'true' : undefined} className={`group relative rounded-lg transition-colors ${activeThread === thread.id ? 'bg-accent-muted text-accent-text' : 'text-text-1 hover:bg-surface-2'}`}>
+              <div key={thread.id} aria-current={activeThread === thread.id ? 'true' : undefined} className={`group relative rounded-lg transition-colors ${activeThread === thread.id ? 'bg-accent-muted text-accent-text' : unreadThreadIds.has(thread.id) && !activeThreadIds.has(thread.id) ? 'bg-accent-primary/5 text-text-0 hover:bg-accent-primary/10' : 'text-text-1 hover:bg-surface-2'}`}>
                 {editingThread === thread.id ? (
                   <div className="flex items-center gap-1 px-2 py-2">
                     <input
@@ -1035,14 +1070,18 @@ export function Chat() {
                     <button onClick={() => { setActiveThread(thread.id); setShowThreads(false); }}
                       className="w-full text-left px-3 py-2.5 cursor-pointer pr-16">
                       <div className="flex items-center gap-2">
-                        {activeThreadIds.has(thread.id) && (
+                        {activeThreadIds.has(thread.id) ? (
                           <Loader2 className="w-4 h-4 flex-shrink-0 text-accent-primary animate-spin" />
-                        )}
+                        ) : unreadThreadIds.has(thread.id) && activeThread !== thread.id ? (
+                          <span className="w-2 h-2 flex-shrink-0 rounded-full bg-accent-primary" />
+                        ) : null}
                         <span className="text-sm font-medium truncate">{thread.title}</span>
                       </div>
                       <p className="text-xs text-text-3 mt-0.5">
                         {activeThreadIds.has(thread.id)
                           ? <span className="text-accent-primary">Working...</span>
+                          : unreadThreadIds.has(thread.id) && activeThread !== thread.id
+                          ? <span className="text-accent-primary/70">New messages</span>
                           : <>
                               {timeAgo(thread.updated_at)}
                               {thread.total_cost_usd > 0 && <span className="ml-2 text-text-3/70">${thread.total_cost_usd < 0.01 ? thread.total_cost_usd.toFixed(4) : thread.total_cost_usd.toFixed(2)}</span>}
@@ -1218,7 +1257,7 @@ export function Chat() {
                     )}
                   </div>
                 )}
-                {messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} />)}
+                {messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} onReact={handleReaction} />)}
                 {isStreaming && (
                   <StreamingMessage
                     text={streamingText}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/logger"
-	"github.com/openpaw/openpaw/internal/memory"
 )
 
 // Identity file names
@@ -65,8 +64,11 @@ var defaultTemplates = map[string]string{
 - Ask clarifying questions when requirements are ambiguous
 
 ## Response Style
-- Match the user's energy and formality level
-- Use markdown formatting when it aids readability
+- Talk like a colleague, not a textbook
+- Keep responses short: 1-3 sentences for simple questions, a few short paragraphs max for complex ones
+- Match the length and energy of the user's message
+- No bullet-point walls — use prose unless a list genuinely helps
+- Skip filler like "Great question!" or "Absolutely!"
 
 ## Lessons Learned
 (Update this section as you discover what works and what doesn't.)
@@ -114,6 +116,19 @@ var defaultGatewayBootstrap = `# Bootstrap
 
 First-time setup mode. Gather information from the user to personalize the gateway.
 `
+
+// conversationalDirective is injected into ALL agent system prompts (both specialist and gateway)
+// to ensure conversational, human-like responses regardless of the agent's RUNBOOK content.
+const conversationalDirective = `## COMMUNICATION STYLE (MANDATORY)
+
+Be conversational. You are chatting with a human, not writing documentation.
+
+- SHORT replies by default. 1-3 sentences for simple questions. A few short paragraphs max.
+- Match the user's length and tone. If they send one line, reply in one line.
+- Use prose, not bullet-point walls. Lists are for actual lists, not for padding.
+- No corporate filler: skip "Great question!", "Certainly!", "Absolutely!", "I'd be happy to help!"
+- If you don't know, say so in one sentence.
+- Talk like a smart colleague sitting next to them, not like a manual.`
 
 // AgentDir computes the agent directory path.
 func AgentDir(dataDir, slug string) string {
@@ -334,6 +349,9 @@ Your memories are stored in a database. Use the memory_* tools to save, search, 
 **File access is sandboxed to this directory ONLY.** You cannot read, write, or execute files anywhere else on the computer.
 If a user asks you to create files, build a project, or work on code in another directory, you MUST use a coding CLI tool (Claude Code, Codex, or Gemini CLI) via call_tool — do NOT attempt direct file operations outside your workspace.`, agentDir))
 
+	// Conversational directive — always injected last so it takes precedence
+	parts = append(parts, conversationalDirective)
+
 	if len(parts) == 0 {
 		return "", fmt.Errorf("no identity files found for agent: %s", slug)
 	}
@@ -520,7 +538,7 @@ func ListGatewayMemoryFiles(dataDir string) ([]MemoryFile, error) {
 }
 
 // AssembleGatewayContext reads gateway identity files and returns a formatted context string.
-func AssembleGatewayContext(dataDir string, memMgr *memory.Manager) string {
+func AssembleGatewayContext(dataDir string, memMgr MemoryManager) string {
 	dir := GatewayDirPath(dataDir)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return ""
@@ -554,6 +572,9 @@ func AssembleGatewayContext(dataDir string, memMgr *memory.Manager) string {
 			parts = append(parts, "## YOUR MEMORY\n\n"+strings.TrimSpace(string(content)))
 		}
 	}
+
+	// Conversational directive for gateway too
+	parts = append(parts, conversationalDirective)
 
 	if len(parts) == 0 {
 		return ""

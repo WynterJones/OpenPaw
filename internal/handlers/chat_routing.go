@@ -338,12 +338,12 @@ const maxMentionDepth = 3
 
 func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, projectCtx *agents.ProjectContext, extraCostUSD ...float64) {
 	// Look up the role from the database
-	var systemPrompt, model string
+	var systemPrompt, model, agentName, avatarDescription, avatarPath string
 	var identityInitialized bool
 	err := h.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentRoleSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized)
+	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath)
 	if err != nil {
 		h.saveAssistantMessage(threadID, agentRoleSlug, "I'm sorry, I couldn't find that agent role or it's disabled.", 0, 0, 0)
 		h.broadcastStatus(threadID, "done", "")
@@ -398,9 +398,14 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		history = history[:len(history)-1]
 	}
 
-	response, usage, widgetJSON, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, content, threadID, agentDir, agentRoleSlug)
+	response, usage, widgetJSON, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, content, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
 	if err != nil {
-		h.saveAssistantMessage(threadID, agentRoleSlug, "I'm sorry, I encountered an error: "+err.Error(), 0, 0, 0)
+		h.agentManager.ClearStreamState(threadID)
+		errMsg := "I'm sorry, I encountered an error: " + err.Error()
+		if ctx.Err() == context.DeadlineExceeded {
+			errMsg = "The operation timed out. This usually happens with long-running coding tasks. You can say **continue** to pick up where I left off, or adjust the timeout in Settings."
+		}
+		h.saveAssistantMessage(threadID, agentRoleSlug, errMsg, 0, 0, 0)
 		h.broadcastStatus(threadID, "done", "")
 		return
 	}
@@ -417,6 +422,8 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		costUSD += extraCostUSD[0]
 	}
 	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON)
+
+	h.agentManager.ClearStreamState(threadID)
 
 	// Notify frontend the message is saved before clearing streaming state
 	h.broadcastStatus(threadID, "message_saved", "")
@@ -613,7 +620,7 @@ func (h *ChatHandler) fetchThreadHistory(threadID string, limits ...int) []agent
 	}
 	rows, err := h.db.Query(
 		fmt.Sprintf(
-			"SELECT role, content, agent_role_slug FROM (SELECT role, content, agent_role_slug, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at DESC LIMIT %d) sub ORDER BY created_at ASC",
+			"SELECT id, role, content, agent_role_slug FROM (SELECT id, role, content, agent_role_slug, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at DESC LIMIT %d) sub ORDER BY created_at ASC",
 			limit,
 		),
 		threadID,
@@ -625,11 +632,11 @@ func (h *ChatHandler) fetchThreadHistory(threadID string, limits ...int) []agent
 
 	var msgs []agents.ThreadMessage
 	for rows.Next() {
-		var role, content, agentSlug string
-		if err := rows.Scan(&role, &content, &agentSlug); err != nil {
+		var id, role, content, agentSlug string
+		if err := rows.Scan(&id, &role, &content, &agentSlug); err != nil {
 			continue
 		}
-		msgs = append(msgs, agents.ThreadMessage{Role: role, Content: content, AgentSlug: agentSlug})
+		msgs = append(msgs, agents.ThreadMessage{ID: id, Role: role, Content: content, AgentSlug: agentSlug})
 	}
 
 	return msgs

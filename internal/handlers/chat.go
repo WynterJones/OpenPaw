@@ -196,7 +196,10 @@ func (h *ChatHandler) DeleteThread(w http.ResponseWriter, r *http.Request) {
 	// Archive cost/token stats before deletion
 	archiveThreadCosts(h.db, id)
 
-	// Delete members, messages, then the thread
+	// Delete reactions, members, messages, then the thread
+	if _, err := h.db.Exec("DELETE FROM chat_message_reactions WHERE message_id IN (SELECT id FROM chat_messages WHERE thread_id = ?)", id); err != nil {
+		logger.Error("Failed to delete thread reactions: %v", err)
+	}
 	if _, err := h.db.Exec("DELETE FROM thread_members WHERE thread_id = ?", id); err != nil {
 		logger.Error("Failed to delete thread members: %v", err)
 	}
@@ -314,6 +317,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	messages := []models.ChatMessage{}
+	var messageIDs []string
 	for rows.Next() {
 		var m models.ChatMessage
 		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.CreatedAt); err != nil {
@@ -321,7 +325,39 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		messages = append(messages, m)
+		messageIDs = append(messageIDs, m.ID)
 	}
+
+	// Batch-load reactions for all messages
+	if len(messageIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(messageIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]interface{}, len(messageIDs))
+		for i, id := range messageIDs {
+			args[i] = id
+		}
+		rRows, err := h.db.Query(
+			fmt.Sprintf("SELECT message_id, emoji, source, COUNT(*) as count FROM chat_message_reactions WHERE message_id IN (%s) GROUP BY message_id, emoji, source ORDER BY MIN(created_at) ASC", placeholders),
+			args...,
+		)
+		if err == nil {
+			defer rRows.Close()
+			reactionMap := make(map[string][]models.Reaction)
+			for rRows.Next() {
+				var msgID string
+				var r models.Reaction
+				if rRows.Scan(&msgID, &r.Emoji, &r.Source, &r.Count) == nil {
+					reactionMap[msgID] = append(reactionMap[msgID], r)
+				}
+			}
+			for i := range messages {
+				if rxns, ok := reactionMap[messages[i].ID]; ok {
+					messages[i].Reactions = rxns
+				}
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, messages)
 }
 
@@ -616,6 +652,88 @@ func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content stri
 	return id
 }
 
+func (h *ChatHandler) ToggleReaction(w http.ResponseWriter, r *http.Request) {
+	messageID := chi.URLParam(r, "messageId")
+
+	var req struct {
+		Emoji  string `json:"emoji"`
+		Source string `json:"source"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Emoji == "" {
+		writeError(w, http.StatusBadRequest, "emoji is required")
+		return
+	}
+	if req.Source == "" {
+		req.Source = "user"
+	}
+
+	// Verify message exists and get thread ID
+	var threadID string
+	if err := h.db.QueryRow("SELECT thread_id FROM chat_messages WHERE id = ?", messageID).Scan(&threadID); err != nil {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+
+	// Toggle: check if reaction exists
+	var existingID string
+	err := h.db.QueryRow(
+		"SELECT id FROM chat_message_reactions WHERE message_id = ? AND emoji = ? AND source = ?",
+		messageID, req.Emoji, req.Source,
+	).Scan(&existingID)
+
+	if err == nil {
+		// Exists — delete it
+		h.db.Exec("DELETE FROM chat_message_reactions WHERE id = ?", existingID)
+	} else {
+		// Doesn't exist — insert
+		id := generateID()
+		h.db.Exec(
+			"INSERT INTO chat_message_reactions (id, message_id, emoji, source) VALUES (?, ?, ?, ?)",
+			id, messageID, req.Emoji, req.Source,
+		)
+	}
+
+	// Load updated reactions for this message
+	reactions := h.loadReactionsForMessage(messageID)
+
+	// Broadcast via WebSocket
+	h.agentManager.Broadcast("message_reacted", models.WSMessageReacted{
+		ThreadID:  threadID,
+		MessageID: messageID,
+		Reactions: reactions,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message_id": messageID,
+		"reactions":  reactions,
+	})
+}
+
+func (h *ChatHandler) loadReactionsForMessage(messageID string) []models.Reaction {
+	rows, err := h.db.Query(
+		"SELECT emoji, source, COUNT(*) as count FROM chat_message_reactions WHERE message_id = ? GROUP BY emoji, source ORDER BY MIN(created_at) ASC",
+		messageID,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var reactions []models.Reaction
+	for rows.Next() {
+		var r models.Reaction
+		if err := rows.Scan(&r.Emoji, &r.Source, &r.Count); err != nil {
+			continue
+		}
+		reactions = append(reactions, r)
+	}
+	return reactions
+}
+
 func (h *ChatHandler) isConfirmationEnabled() bool {
 	var val string
 	err := h.db.QueryRow("SELECT value FROM settings WHERE key = 'confirmation_enabled'").Scan(&val)
@@ -659,6 +777,8 @@ func (h *ChatHandler) StopThread(w http.ResponseWriter, r *http.Request) {
 		h.saveAssistantMessage(threadID, "", "Stopped.", 0, 0, 0)
 		h.broadcastStatus(threadID, "message_saved", "")
 	}
+
+	h.agentManager.ClearStreamState(threadID)
 
 	// Always broadcast done to reset the frontend
 	h.broadcastStatus(threadID, "done", "")

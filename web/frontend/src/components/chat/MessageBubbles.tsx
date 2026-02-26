@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DollarSign, Zap, Users, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask } from '../../lib/api';
+import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
 import { parseConfirmation, parseToolSummary, parseWidgets } from '../../lib/api';
 import { cleanToolColons, type StreamingTool, type CostInfo } from '../../lib/chatUtils';
 import { mentionComponents } from './MentionSystem';
@@ -10,6 +10,30 @@ import { ToolActivityPanel, StreamingToolPanel } from './ToolPanels';
 import { ConfirmationCardUI, ToolSummaryCardUI } from './Cards';
 import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { SubAgentPanel } from './SubAgentPanel';
+import { EmojiPicker } from './EmojiPicker';
+
+function ReactionBar({ reactions, onReact }: { reactions?: Reaction[]; onReact: (emoji: string) => void }) {
+  return (
+    <div className="flex items-center gap-1 mt-1 px-1 flex-wrap">
+      {reactions && reactions.length > 0 && reactions.map((r) => (
+        <button
+          key={`${r.emoji}-${r.source}`}
+          onClick={() => onReact(r.emoji)}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border cursor-pointer transition-colors ${
+            r.source === 'user'
+              ? 'bg-accent-muted border-accent-primary text-accent-primary'
+              : 'bg-surface-2 border-border-1 text-text-2'
+          } hover:bg-surface-2`}
+        >
+          <span>{r.emoji}</span>
+          {r.count > 1 && <span>{r.count}</span>}
+          {r.source !== 'user' && <span className="text-[9px] text-text-3">@{r.source}</span>}
+        </button>
+      ))}
+      <EmojiPicker onSelect={onReact} />
+    </div>
+  );
+}
 
 export function StreamingMessage({ text, tools, cost, role, roles, widgets, subAgentTasks }: {
   text: string;
@@ -69,7 +93,7 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   );
 }
 
-function UserMessageBubble({ message, roles, avatarPath }: { message: ChatMessage; roles: AgentRole[]; avatarPath?: string }) {
+function UserMessageBubble({ message, roles, avatarPath, onReact }: { message: ChatMessage; roles: AgentRole[]; avatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -105,6 +129,7 @@ function UserMessageBubble({ message, roles, avatarPath }: { message: ChatMessag
             </button>
           )}
         </div>
+        <ReactionBar reactions={message.reactions} onReact={(emoji) => onReact?.(message.id, emoji)} />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3 justify-end">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
@@ -113,11 +138,11 @@ function UserMessageBubble({ message, roles, avatarPath }: { message: ChatMessag
   );
 }
 
-export function MessageBubble({ message, roles, onRefresh, userAvatarPath }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string }) {
+export function MessageBubble({ message, roles, onRefresh, userAvatarPath, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
   const isUser = message.role === 'user';
   const role = message.agent_role_slug ? roles.find(r => r.slug === message.agent_role_slug) : null;
 
-  if (isUser) return <UserMessageBubble message={message} roles={roles} avatarPath={userAvatarPath} />;
+  if (isUser) return <UserMessageBubble message={message} roles={roles} avatarPath={userAvatarPath} onReact={onReact} />;
 
   const confirmation = parseConfirmation(message.content);
   const toolSummary = !confirmation ? parseToolSummary(message.content) : null;
@@ -179,6 +204,7 @@ export function MessageBubble({ message, roles, onRefresh, userAvatarPath }: { m
             )}
           </>
         )}
+        <ReactionBar reactions={message.reactions} onReact={(emoji) => onReact?.(message.id, emoji)} />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {message.cost_usd > 0 && (

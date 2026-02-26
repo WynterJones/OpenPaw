@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,17 +15,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/database"
+	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
 )
 
 type AgentRolesHandler struct {
-	db      *database.DB
-	dataDir string
+	db        *database.DB
+	dataDir   string
+	llmClient *llm.Client
 }
 
-func NewAgentRolesHandler(db *database.DB, dataDir string) *AgentRolesHandler {
-	return &AgentRolesHandler{db: db, dataDir: dataDir}
+func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client) *AgentRolesHandler {
+	return &AgentRolesHandler{db: db, dataDir: dataDir, llmClient: llmClient}
 }
 
 var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -32,7 +35,7 @@ var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
 
-	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles"
+	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles"
 	if enabledOnly {
 		query += " WHERE enabled = 1"
 	}
@@ -48,7 +51,7 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	roles := []models.AgentRole{}
 	for rows.Next() {
 		var role models.AgentRole
-		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan agent role")
 			return
 		}
@@ -62,9 +65,9 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	var role models.AgentRole
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt)
+	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -74,12 +77,13 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name         string `json:"name"`
-		Slug         string `json:"slug"`
-		Description  string `json:"description"`
-		SystemPrompt string `json:"system_prompt"`
-		Model        string `json:"model"`
-		AvatarPath   string `json:"avatar_path"`
+		Name              string `json:"name"`
+		Slug              string `json:"slug"`
+		Description       string `json:"description"`
+		SystemPrompt      string `json:"system_prompt"`
+		Model             string `json:"model"`
+		AvatarPath        string `json:"avatar_path"`
+		AvatarDescription string `json:"avatar_description"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -117,10 +121,10 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err = h.db.Exec(
-		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?)`,
+		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?)`,
 		id, req.Slug, req.Name, req.Description, req.SystemPrompt, req.Model,
-		req.AvatarPath, maxSort+1, now, now,
+		req.AvatarPath, req.AvatarDescription, maxSort+1, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create agent role")
@@ -140,6 +144,7 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:        req.SystemPrompt,
 		Model:               req.Model,
 		AvatarPath:          req.AvatarPath,
+		AvatarDescription:   req.AvatarDescription,
 		Enabled:             true,
 		SortOrder:           maxSort + 1,
 		IsPreset:            false,
@@ -156,22 +161,23 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var existing models.AgentRole
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existing.CreatedAt, &existing.UpdatedAt)
+	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existing.CreatedAt, &existing.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
 	}
 
 	var req struct {
-		Name             *string `json:"name"`
-		Description      *string `json:"description"`
-		SystemPrompt     *string `json:"system_prompt"`
-		Model            *string `json:"model"`
-		AvatarPath       *string `json:"avatar_path"`
-		HeartbeatEnabled *bool   `json:"heartbeat_enabled"`
-		Folder           *string `json:"folder"`
+		Name              *string `json:"name"`
+		Description       *string `json:"description"`
+		SystemPrompt      *string `json:"system_prompt"`
+		Model             *string `json:"model"`
+		AvatarPath        *string `json:"avatar_path"`
+		AvatarDescription *string `json:"avatar_description"`
+		HeartbeatEnabled  *bool   `json:"heartbeat_enabled"`
+		Folder            *string `json:"folder"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -193,6 +199,9 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.AvatarPath != nil {
 		existing.AvatarPath = *req.AvatarPath
 	}
+	if req.AvatarDescription != nil {
+		existing.AvatarDescription = *req.AvatarDescription
+	}
 	if req.HeartbeatEnabled != nil {
 		existing.HeartbeatEnabled = *req.HeartbeatEnabled
 	}
@@ -207,8 +216,8 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	_, err = h.db.Exec(
-		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, heartbeat_enabled = ?, folder = ?, updated_at = ? WHERE slug = ?`,
-		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.HeartbeatEnabled, existing.Folder, now, slug,
+		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, folder = ?, updated_at = ? WHERE slug = ?`,
+		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.Folder, now, slug,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent role")
@@ -491,6 +500,44 @@ func (h *AgentRolesHandler) GetGatewayMemory(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, files)
+}
+
+// DescribeAvatar uses a vision model to analyze an avatar image and generate a visual description.
+func (h *AgentRolesHandler) DescribeAvatar(w http.ResponseWriter, r *http.Request) {
+	if h.llmClient == nil || !h.llmClient.IsConfigured() {
+		writeError(w, http.StatusServiceUnavailable, "API key not configured")
+		return
+	}
+
+	var req struct {
+		AvatarPath string `json:"avatar_path"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.AvatarPath == "" {
+		writeError(w, http.StatusBadRequest, "avatar_path is required")
+		return
+	}
+
+	imageDataURI, err := llm.ResolveImageToBase64(h.dataDir, req.AvatarPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to resolve avatar image: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	prompt := "Describe this character's visual appearance in 2-3 sentences for use as a reference in AI image generation. Focus on species/form, colors, clothing, distinctive features, and art style. Be specific and concise."
+	description, err := h.llmClient.DescribeImage(ctx, "", imageDataURI, prompt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to describe avatar: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"description": description})
 }
 
 // Tool access management

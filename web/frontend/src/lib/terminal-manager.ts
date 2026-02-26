@@ -20,6 +20,9 @@ interface TerminalInstance {
   initialGrace: boolean;
   dropOverlay: HTMLDivElement | null;
   pasteDisposable: { dispose: () => void } | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  reconnectAttempts: number;
+  intentionalClose: boolean;
 }
 
 const encoder = new TextEncoder();
@@ -124,6 +127,9 @@ class TerminalManager {
       initialGrace: true,
       dropOverlay: null,
       pasteDisposable: null,
+      reconnectTimer: null,
+      reconnectAttempts: 0,
+      intentionalClose: false,
     };
 
     this.instances.set(sessionId, instance);
@@ -150,6 +156,7 @@ class TerminalManager {
     instance.ws = ws;
 
     ws.onopen = () => {
+      instance.reconnectAttempts = 0;
       try { instance.fitAddon.fit(); } catch { /* ignore */ }
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
@@ -178,8 +185,15 @@ class TerminalManager {
       }
     };
 
-    ws.onerror = () => {};
-    ws.onclose = () => {};
+    ws.onerror = () => {
+      // Error will be followed by onclose, reconnect handled there
+    };
+
+    ws.onclose = () => {
+      if (instance.intentionalClose) return;
+      instance.ws = null;
+      this.scheduleReconnect(sessionId);
+    };
 
     // Wire up terminal input -> WS
     if (instance.dataDisposable) instance.dataDisposable.dispose();
@@ -201,9 +215,51 @@ class TerminalManager {
     });
   }
 
+  private scheduleReconnect(sessionId: string): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance || instance.intentionalClose) return;
+    if (instance.reconnectTimer) return; // already scheduled
+
+    const delay = Math.min(1000 * Math.pow(2, instance.reconnectAttempts), 30000);
+    instance.reconnectAttempts++;
+
+    instance.reconnectTimer = setTimeout(() => {
+      instance.reconnectTimer = null;
+      if (instance.intentionalClose) return;
+      this.connectWS(sessionId);
+    }, delay);
+  }
+
+  ensureConnected(sessionId: string): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance) return;
+    if (instance.ws && instance.ws.readyState === WebSocket.OPEN) return;
+    // Cancel any pending reconnect and connect immediately
+    if (instance.reconnectTimer) {
+      clearTimeout(instance.reconnectTimer);
+      instance.reconnectTimer = null;
+    }
+    instance.ws = null;
+    this.connectWS(sessionId);
+  }
+
+  reconnectAllIfNeeded(): void {
+    for (const [sessionId, instance] of this.instances) {
+      if (instance.intentionalClose) continue;
+      if (!instance.ws || instance.ws.readyState !== WebSocket.OPEN) {
+        this.ensureConnected(sessionId);
+      }
+    }
+  }
+
   disconnectWS(sessionId: string): void {
     const instance = this.instances.get(sessionId);
     if (!instance) return;
+    instance.intentionalClose = true;
+    if (instance.reconnectTimer) {
+      clearTimeout(instance.reconnectTimer);
+      instance.reconnectTimer = null;
+    }
     if (instance.ws && (instance.ws.readyState === WebSocket.OPEN || instance.ws.readyState === WebSocket.CONNECTING)) {
       instance.ws.close();
     }
@@ -336,6 +392,7 @@ class TerminalManager {
     if (!instance) return;
 
     if (instance.busyTimer) clearTimeout(instance.busyTimer);
+    if (instance.reconnectTimer) clearTimeout(instance.reconnectTimer);
     if (instance.isBusy) this.onBusyChange?.(sessionId, false);
     this.detach(sessionId);
     this.disconnectWS(sessionId);

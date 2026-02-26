@@ -26,6 +26,7 @@ type ToolManager interface {
 	WaitForHealth(toolID string, timeout time.Duration) error
 	GetStatus(toolID string) map[string]interface{}
 	CallTool(toolID, endpoint string, payload []byte) ([]byte, error)
+	CallToolWithContext(ctx context.Context, toolID, endpoint string, payload []byte) ([]byte, error)
 }
 
 // MemoryManager is the interface for the per-agent memory system (avoids circular imports).
@@ -178,6 +179,7 @@ func CheckAPIKey(client *llm.Client) {
 
 // ThreadMessage represents a message from the chat thread history.
 type ThreadMessage struct {
+	ID        string
 	Role      string
 	Content   string
 	AgentSlug string

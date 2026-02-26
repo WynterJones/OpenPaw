@@ -96,6 +96,12 @@ export interface ChatThread {
   message_count: number;
 }
 
+export interface Reaction {
+  emoji: string;
+  source: string;
+  count: number;
+}
+
 export interface ChatMessage {
   id: string;
   thread_id: string;
@@ -108,6 +114,7 @@ export interface ChatMessage {
   widget_data?: string;
   image_url?: string;
   tool_calls?: ToolCallResult[];
+  reactions?: Reaction[];
   created_at: string;
 }
 
@@ -139,6 +146,7 @@ export interface AgentRole {
   system_prompt: string;
   model: string;
   avatar_path: string;
+  avatar_description: string;
   enabled: boolean;
   sort_order: number;
   is_preset: boolean;

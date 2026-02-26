@@ -110,6 +110,20 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 					}
 				}
 
+				// Accumulate stream state for recovery when switching threads
+				if threadID != "" {
+					switch event.Type {
+					case EventTextDelta:
+						if event.Text != "" && !cfg.suppressStream {
+							m.UpdateStreamText(threadID, "", event.Text)
+						}
+					case EventToolStart:
+						m.UpdateStreamTool(threadID, StreamTool{Name: event.ToolName, ID: event.ToolID, Done: false})
+					case EventToolEnd:
+						m.UpdateStreamTool(threadID, StreamTool{Name: event.ToolName, ID: event.ToolID, Done: true})
+					}
+				}
+
 				// Don't broadcast text deltas for JSON-only builders (e.g. dashboard_builder)
 				if cfg.suppressStream && event.Type == EventTextDelta {
 					return
@@ -172,6 +186,8 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 			agentText = strings.TrimSpace(result.Text)
 		}
 		m.saveBuildResult(threadID, agentText, chatMsg, "builder", msgCost, msgInput, msgOutput, placeholderMsgID)
+
+		m.ClearStreamState(threadID)
 
 		m.broadcast("agent_completed", map[string]interface{}{
 			"agent_id":      agentID,
