@@ -187,7 +187,7 @@ function AgentModal({ agent, open, onClose, onInstall, installing }: { agent: Li
           <div className="rounded-lg bg-surface-2 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">Includes</p>
             <div className="flex flex-wrap gap-1.5">
-              {['SOUL.md', 'AGENTS.md', 'BOOT.md'].map(f => (
+              {['SOUL.md', 'RUNBOOK.md', 'BOOT.md'].map(f => (
                 <code key={f} className="px-2 py-0.5 rounded text-xs font-mono bg-surface-3 text-text-1 border border-border-0">{f}</code>
               ))}
             </div>

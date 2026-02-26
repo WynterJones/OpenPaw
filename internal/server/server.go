@@ -13,6 +13,7 @@ import (
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
+	"github.com/openpaw/openpaw/internal/fal"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/auth"
@@ -56,6 +57,7 @@ type Config struct {
 	MemoryMgr    *memory.Manager
 	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
+	FalClient    *fal.Client
 	FrontendFS   fs.FS
 	ToolsDir     string
 	DataDir      string
@@ -80,7 +82,7 @@ func New(cfg Config) *Server {
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Port)
+	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.FalClient, cfg.Port)
 	s.setupFrontend(cfg.FrontendFS)
 
 	return s
@@ -95,7 +97,7 @@ func (s *Server) setupMiddleware() {
 	s.Router.Use(chiMiddleware.Recoverer)
 }
 
-func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, port int) {
+func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, falClient *fal.Client, port int) {
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
 	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, dataDir)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
@@ -124,6 +126,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
+	falHandler := handlers.NewFalHandler(s.DB, falClient, secretsMgr, dataDir)
+	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -162,6 +166,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// Public dashboard assets (served in sandboxed iframes that can't send auth cookies)
 		r.Get("/dashboards/{id}/assets/*", dashboardsHandler.ServeAssets)
+
+		// Public media file serving (so images can be displayed without auth issues)
+		r.Get("/media/{id}/file", mediaHandler.ServeFile)
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
@@ -463,6 +470,23 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/{id}/items/{itemId}", todoListsHandler.UpdateItem)
 				r.Put("/{id}/items/{itemId}/toggle", todoListsHandler.ToggleItem)
 				r.Delete("/{id}/items/{itemId}", todoListsHandler.DeleteItem)
+			})
+
+			// FAL Image Generation
+			r.Route("/fal", func(r chi.Router) {
+				r.Get("/status", falHandler.Status)
+				r.Put("/api-key", falHandler.UpdateAPIKey)
+				r.Get("/models", falHandler.Models)
+				r.Post("/generate", falHandler.Generate)
+			})
+
+			// Media Library
+			r.Route("/media", func(r chi.Router) {
+				r.Get("/", mediaHandler.List)
+				r.Get("/search", mediaHandler.Search)
+				r.Get("/{id}", mediaHandler.Get)
+				r.Delete("/{id}", mediaHandler.Delete)
+				r.Get("/{id}/file", mediaHandler.ServeFile)
 			})
 
 			// Logs

@@ -11,6 +11,11 @@ export function useAutocomplete() {
   const [contextIndex, setContextIndex] = useState(0);
   const contextAnchorRef = useRef<number | null>(null);
 
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [mediaFilter, setMediaFilter] = useState('');
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const mediaAnchorRef = useRef<number | null>(null);
+
   return {
     mentionOpen, setMentionOpen,
     mentionFilter, setMentionFilter,
@@ -20,5 +25,9 @@ export function useAutocomplete() {
     contextFilter, setContextFilter,
     contextIndex, setContextIndex,
     contextAnchorRef,
+    mediaOpen, setMediaOpen,
+    mediaFilter, setMediaFilter,
+    mediaIndex, setMediaIndex,
+    mediaAnchorRef,
   };
 }

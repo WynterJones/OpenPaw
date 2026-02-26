@@ -144,6 +144,18 @@ If the user reveals something worth remembering across conversations (their name
 - "memory_note": "User is building a weather monitoring app"
 
 Only include memory_note when there's something genuinely worth persisting. Most messages won't need one.
+
+## Project Context
+
+If the user references a project listed in USER PROJECTS, include "project_context" in your JSON response to pass the resolved project info to the assigned agent:
+
+  "project_context": {
+    "project_name": "Project Name",
+    "directory": "/path/to/project/repo",
+    "tool_id": "tool-uuid-for-coding-cli"
+  }
+
+Pick the most relevant repo from the project based on the user's request. Only include project_context when the user clearly references a known project — do not guess.
 `
 
 // GatewayPrompt is kept for backwards compatibility — it's now the routing prompt.

@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	maxThreadTitleLength = 50
-	threadHistoryLimit   = 10
+	maxThreadTitleLength   = 50
+	threadHistoryLimit     = 10
+	gatewayHistoryLimit    = 4
 )
 
 type ChatHandler struct {
@@ -413,14 +414,13 @@ func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the most recent assistant message's input_tokens as context usage.
-	// This is the actual number of tokens sent to the model on the last turn,
-	// which is the best proxy for current context window usage.
+	// Use the maximum input_tokens across all assistant messages as context usage.
+	// Each API call sends the full conversation history, so the highest input_tokens
+	// represents the peak context window fill for this thread.
 	var contextUsed int
 	h.db.QueryRow(
-		`SELECT COALESCE(input_tokens, 0) FROM chat_messages
-		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0
-		 ORDER BY created_at DESC LIMIT 1`, threadID,
+		`SELECT COALESCE(MAX(input_tokens), 0) FROM chat_messages
+		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`, threadID,
 	).Scan(&contextUsed)
 	contextLimit := h.getEffectiveContextLimit()
 
@@ -567,9 +567,8 @@ func (h *ChatHandler) shouldAutoCompact(threadID string) bool {
 
 	var contextUsed int
 	if err := h.db.QueryRow(
-		`SELECT COALESCE(input_tokens, 0) FROM chat_messages
-		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0
-		 ORDER BY created_at DESC LIMIT 1`, threadID,
+		`SELECT COALESCE(MAX(input_tokens), 0) FROM chat_messages
+		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`, threadID,
 	).Scan(&contextUsed); err != nil || contextUsed == 0 {
 		return false
 	}

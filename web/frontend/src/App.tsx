@@ -25,6 +25,7 @@ const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m
 const HeartbeatMonitor = lazy(() => import('./pages/HeartbeatMonitor').then(m => ({ default: m.HeartbeatMonitor })));
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
 const TodoLists = lazy(() => import('./pages/TodoLists').then(m => ({ default: m.TodoLists })));
+const MediaLibrary = lazy(() => import('./pages/MediaLibrary').then(m => ({ default: m.MediaLibrary })));
 
 const DocsLayout = lazy(() => import('./components/docs/DocsLayout').then(m => ({ default: m.DocsLayout })));
 const DocsHome = lazy(() => import('./pages/docs/DocsHome').then(m => ({ default: m.DocsHome })));
@@ -51,6 +52,7 @@ const pageTitles: Record<string, string> = {
   '/heartbeat': 'Heartbeat',
   '/library': 'Library',
   '/todo-lists': 'Todo Lists',
+  '/media': 'Media',
   '/settings': 'Settings',
   '/login': 'Login',
   '/setup': 'Setup',
@@ -129,6 +131,7 @@ function AppRoutes() {
         <Route path="/heartbeat" element={<HeartbeatMonitor />} />
         <Route path="/library" element={<Library />} />
         <Route path="/todo-lists" element={<TodoLists />} />
+        <Route path="/media" element={<MediaLibrary />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />

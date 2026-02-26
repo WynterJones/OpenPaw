@@ -33,7 +33,7 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string) 
 	}
 
 	if model == "" {
-		model = "openai/dall-e-3"
+		model = "google/gemini-2.5-flash-image"
 	}
 	if size == "" {
 		size = "1024x1024"

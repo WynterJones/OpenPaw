@@ -34,6 +34,12 @@ import type {
   Project,
   TodoList,
   TodoItem,
+  MediaItem,
+  MediaListResponse,
+  FalStatus,
+  FalModel,
+  FalGenerateRequest,
+  FalGenerateResult,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -388,6 +394,35 @@ export const todoApi = {
     api.delete(`/todo-lists/${listId}/items/${itemId}`),
   reorderItems: (listId: string, items: { id: string; sort_order: number }[]) =>
     api.put<{ status: string }>(`/todo-lists/${listId}/items/reorder`, { items }),
+};
+
+// Media API helpers
+export const mediaApi = {
+  list: (params?: { page?: number; per_page?: number; type?: string; source?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.page) search.set('page', String(params.page));
+    if (params?.per_page) search.set('per_page', String(params.per_page));
+    if (params?.type) search.set('type', params.type);
+    if (params?.source) search.set('source', params.source);
+    const qs = search.toString();
+    return api.get<MediaListResponse>(`/media${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => api.get<MediaItem>(`/media/${id}`),
+  delete: (id: string) => api.delete<void>(`/media/${id}`),
+  search: (q: string, page?: number) => {
+    const search = new URLSearchParams({ q });
+    if (page) search.set('page', String(page));
+    return api.get<MediaListResponse>(`/media/search?${search}`);
+  },
+  fileUrl: (id: string) => `/api/v1/media/${id}/file`,
+};
+
+// FAL API helpers
+export const falApi = {
+  status: () => api.get<FalStatus>('/fal/status'),
+  updateApiKey: (apiKey: string) => api.put<FalStatus>('/fal/api-key', { api_key: apiKey }),
+  models: () => api.get<FalModel[]>('/fal/models'),
+  generate: (req: FalGenerateRequest) => api.post<FalGenerateResult>('/fal/generate', req),
 };
 
 // Heartbeat API helpers

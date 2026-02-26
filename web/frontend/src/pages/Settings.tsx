@@ -32,6 +32,7 @@ import {
   Play,
   GitBranch,
   Loader2,
+  ImageIcon,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -62,6 +63,7 @@ const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "network", label: "Network", icon: Wifi },
   { id: "models", label: "AI Models", icon: Bot },
+  { id: "fal", label: "FAL AI", icon: ImageIcon },
   { id: "design", label: "Design", icon: Paintbrush },
   { id: "security", label: "Security", icon: Shield },
   { id: "system", label: "System", icon: Server },
@@ -2802,6 +2804,149 @@ function DangerTab() {
   );
 }
 
+function FalTab() {
+  const { toast } = useToast();
+  const [falConfigured, setFalConfigured] = useState(false);
+  const [falSource, setFalSource] = useState("none");
+  const [falKey, setFalKey] = useState("");
+  const [savingFal, setSavingFal] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<{ configured: boolean; source: string }>("/fal/status")
+      .then((data) => {
+        setFalConfigured(data.configured);
+        setFalSource(data.source);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const saveFalKey = async () => {
+    if (!falKey.trim()) return;
+    setSavingFal(true);
+    try {
+      const data = await api.put<{ configured: boolean; source: string }>(
+        "/fal/api-key",
+        { api_key: falKey.trim() },
+      );
+      setFalConfigured(data.configured);
+      setFalSource(data.source);
+      setFalKey("");
+      toast("success", "FAL API key saved");
+    } catch (err) {
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to save FAL API key",
+      );
+    } finally {
+      setSavingFal(false);
+    }
+  };
+
+  if (loading) return <LoadingSpinner message="Loading FAL settings..." />;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-1">
+          FAL AI - Image Generation
+        </h3>
+        <p className="text-xs text-text-3 mb-4">
+          Generate images using FLUX models (Dev, Schnell, Pro). Set via
+          FAL_KEY env var or enter below.
+        </p>
+        <div
+          className={`flex items-center gap-3 p-3 rounded-lg border mb-4 ${
+            falConfigured
+              ? "bg-green-500/5 border-green-500/20"
+              : "bg-amber-500/5 border-amber-500/20"
+          }`}
+        >
+          <CheckCircle
+            className={`w-4 h-4 flex-shrink-0 ${falConfigured ? "text-green-400" : "text-amber-400"}`}
+          />
+          <p
+            className={`text-sm font-medium ${falConfigured ? "text-green-400" : "text-amber-400"}`}
+          >
+            {falConfigured
+              ? `Configured (source: ${falSource})`
+              : "Not configured"}
+          </p>
+        </div>
+        {falSource !== "env" && (
+          <div className="max-w-sm space-y-3">
+            <Input
+              label="FAL API Key"
+              type="password"
+              value={falKey}
+              onChange={(e) => setFalKey(e.target.value)}
+              placeholder="Enter your FAL API key..."
+            />
+            <Button
+              onClick={saveFalKey}
+              loading={savingFal}
+              disabled={!falKey.trim()}
+              icon={<Save className="w-4 h-4" />}
+            >
+              Save Key
+            </Button>
+          </div>
+        )}
+        {falSource === "env" && (
+          <p className="text-xs text-text-3">
+            Key is set via FAL_KEY environment variable and cannot be changed
+            from the UI.
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-1">
+          Available Models
+        </h3>
+        <p className="text-xs text-text-3 mb-4">
+          FLUX models available for image generation when FAL is configured.
+        </p>
+        <div className="space-y-2">
+          {[
+            {
+              name: "FLUX Dev",
+              id: "flux-dev",
+              desc: "High-quality development model. Best balance of speed and quality.",
+            },
+            {
+              name: "FLUX Schnell",
+              id: "flux-schnell",
+              desc: "Fastest model. Great for quick iterations and drafts.",
+            },
+            {
+              name: "FLUX Pro Ultra",
+              id: "flux-pro",
+              desc: "Highest quality. Best for final production images.",
+            },
+          ].map((model) => (
+            <div
+              key={model.id}
+              className="flex items-start gap-3 p-3 rounded-lg border border-border-0 bg-surface-0"
+            >
+              <ImageIcon className="w-4 h-4 text-accent-text mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-text-1">{model.name}</p>
+                <p className="text-xs text-text-3">{model.desc}</p>
+                <p className="text-[10px] text-text-3 mt-0.5 font-mono">
+                  {model.id}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -2811,6 +2956,7 @@ export function Settings() {
     notifications: <NotificationsTab />,
     network: <NetworkTab />,
     models: <ModelsTab />,
+    fal: <FalTab />,
     design: <DesignTab />,
     security: <SecurityTab />,
     system: <SystemTab />,

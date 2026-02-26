@@ -39,6 +39,12 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		gatewayPrompt += "\n\n" + dashSection
 	}
 
+	// Inject user projects so gateway can resolve project references
+	projectsSection := m.buildProjectsPromptSection()
+	if projectsSection != "" {
+		gatewayPrompt += "\n\n" + projectsSection
+	}
+
 	// Inject routing hints so gateway has full context
 	if hints != nil {
 		gatewayPrompt += "\n\n## ROUTING CONTEXT\n"
@@ -126,13 +132,21 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	return &resp, usage, nil
 }
 
+// ProjectContext carries resolved project info from the gateway to the agent.
+type ProjectContext struct {
+	ProjectName string `json:"project_name"`
+	Directory   string `json:"directory"`
+	ToolID      string `json:"tool_id,omitempty"`
+}
+
 type GatewayResponse struct {
-	Action        string            `json:"action"`
-	Message       string            `json:"message"`
-	ThreadTitle   string            `json:"thread_title,omitempty"`
-	AssignedAgent string            `json:"assigned_agent,omitempty"`
-	WorkOrder     *GatewayWorkOrder `json:"work_order,omitempty"`
-	MemoryNote    string            `json:"memory_note,omitempty"`
+	Action         string            `json:"action"`
+	Message        string            `json:"message"`
+	ThreadTitle    string            `json:"thread_title,omitempty"`
+	AssignedAgent  string            `json:"assigned_agent,omitempty"`
+	WorkOrder      *GatewayWorkOrder `json:"work_order,omitempty"`
+	MemoryNote     string            `json:"memory_note,omitempty"`
+	ProjectContext *ProjectContext   `json:"project_context,omitempty"`
 }
 
 type GatewayWorkOrder struct {
@@ -283,6 +297,21 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	}
 	for name, handler := range MakeTodoToolHandlers(m.db, agentRoleSlug, m.broadcast) {
 		cfg.ExtraHandlers[name] = handler
+	}
+
+	// Inject image generation tool (uses Gemini Flash by default, FAL optional)
+	if m.client != nil && m.client.IsConfigured() {
+		falAvailable := m.FalClient != nil && m.FalClient.IsConfigured()
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildGenerateImageDef(falAvailable))
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		cfg.ExtraHandlers["generate_image"] = m.makeGenerateImageHandler()
+		falNote := ""
+		if falAvailable {
+			falNote = " You also have access to FAL FLUX models — but ONLY use provider 'fal' when the user explicitly requests FAL or FLUX."
+		}
+		cfg.System += "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses Gemini Flash by default." + falNote + "\n"
 	}
 
 	// Inject delegate_task if other agents are available for delegation

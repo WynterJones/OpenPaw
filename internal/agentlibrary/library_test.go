@@ -161,7 +161,7 @@ func TestGetTemplateFiles(t *testing.T) {
 		}
 
 		// Each agent should have SOUL.md, AGENTS.md, BOOT.md
-		for _, required := range []string{"SOUL.md", "AGENTS.md", "BOOT.md"} {
+		for _, required := range []string{"SOUL.md", "RUNBOOK.md", "BOOT.md"} {
 			if _, ok := files[required]; !ok {
 				t.Errorf("missing required file %q", required)
 			}
@@ -194,7 +194,7 @@ func TestAllAgentsHaveTemplateFiles(t *testing.T) {
 		t.Fatalf("LoadRegistry() error: %v", err)
 	}
 
-	requiredFiles := []string{"SOUL.md", "AGENTS.md", "BOOT.md"}
+	requiredFiles := []string{"SOUL.md", "RUNBOOK.md", "BOOT.md"}
 
 	for _, agent := range agents {
 		t.Run(agent.Slug, func(t *testing.T) {

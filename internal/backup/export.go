@@ -320,7 +320,7 @@ func exportAgentRoles(db *database.DB, dataDir, destDir string) ([]string, error
 
 		// Export identity files from disk
 		agentDir := agents.AgentDir(dataDir, slug)
-		for _, fname := range []string{agents.FileSoul, agents.FileUser, agents.FileAgents, agents.FileHeartbeat, agents.FileBoot} {
+		for _, fname := range []string{agents.FileSoul, agents.FileUser, agents.FileRunbook, agents.FileHeartbeat, agents.FileBoot} {
 			content, err := os.ReadFile(filepath.Join(agentDir, fname))
 			if err != nil || len(strings.TrimSpace(string(content))) == 0 {
 				continue

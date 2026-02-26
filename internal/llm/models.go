@@ -136,7 +136,7 @@ func FetchModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("API key required to fetch models")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://openrouter.ai/api/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://openrouter.ai/api/v1/models?supported_parameters=tools", nil)
 	if err != nil {
 		return nil, err
 	}

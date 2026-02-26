@@ -641,3 +641,56 @@ export interface TodoItem {
   updated_at: string;
   completed_at: string | null;
 }
+
+export interface MediaItem {
+  id: string;
+  thread_id: string;
+  message_id: string;
+  source: 'fal' | 'dalle' | 'tool' | 'upload';
+  source_model: string;
+  media_type: 'image' | 'audio' | 'video';
+  url: string;
+  filename: string;
+  mime_type: string;
+  width: number;
+  height: number;
+  size_bytes: number;
+  prompt: string;
+  metadata: string;
+  created_at: string;
+}
+
+export interface MediaListResponse {
+  items: MediaItem[];
+  total: number;
+}
+
+export interface FalStatus {
+  configured: boolean;
+  source: 'settings' | 'env' | 'none';
+}
+
+export interface FalModel {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface FalGenerateRequest {
+  model: string;
+  prompt: string;
+  image_size?: string;
+  num_inference_steps?: number;
+  guidance_scale?: number;
+  seed?: number;
+}
+
+export interface FalGenerateResult {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  prompt: string;
+  seed: number;
+  local_url: string;
+}

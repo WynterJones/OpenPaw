@@ -7,7 +7,7 @@
     "category": "Productivity",
     "icon": "search",
     "tags": ["research", "analysis", "documentation", "comparison"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-8.webp"
   },
   {
@@ -18,7 +18,7 @@
     "category": "Engineering",
     "icon": "code-2",
     "tags": ["code-review", "bugs", "best-practices", "refactoring"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-14.webp"
   },
   {
@@ -29,7 +29,7 @@
     "category": "Content",
     "icon": "pen-line",
     "tags": ["writing", "editing", "copywriting", "prose"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-20.webp"
   },
   {
@@ -40,7 +40,7 @@
     "category": "Data",
     "icon": "bar-chart-2",
     "tags": ["data", "analytics", "visualization", "insights"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-26.webp"
   },
   {
@@ -51,7 +51,7 @@
     "category": "Engineering",
     "icon": "bug",
     "tags": ["debugging", "troubleshooting", "root-cause", "fixes"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-1.webp"
   },
   {
@@ -62,7 +62,7 @@
     "category": "Productivity",
     "icon": "kanban",
     "tags": ["project-management", "planning", "milestones", "coordination"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-2.webp"
   },
   {
@@ -73,7 +73,7 @@
     "category": "Ops",
     "icon": "server",
     "tags": ["infrastructure", "devops", "monitoring", "deployment"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-5.webp"
   },
   {
@@ -84,7 +84,7 @@
     "category": "Personal",
     "icon": "graduation-cap",
     "tags": ["learning", "tutoring", "education", "coaching"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-37.webp"
   },
   {
@@ -95,7 +95,7 @@
     "category": "Engineering",
     "icon": "shield-check",
     "tags": ["security", "vulnerabilities", "audit", "hardening"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-23.webp"
   },
   {
@@ -106,7 +106,7 @@
     "category": "Content",
     "icon": "zap",
     "tags": ["summarization", "briefs", "distillation", "highlights"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-3.webp"
   },
   {
@@ -117,7 +117,7 @@
     "category": "Engineering",
     "icon": "route",
     "tags": ["api", "rest", "openapi", "endpoints", "contracts"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-10.webp"
   },
   {
@@ -128,7 +128,7 @@
     "category": "Data",
     "icon": "database",
     "tags": ["database", "schema", "sql", "migrations", "optimization"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-35.webp"
   },
   {
@@ -139,7 +139,7 @@
     "category": "Design",
     "icon": "palette",
     "tags": ["ux", "ui", "design", "accessibility", "wireframes"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-12.webp"
   },
   {
@@ -150,7 +150,7 @@
     "category": "Business",
     "icon": "scale",
     "tags": ["compliance", "gdpr", "privacy", "legal", "regulation"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-38.webp"
   },
   {
@@ -161,7 +161,7 @@
     "category": "Business",
     "icon": "megaphone",
     "tags": ["marketing", "seo", "campaigns", "growth", "strategy"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-18.webp"
   },
   {
@@ -172,7 +172,7 @@
     "category": "Support",
     "icon": "headphones",
     "tags": ["support", "customer-service", "faq", "helpdesk", "responses"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-45.webp"
   },
   {
@@ -183,7 +183,7 @@
     "category": "Content",
     "icon": "languages",
     "tags": ["translation", "localization", "i18n", "multilingual", "languages"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-17.webp"
   },
   {
@@ -194,7 +194,7 @@
     "category": "Creative",
     "icon": "lightbulb",
     "tags": ["ideation", "brainstorming", "creativity", "innovation", "ideas"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-33.webp"
   },
   {
@@ -205,7 +205,7 @@
     "category": "Engineering",
     "icon": "network",
     "tags": ["architecture", "system-design", "scalability", "integration", "patterns"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-6.webp"
   },
   {
@@ -216,7 +216,7 @@
     "category": "Engineering",
     "icon": "test-tubes",
     "tags": ["testing", "qa", "test-plans", "edge-cases", "quality"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-7.webp"
   },
   {
@@ -227,7 +227,7 @@
     "category": "Knowledge",
     "icon": "brain",
     "tags": ["philosophy", "critical-thinking", "ethics", "meaning", "first-principles"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-4.webp"
   },
   {
@@ -238,7 +238,7 @@
     "category": "Personal",
     "icon": "compass",
     "tags": ["goals", "habits", "motivation", "accountability", "personal-growth"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-9.webp"
   },
   {
@@ -249,7 +249,7 @@
     "category": "Creative",
     "icon": "book-open",
     "tags": ["narrative", "worldbuilding", "fiction", "storytelling", "creative-writing"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-11.webp"
   },
   {
@@ -260,7 +260,7 @@
     "category": "Knowledge",
     "icon": "swords",
     "tags": ["debate", "critical-thinking", "argumentation", "logic", "persuasion"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-13.webp"
   },
   {
@@ -271,7 +271,7 @@
     "category": "Lifestyle",
     "icon": "leaf",
     "tags": ["mindfulness", "stress", "wellness", "balance", "self-care"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-15.webp"
   },
   {
@@ -282,7 +282,7 @@
     "category": "Knowledge",
     "icon": "scroll",
     "tags": ["history", "context", "patterns", "lessons", "civilization"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-16.webp"
   },
   {
@@ -293,7 +293,7 @@
     "category": "Lifestyle",
     "icon": "chef-hat",
     "tags": ["cooking", "recipes", "meal-planning", "nutrition", "food"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-19.webp"
   },
   {
@@ -304,7 +304,7 @@
     "category": "Lifestyle",
     "icon": "dumbbell",
     "tags": ["fitness", "exercise", "training", "health", "habits"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-21.webp"
   },
   {
@@ -315,7 +315,7 @@
     "category": "Personal",
     "icon": "piggy-bank",
     "tags": ["budgeting", "finance", "planning", "savings", "money"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-22.webp"
   },
   {
@@ -326,7 +326,7 @@
     "category": "Lifestyle",
     "icon": "map",
     "tags": ["travel", "planning", "culture", "adventure", "destinations"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-24.webp"
   },
   {
@@ -337,7 +337,7 @@
     "category": "Sales",
     "icon": "filter",
     "tags": ["funnels", "conversion", "landing-pages", "optimization", "customer-journey"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-25.webp"
   },
   {
@@ -348,7 +348,7 @@
     "category": "Sales",
     "icon": "handshake",
     "tags": ["sales", "pitching", "objections", "closing", "negotiation"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-27.webp"
   },
   {
@@ -359,7 +359,7 @@
     "category": "Sales",
     "icon": "trending-up",
     "tags": ["growth", "acquisition", "retention", "viral", "metrics"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-28.webp"
   },
   {
@@ -370,7 +370,7 @@
     "category": "Personal",
     "icon": "target",
     "tags": ["accountability", "commitments", "follow-through", "tracking", "habits"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-29.webp"
   },
   {
@@ -381,7 +381,7 @@
     "category": "Sales",
     "icon": "pencil-ruler",
     "tags": ["copywriting", "ads", "landing-pages", "email", "persuasion"],
-    "model": "haiku",
+    "model": "minimax/minimax-m2.5",
     "avatar_path": "/avatars/avatar-30.webp"
   }
 ]

@@ -17,6 +17,7 @@ import (
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
+	"github.com/openpaw/openpaw/internal/fal"
 	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -166,6 +167,11 @@ func main() {
 		logger.Error("Identity-to-soul migration failed: %v", err)
 	}
 
+	// Migrate AGENTS.md → RUNBOOK.md
+	if err := agents.MigrateAgentsToRunbook(cfg.DataDir); err != nil {
+		logger.Error("Agents-to-runbook migration failed: %v", err)
+	}
+
 	// Initialize gateway identity directory
 	if err := agents.InitGatewayDir(cfg.DataDir); err != nil {
 		logger.Error("Gateway dir initialization failed: %v", err)
@@ -197,6 +203,27 @@ func main() {
 	apiKey, _ := llm.ResolveAPIKey(envAPIKey, dbAPIKey)
 	llmClient := llm.NewClient(apiKey)
 	agents.CheckAPIKey(llmClient)
+
+	// Resolve FAL API key: FAL_KEY env var > encrypted DB value
+	envFALKey := os.Getenv("FAL_KEY")
+	var dbFALKey string
+	var encryptedFALKey string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = 'fal_api_key'").Scan(&encryptedFALKey)
+	if err == nil && encryptedFALKey != "" {
+		decrypted, decErr := secretsMgr.Decrypt(encryptedFALKey)
+		if decErr == nil {
+			dbFALKey = decrypted
+		}
+	}
+	falAPIKey := envFALKey
+	if falAPIKey == "" {
+		falAPIKey = dbFALKey
+	}
+	falClient := fal.NewClient(falAPIKey)
+
+	// Media directory
+	mediaDir := filepath.Join(cfg.DataDir, "..", "media")
+	os.MkdirAll(mediaDir, 0755)
 
 	// Create agent manager (broadcast will be wired after server creation)
 	var wsHub *ws.Hub
@@ -254,6 +281,7 @@ func main() {
 		})
 	})
 	agentMgr.BrowserMgr = browserMgr
+	agentMgr.FalClient = falClient
 
 	// Create memory manager
 	memoryMgr := memory.NewManager(cfg.DataDir)
@@ -333,6 +361,7 @@ func main() {
 		MemoryMgr:    memoryMgr,
 		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
+		FalClient:    falClient,
 		FrontendFS:   frontendFS,
 		ToolsDir:     toolsDir,
 		DataDir:      cfg.DataDir,

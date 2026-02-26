@@ -27,7 +27,7 @@ interface FileTab {
 const FILE_TABS: FileTab[] = [
   { key: 'soul', label: 'Soul', filename: 'SOUL.md', description: 'Persona, tone, values, name — the core of who this agent is.' },
   { key: 'user', label: 'User', filename: 'USER.md', description: 'Human profile and preferences the agent learns over time.' },
-  { key: 'runbook', label: 'Runbook', filename: 'AGENTS.md', description: 'Operating procedures, session rules, response style.' },
+  { key: 'runbook', label: 'Runbook', filename: 'RUNBOOK.md', description: 'Self-managed operational playbook — lessons learned, process notes, session rules.' },
   { key: 'boot', label: 'Boot', filename: 'BOOT.md', description: 'Startup instructions — run at the beginning of each session.' },
   { key: 'heartbeat', label: 'Heartbeat', filename: 'HEARTBEAT.md', description: 'Periodic checklist. Empty = skip.' },
 ];

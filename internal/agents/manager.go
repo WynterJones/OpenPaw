@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
+	"github.com/openpaw/openpaw/internal/fal"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
@@ -77,6 +78,7 @@ type Manager struct {
 	ToolMgr              ToolManager
 	MemoryMgr            MemoryManager
 	BrowserMgr           BrowserManager
+	FalClient            *fal.Client
 	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
 	manifestCache        sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState

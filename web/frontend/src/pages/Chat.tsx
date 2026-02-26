@@ -4,15 +4,15 @@ import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Zap, Minimize2, Square, Users, AlertTriangle,
-  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck,
+  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { SearchBar } from '../components/SearchBar';
 import { Modal } from '../components/Modal';
 import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, threadMembers } from '../lib/api';
-import { todoApi } from '../lib/api-helpers';
-import type { TodoItem } from '../lib/types';
+import { todoApi, mediaApi } from '../lib/api-helpers';
+import type { TodoItem, MediaItem } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
@@ -83,6 +83,10 @@ export function Chat() {
     contextFilter, setContextFilter,
     contextIndex, setContextIndex,
     contextAnchorRef,
+    mediaOpen, setMediaOpen,
+    mediaFilter, setMediaFilter,
+    mediaIndex, setMediaIndex,
+    mediaAnchorRef,
   } = useAutocomplete();
   const [activeThread, setActiveThread] = useState<string | null>(() => localStorage.getItem('openpaw_active_thread'));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -100,6 +104,7 @@ export function Chat() {
 
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [attachedContextFiles, setAttachedContextFiles] = useState<ContextFile[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
   // File attachment state
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
@@ -122,6 +127,11 @@ export function Chat() {
     const name = item.kind === 'file' ? item.file.name : item.folder.name;
     return name.toLowerCase().includes(contextFilter.toLowerCase());
   }), [contextItems, contextFilter]);
+
+  const filteredMediaItems = useMemo(() => mediaItems.filter(item =>
+    item.prompt.toLowerCase().includes(mediaFilter.toLowerCase()) ||
+    item.source_model.toLowerCase().includes(mediaFilter.toLowerCase())
+  ), [mediaItems, mediaFilter]);
 
   const insertMention = (role: AgentRole) => {
     const ta = textareaRef.current;
@@ -193,6 +203,35 @@ export function Chat() {
     } catch (e) { console.warn('loadContextItems failed:', e); }
   };
 
+  // Load media items for @@ autocomplete
+  const loadMediaItems = async () => {
+    try {
+      const data = await mediaApi.list({ per_page: 20, type: 'image' });
+      if (data?.items) setMediaItems(data.items);
+    } catch { /* media library may not have items yet */ }
+  };
+
+  const insertMediaRef = (item: MediaItem) => {
+    const ta = textareaRef.current;
+    if (!ta || mediaAnchorRef.current === null) return;
+    const before = input.slice(0, mediaAnchorRef.current);
+    const after = input.slice(ta.selectionStart);
+    const label = item.prompt.slice(0, 40) || item.filename || 'image';
+    const tag = `@@[${label}](${item.id})`;
+    const newValue = `${before}${tag} ${after}`;
+    setInput(newValue);
+    setMediaOpen(false);
+    setMediaFilter('');
+    mediaAnchorRef.current = null;
+    setTimeout(() => {
+      const pos = before.length + tag.length + 1;
+      ta.selectionStart = pos;
+      ta.selectionEnd = pos;
+      ta.focus();
+      autoResize(ta);
+    }, 0);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const cursorPos = e.target.selectionStart;
@@ -227,6 +266,20 @@ export function Chat() {
       setContextFilter('');
       contextAnchorRef.current = null;
     }
+
+    // Detect @@ trigger for media library references
+    const mediaMatch = textBefore.match(/@@(\w*)$/);
+    if (mediaMatch && !atMatch && !bangMatch) {
+      mediaAnchorRef.current = cursorPos - mediaMatch[0].length;
+      setMediaFilter(mediaMatch[1]);
+      setMediaOpen(true);
+      setMediaIndex(0);
+      if (mediaItems.length === 0) loadMediaItems();
+    } else if (!mediaMatch) {
+      setMediaOpen(false);
+      setMediaFilter('');
+      mediaAnchorRef.current = null;
+    }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -250,6 +303,29 @@ export function Chat() {
       if (e.key === 'Escape') {
         e.preventDefault();
         setContextOpen(false);
+        return;
+      }
+    }
+
+    if (mediaOpen && filteredMediaItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMediaIndex(i => (i + 1) % filteredMediaItems.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMediaIndex(i => (i - 1 + filteredMediaItems.length) % filteredMediaItems.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMediaRef(filteredMediaItems[mediaIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMediaOpen(false);
         return;
       }
     }
@@ -835,7 +911,7 @@ export function Chat() {
     setPendingAttachments([]);
     setAttachedDirectories([]);
     if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
-    setSending(true); setThinking(true);
+    setSending(true); setThinking(true); setWorkStatus('Preparing response...');
     const userMsg: ChatMessage = { id: `temp-${Date.now()}`, thread_id: threadId, role: 'user', content, agent_role_slug: agent, cost_usd: 0, input_tokens: 0, output_tokens: 0, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     try {
@@ -1100,7 +1176,7 @@ export function Chat() {
                     </div>
                     <h2 className="text-xl font-bold text-text-0 mb-1.5">Start a conversation</h2>
                     <p className="text-sm text-text-3 max-w-sm mb-8">
-                      Ask anything, mention agents with <span className="text-text-1 font-medium">@</span> to bring them into the chat, or attach files & folders with <span className="text-text-1 font-medium">!!</span>
+                      Ask anything, mention agents with <span className="text-text-1 font-medium">@</span>, attach files with <span className="text-text-1 font-medium">!!</span>, or reference media with <span className="text-text-1 font-medium">@@</span>
                     </p>
                     {userRoles.length > 0 ? (
                       <div className="grid grid-cols-3 gap-2 max-w-xs w-full">
@@ -1195,6 +1271,43 @@ export function Chat() {
               </div>
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
+                  {/* Media @@ autocomplete dropdown */}
+                  {mediaOpen && filteredMediaItems.length > 0 && (
+                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Media library">
+                      <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0">
+                        Media Library
+                      </div>
+                      {filteredMediaItems.map((item, i) => (
+                        <button
+                          key={item.id}
+                          role="option"
+                          aria-selected={i === mediaIndex}
+                          onClick={() => insertMediaRef(item)}
+                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors cursor-pointer ${
+                            i === mediaIndex ? 'bg-accent-muted' : 'hover:bg-surface-2'
+                          }`}
+                        >
+                          <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-surface-2">
+                            <img
+                              src={mediaApi.fileUrl(item.id)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-text-0 truncate">
+                              {item.prompt || item.filename || 'Untitled'}
+                            </p>
+                            <p className="text-xs text-text-3 truncate">
+                              {item.source_model} &middot; {item.width}x{item.height}
+                            </p>
+                          </div>
+                          <ImageIcon className="w-4 h-4 text-text-3 flex-shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {/* Context file/folder !! autocomplete dropdown */}
                   {contextOpen && filteredContextItems.length > 0 && (
                     <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Context files">
@@ -1309,7 +1422,7 @@ export function Chat() {
                     value={input}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
-                    placeholder="Ask anything... (@ agents, !! context)"
+                    placeholder="Ask anything... (@ agents, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
                     disabled={sending}

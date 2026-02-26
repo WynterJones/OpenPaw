@@ -158,6 +158,112 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 	return sb.String()
 }
 
+// buildProjectsPromptSection queries the DB for user projects and their repos,
+// resolving each repo's preferred coding CLI tool to a tool UUID.
+func (m *Manager) buildProjectsPromptSection() string {
+	rows, err := m.db.Query(
+		`SELECT p.id, p.name, pr.name, pr.folder_path, pr.command
+		 FROM projects p
+		 JOIN project_repos pr ON pr.project_id = p.id
+		 ORDER BY p.name, pr.sort_order`,
+	)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+
+	// Map command presets to library slugs
+	commandToSlug := map[string]string{
+		"claude": "claude-code",
+		"codex":  "codex",
+		"gemini": "gemini-cli",
+	}
+
+	// Cache tool UUID lookups by library_slug
+	slugToToolID := map[string]string{}
+	resolveToolID := func(librarySlug string) string {
+		if tid, ok := slugToToolID[librarySlug]; ok {
+			return tid
+		}
+		var tid string
+		m.db.QueryRow(
+			"SELECT id FROM tools WHERE library_slug = ? AND enabled = 1 AND deleted_at IS NULL LIMIT 1",
+			librarySlug,
+		).Scan(&tid)
+		slugToToolID[librarySlug] = tid
+		return tid
+	}
+
+	// Fallback: first available coding CLI tool
+	fallbackToolID := func() string {
+		for _, slug := range []string{"claude-code", "codex", "gemini-cli"} {
+			if tid := resolveToolID(slug); tid != "" {
+				return tid
+			}
+		}
+		return ""
+	}
+
+	type repoEntry struct {
+		repoName, folderPath, toolID string
+	}
+	type projectEntry struct {
+		id, name string
+		repos    []repoEntry
+	}
+	projectMap := map[string]*projectEntry{}
+	var projectOrder []string
+
+	for rows.Next() {
+		var projID, projName, repoName, folderPath, command string
+		if err := rows.Scan(&projID, &projName, &repoName, &folderPath, &command); err != nil {
+			continue
+		}
+		p, ok := projectMap[projID]
+		if !ok {
+			p = &projectEntry{id: projID, name: projName}
+			projectMap[projID] = p
+			projectOrder = append(projectOrder, projID)
+		}
+
+		var toolID string
+		if slug, ok := commandToSlug[command]; ok {
+			toolID = resolveToolID(slug)
+		}
+		if toolID == "" {
+			toolID = fallbackToolID()
+		}
+
+		p.repos = append(p.repos, repoEntry{
+			repoName:   repoName,
+			folderPath: folderPath,
+			toolID:     toolID,
+		})
+	}
+
+	if len(projectOrder) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## USER PROJECTS\n\n")
+	sb.WriteString("When a user references a project by name, include \"project_context\" in your response.\n\n")
+
+	for _, projID := range projectOrder {
+		p := projectMap[projID]
+		sb.WriteString(fmt.Sprintf("- **%s** (ID: `%s`)\n", p.name, p.id))
+		for _, r := range p.repos {
+			toolRef := "none"
+			if r.toolID != "" {
+				toolRef = fmt.Sprintf("`%s`", r.toolID)
+			}
+			sb.WriteString(fmt.Sprintf("  - \"%s\" → %s (tool: %s)\n", r.repoName, r.folderPath, toolRef))
+		}
+	}
+
+	return sb.String()
+}
+
 // buildDashboardsPromptSection queries the DB for existing dashboards and builds a prompt section
 // so the gateway knows about them and can include dashboard_id when updating.
 func (m *Manager) buildDashboardsPromptSection() string {

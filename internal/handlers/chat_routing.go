@@ -149,7 +149,7 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		h.beginAgentWork(threadID, agentRoleSlug)
 		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, agentRoleSlug, 0)
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, agentRoleSlug, 0, nil)
 		return
 	}
 
@@ -163,14 +163,14 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		h.beginAgentWork(threadID, mentionSlug)
 		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, mentionSlug, 0)
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, mentionSlug, 0, nil)
 		return
 	}
 
 	// Priority 3: Check for bootstrap mode (first-time onboarding)
 	if agents.GatewayHasBootstrap(h.dataDir) {
 		h.broadcastStatus(threadID, "analyzing", "Setting up...")
-		history := h.fetchThreadHistory(threadID)
+		history := h.fetchThreadHistory(threadID, gatewayHistoryLimit)
 		gatewayCtx, gatewayCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer gatewayCancel()
 		resp, usage, err := h.agentManager.GatewayAnalyzeBootstrap(gatewayCtx, content, threadID, history)
@@ -226,8 +226,8 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		ThreadMembers: h.getThreadMemberSlugs(threadID),
 	}
 
-	// Fetch recent thread history for multi-turn context
-	history := h.fetchThreadHistory(threadID)
+	// Fetch recent thread history for gateway routing (limited to reduce latency)
+	history := h.fetchThreadHistory(threadID, gatewayHistoryLimit)
 
 	gatewayCtx, gatewayCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 	defer gatewayCancel()
@@ -320,7 +320,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		h.beginAgentWork(threadID, resp.AssignedAgent)
 		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0, gatewayCostUSD)
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0, resp.ProjectContext, gatewayCostUSD)
 	} else {
 		// No assigned agent and no work order — use gateway message if available, else fallback
 		fallbackMsg := resp.Message
@@ -336,7 +336,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 
 const maxMentionDepth = 3
 
-func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, extraCostUSD ...float64) {
+func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, projectCtx *agents.ProjectContext, extraCostUSD ...float64) {
 	// Look up the role from the database
 	var systemPrompt, model string
 	var identityInitialized bool
@@ -377,6 +377,17 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		h.agentManager.MemoryMgr.EnsureMigrated(agentRoleSlug)
 		if memSection := h.agentManager.MemoryMgr.BuildMemoryPromptSection(agentRoleSlug); memSection != "" {
 			systemPrompt += "\n\n---\n\n" + memSection
+		}
+	}
+
+	// Inject project context if the gateway resolved a project reference
+	if projectCtx != nil {
+		systemPrompt += "\n\n## ACTIVE PROJECT CONTEXT\n"
+		systemPrompt += fmt.Sprintf("The user is referencing project **%s**.\n", projectCtx.ProjectName)
+		systemPrompt += fmt.Sprintf("- **Directory**: `%s`\n", projectCtx.Directory)
+		if projectCtx.ToolID != "" {
+			systemPrompt += fmt.Sprintf("- **Coding CLI Tool ID**: `%s`\n", projectCtx.ToolID)
+			systemPrompt += "\nUse `call_tool` with this tool ID and directory for any file operations, code analysis, or modifications in this project.\n"
 		}
 	}
 
@@ -595,11 +606,15 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	}
 }
 
-func (h *ChatHandler) fetchThreadHistory(threadID string) []agents.ThreadMessage {
+func (h *ChatHandler) fetchThreadHistory(threadID string, limits ...int) []agents.ThreadMessage {
+	limit := threadHistoryLimit
+	if len(limits) > 0 && limits[0] > 0 {
+		limit = limits[0]
+	}
 	rows, err := h.db.Query(
 		fmt.Sprintf(
 			"SELECT role, content, agent_role_slug FROM (SELECT role, content, agent_role_slug, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at DESC LIMIT %d) sub ORDER BY created_at ASC",
-			threadHistoryLimit,
+			limit,
 		),
 		threadID,
 	)

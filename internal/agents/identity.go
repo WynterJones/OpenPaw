@@ -18,7 +18,8 @@ const (
 	FileIdentity  = "IDENTITY.md" // deprecated, kept for migration
 	FileSoul      = "SOUL.md"
 	FileUser      = "USER.md"
-	FileAgents    = "AGENTS.md"
+	FileAgents    = "AGENTS.md"  // deprecated, renamed to RUNBOOK.md
+	FileRunbook   = "RUNBOOK.md"
 	FileTools     = "TOOLS.md" // deprecated, kept for migration
 	FileHeartbeat = "HEARTBEAT.md"
 	FileBoot      = "BOOT.md"
@@ -32,7 +33,7 @@ const (
 )
 
 var identityFiles = []string{
-	FileSoul, FileUser, FileAgents,
+	FileSoul, FileUser, FileRunbook,
 	FileHeartbeat, FileBoot,
 }
 
@@ -57,22 +58,21 @@ var defaultTemplates = map[string]string{
 
 (The human hasn't told you anything about themselves yet. Update this file as you learn.)
 `,
-	FileAgents: `# Operating Runbook
+	FileRunbook: `# Runbook
 
 ## Session Rules
 - Be concise and helpful
 - Ask clarifying questions when requirements are ambiguous
-- Update memory after significant interactions
 
 ## Response Style
 - Match the user's energy and formality level
 - Use markdown formatting when it aids readability
 
-## Memory Management
-- Use memory_save to remember important information across conversations
-- Use memory_search before assuming you don't know something
-- Save user preferences, project details, and decisions with high importance
-- Review your boot memory summary at session start
+## Lessons Learned
+(Update this section as you discover what works and what doesn't.)
+
+## Process Notes
+(Track workflow patterns, shortcuts, and operational knowledge here.)
 `,
 	FileHeartbeat: ``,
 	FileBoot: `# Startup
@@ -253,7 +253,7 @@ func AssembleSystemPrompt(dataDir, slug string) (string, error) {
 
 	sections := []section{
 		{"SOUL", FileSoul},
-		{"OPERATING PROCEDURES", FileAgents},
+		{"RUNBOOK", FileRunbook},
 		{"USER PREFERENCES", FileUser},
 	}
 
@@ -310,8 +310,24 @@ Your identity files are at: %s
 You can read and update your own files using the Read, Write, and Edit tools.
 
 Key files you can modify:
-- SOUL.md, USER.md, AGENTS.md, BOOT.md — identity and behavior
+- SOUL.md — your personality and core identity
+- USER.md — what you know about the user
+- RUNBOOK.md — your operational runbook (see below)
+- BOOT.md — startup instructions
 - skills/*/SKILL.md — your skill definitions
+
+### RUNBOOK.md — Your Self-Managed Runbook
+
+**You MUST actively maintain your RUNBOOK.md.** This is your operational playbook that you own and evolve.
+
+Update your runbook when:
+- You discover something that works well (add to "Lessons Learned")
+- You find a better approach to a recurring task (add to "Process Notes")
+- The user corrects you or gives feedback on your approach
+- You complete a complex task and want to remember the process
+- You notice patterns in what the user asks for
+
+Keep it concise and actionable — write notes your future self will thank you for.
 
 Your memories are stored in a database. Use the memory_* tools to save, search, list, update, and forget memories.
 
@@ -598,6 +614,46 @@ func SaveGatewayMemoryNote(dataDir, note string) error {
 	defer f.Close()
 	_, err = f.WriteString(entry)
 	return err
+}
+
+// MigrateAgentsToRunbook renames AGENTS.md → RUNBOOK.md for all existing agents.
+func MigrateAgentsToRunbook(dataDir string) error {
+	agentsDir := filepath.Join(dataDir, "agents")
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		agentDir := filepath.Join(agentsDir, entry.Name())
+		oldPath := filepath.Join(agentDir, FileAgents)
+		newPath := filepath.Join(agentDir, FileRunbook)
+
+		// Skip if RUNBOOK.md already exists
+		if _, err := os.Stat(newPath); err == nil {
+			continue
+		}
+		// Rename AGENTS.md → RUNBOOK.md if it exists
+		if _, err := os.Stat(oldPath); err == nil {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				logger.Error("Failed to rename AGENTS.md to RUNBOOK.md for %s: %v", entry.Name(), err)
+				continue
+			}
+			count++
+		}
+	}
+
+	if count > 0 {
+		logger.Success("Renamed AGENTS.md to RUNBOOK.md for %d agent(s)", count)
+	}
+	return nil
 }
 
 // MigrateIdentityToSoul merges IDENTITY.md content into SOUL.md and removes deprecated files.

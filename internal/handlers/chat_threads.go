@@ -126,7 +126,7 @@ func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, curren
 		h.addThreadMember(threadID, mentionedSlug)
 		h.broadcastRoutingIndicator(threadID, mentionedSlug)
 		h.broadcastStatus(threadID, "thinking", "Thinking...")
-		h.handleRoleChatWithDepth(ctx, threadID, agentResponse, mentionedSlug, depth+1, gatewayCostUSD)
+		h.handleRoleChatWithDepth(ctx, threadID, agentResponse, mentionedSlug, depth+1, nil, gatewayCostUSD)
 	}
 }
 
