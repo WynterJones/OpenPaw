@@ -307,7 +307,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
 		threadID,
 	)
 	if err != nil {
@@ -320,7 +320,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	var messageIDs []string
 	for rows.Next() {
 		var m models.ChatMessage
-		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &m.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan message")
 			return
 		}
@@ -627,16 +627,20 @@ func (h *ChatHandler) doAutoCompact(ctx context.Context, threadID string) error 
 	return h.compactThreadInternal(ctx, threadID)
 }
 
-func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content string, costUSD float64, inputTokens, outputTokens int, widgetData ...string) string {
+func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content string, costUSD float64, inputTokens, outputTokens int, extras ...string) string {
 	id := generateID()
 	now := time.Now().UTC()
 	var wd *string
-	if len(widgetData) > 0 && widgetData[0] != "" {
-		wd = &widgetData[0]
+	if len(extras) > 0 && extras[0] != "" {
+		wd = &extras[0]
+	}
+	var imgURL *string
+	if len(extras) > 1 && extras[1] != "" {
+		imgURL = &extras[1]
 	}
 	if _, err := h.db.Exec(
-		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		id, threadID, "assistant", content, agentRoleSlug, costUSD, inputTokens, outputTokens, wd, now,
+		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, threadID, "assistant", content, agentRoleSlug, costUSD, inputTokens, outputTokens, wd, imgURL, now,
 	); err != nil {
 		logger.Error("Failed to save assistant message: %v", err)
 	}

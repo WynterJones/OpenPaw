@@ -398,7 +398,7 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		history = history[:len(history)-1]
 	}
 
-	response, usage, widgetJSON, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, content, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
+	response, usage, widgetJSON, imageURL, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, content, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
 	if err != nil {
 		h.agentManager.ClearStreamState(threadID)
 		errMsg := "I'm sorry, I encountered an error: " + err.Error()
@@ -421,7 +421,7 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	if len(extraCostUSD) > 0 {
 		costUSD += extraCostUSD[0]
 	}
-	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON)
+	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL)
 
 	h.agentManager.ClearStreamState(threadID)
 

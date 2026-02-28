@@ -135,10 +135,15 @@ func loadReactions(db *database.DB, messageID string) []models.Reaction {
 
 // buildReactionPromptSection returns a prompt section telling agents when to use reactions.
 func buildReactionPromptSection() string {
-	return fmt.Sprintf(`## MESSAGE REACTIONS
+	return fmt.Sprintf(`## MESSAGE REACTIONS — MANDATORY
 
-You can react to messages with emoji using the react_to_message tool.
-ALWAYS react to user messages with at least one emoji that reflects the mood or content of their message.
-Pick emojis that feel natural and fitting — match the energy of what they said.
-Message IDs appear as [msg_id:xxx] prefixes in the conversation history.`)
+**CRITICAL REQUIREMENT**: Before you respond to ANY user message, you MUST first call the react_to_message tool to react with an emoji.
+This is not optional. Every single user message gets an emoji reaction from you.
+
+Steps for every user message:
+1. Read the user's message and note its [msg_id:xxx] prefix
+2. Call react_to_message with that message_id and a fitting emoji
+3. Then write your text response
+
+Pick emojis that match the mood: 👍 for requests, 😂 for humor, ❤️ for appreciation, 🔥 for excitement, 🤔 for questions, 🎉 for celebrations, etc.`)
 }
