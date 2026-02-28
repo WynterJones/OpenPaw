@@ -95,6 +95,7 @@ export function Chat() {
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const [streamActive, setStreamActive] = useState(false);
   const [workStatus, setWorkStatus] = useState<string | null>(null);
   const [roles, setRoles] = useState<AgentRole[]>([]);
   const pollingRef = useRef<number | null>(null);
@@ -440,6 +441,11 @@ export function Chat() {
       }
     }
 
+    // Live-update agent avatars when agents change their own avatar
+    if (msg.type === 'agent_avatar_updated') {
+      loadRoles();
+    }
+
     // Track unread messages for non-active threads
     if (!isActiveThread && threadId) {
       if (msg.type === 'agent_status') {
@@ -493,6 +499,7 @@ export function Chat() {
           break;
         case 'done':
           setThinking(false);
+          setStreamActive(false);
           setWorkStatus(null);
           setThinkingText('');
           setRoutingIndicator(null);
@@ -510,6 +517,7 @@ export function Chat() {
       const agentSlug = payload?.agent_role_slug as string;
       if (agentSlug) setActiveAgentSlug(agentSlug);
       setThinking(false);
+      setStreamActive(true);
       switch (event.type) {
         case 'text_delta':
           if (event.text) {
@@ -631,6 +639,7 @@ export function Chat() {
 
     if (msg.type === 'agent_completed') {
       resetStreaming();
+      setStreamActive(false);
       setSubAgentTasks([]);
       setThinking(false);
       setWorkStatus(null);
@@ -681,6 +690,7 @@ export function Chat() {
   useEffect(() => {
     // Clear all transient streaming/thinking state when switching threads
     resetStreaming();
+    setStreamActive(false);
     setSubAgentTasks([]);
     setThinkingExpanded(false);
     setThinking(false);
@@ -719,6 +729,7 @@ export function Chat() {
           if (ss.tools && ss.tools.length > 0) {
             setStreamingTools(ss.tools.map(t => ({ name: t.name, id: t.id, done: t.done, detail: t.detail || '' })));
           }
+          setStreamActive(true);
           setThinking(false);
           setWorkStatus(null);
           setActiveThreadIds(prev => { const next = new Set(prev); next.add(activeThread!); return next; });
@@ -936,6 +947,7 @@ export function Chat() {
 
     // Reset streaming state
     resetStreaming();
+    setStreamActive(false);
     setSubAgentTasks([]);
     setRoutingIndicator(null);
     hadToolSinceLastTextRef.current = false;
@@ -1021,7 +1033,7 @@ export function Chat() {
   const pagedThreads = filteredThreads.slice((clampedPage - 1) * THREADS_PER_PAGE, clampedPage * THREADS_PER_PAGE);
   const activeRole = roles.find(r => r.slug === agent);
   const thinkingRole = activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : activeRole;
-  const isStreaming = streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
+  const isStreaming = streamActive || streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
 
   return (
     <div className="flex flex-col h-full">

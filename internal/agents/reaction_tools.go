@@ -138,11 +138,7 @@ func buildReactionPromptSection() string {
 	return fmt.Sprintf(`## MESSAGE REACTIONS
 
 You can react to messages with emoji using the react_to_message tool.
-Use reactions to:
-- Acknowledge a message without a full response (e.g. thumbs up)
-- Show appreciation or agreement quickly
-- Signal that you've seen something important
-
-Keep reactions natural and occasional — don't react to every message.
+ALWAYS react to user messages with at least one emoji that reflects the mood or content of their message.
+Pick emojis that feel natural and fitting — match the energy of what they said.
 Message IDs appear as [msg_id:xxx] prefixes in the conversation history.`)
 }

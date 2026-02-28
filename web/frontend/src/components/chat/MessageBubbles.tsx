@@ -62,12 +62,16 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
         {role && (
           <p className="text-xs font-medium text-accent-primary mb-0.5 px-1 hidden md:block">{role.name}</p>
         )}
-        {text && (
+        {text ? (
           <div className="text-base font-medium text-text-1 px-1">
             <div className="prose-chat">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(text, tools.length > 0)}</ReactMarkdown>
               <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />
             </div>
+          </div>
+        ) : tools.length === 0 && (!subAgentTasks || subAgentTasks.length === 0) && (
+          <div className="px-1 py-1">
+            <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse align-text-bottom" />
           </div>
         )}
         {subAgentTasks && subAgentTasks.length > 0 && (
