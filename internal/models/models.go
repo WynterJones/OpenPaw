@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type User struct {
 	ID           string    `json:"id"`
@@ -136,17 +139,19 @@ type ChatThread struct {
 }
 
 type ChatMessage struct {
-	ID            string     `json:"id"`
-	ThreadID      string     `json:"thread_id"`
-	Role          string     `json:"role"`
-	Content       string     `json:"content"`
-	AgentRoleSlug string     `json:"agent_role_slug"`
-	CostUSD       float64    `json:"cost_usd"`
-	InputTokens   int        `json:"input_tokens"`
-	OutputTokens  int        `json:"output_tokens"`
-	WidgetData    *string    `json:"widget_data,omitempty"`
-	Reactions     []Reaction `json:"reactions,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID            string          `json:"id"`
+	ThreadID      string          `json:"thread_id"`
+	Role          string          `json:"role"`
+	Content       string          `json:"content"`
+	AgentRoleSlug string          `json:"agent_role_slug"`
+	CostUSD       float64         `json:"cost_usd"`
+	InputTokens   int             `json:"input_tokens"`
+	OutputTokens  int             `json:"output_tokens"`
+	WidgetData    *string         `json:"widget_data,omitempty"`
+	ImageURL      *string         `json:"image_url,omitempty"`
+	ToolCalls     json.RawMessage `json:"tool_calls,omitempty"`
+	Reactions     []Reaction      `json:"reactions,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 type Reaction struct {

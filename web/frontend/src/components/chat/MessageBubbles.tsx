@@ -19,15 +19,15 @@ function ReactionBar({ reactions, onReact }: { reactions?: Reaction[]; onReact: 
         <button
           key={`${r.emoji}-${r.source}`}
           onClick={() => onReact(r.emoji)}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border cursor-pointer transition-colors ${
+          title={r.source !== 'user' ? `@${r.source}` : undefined}
+          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-sm border cursor-pointer transition-colors ${
             r.source === 'user'
               ? 'bg-accent-muted border-accent-primary text-accent-primary'
               : 'bg-surface-2 border-border-1 text-text-2'
           } hover:bg-surface-2`}
         >
           <span>{r.emoji}</span>
-          {r.count > 1 && <span>{r.count}</span>}
-          {r.source !== 'user' && <span className="text-[9px] text-text-3">@{r.source}</span>}
+          {r.count > 1 && <span className="text-xs">{r.count}</span>}
         </button>
       ))}
       <EmojiPicker onSelect={onReact} />

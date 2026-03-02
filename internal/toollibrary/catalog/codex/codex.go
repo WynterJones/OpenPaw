@@ -121,7 +121,7 @@ func runCodex(req codexRequest, extraArgs ...string) (map[string]interface{}, er
 
 	absDir, _ := filepath.Abs(req.Directory)
 
-	args := []string{"exec", "--json", "--full-auto", "--ephemeral"}
+	args := []string{"exec", "--json", "--full-auto", "--ephemeral", "--skip-git-repo-check"}
 	if req.Model != "" {
 		args = append(args, "-m", req.Model)
 	}

@@ -168,6 +168,12 @@ func VerifyChecksum(filePath, expectedHex string) error {
 
 // DownloadBinary downloads a release binary to a temporary file and returns the path.
 func DownloadBinary(tag, binaryName string) (string, error) {
+	return DownloadBinaryWithProgress(tag, binaryName, nil)
+}
+
+// DownloadBinaryWithProgress downloads a release binary with an optional progress callback.
+// The callback receives bytes downloaded so far and total bytes (-1 if unknown).
+func DownloadBinaryWithProgress(tag, binaryName string, progress func(downloaded, total int64)) (string, error) {
 	url := fmt.Sprintf("https://github.com/WynterJones/OpenPaw/releases/download/%s/%s", tag, binaryName)
 	client := &http.Client{Timeout: 5 * time.Minute}
 
@@ -186,10 +192,36 @@ func DownloadBinary(tag, binaryName string) (string, error) {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("failed to write binary: %w", err)
+	total := resp.ContentLength
+	if progress == nil {
+		if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			return "", fmt.Errorf("failed to write binary: %w", err)
+		}
+	} else {
+		buf := make([]byte, 32*1024)
+		var downloaded int64
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if n > 0 {
+				if _, writeErr := tmpFile.Write(buf[:n]); writeErr != nil {
+					tmpFile.Close()
+					os.Remove(tmpFile.Name())
+					return "", fmt.Errorf("failed to write binary: %w", writeErr)
+				}
+				downloaded += int64(n)
+				progress(downloaded, total)
+			}
+			if readErr != nil {
+				if readErr == io.EOF {
+					break
+				}
+				tmpFile.Close()
+				os.Remove(tmpFile.Name())
+				return "", fmt.Errorf("failed to download binary: %w", readErr)
+			}
+		}
 	}
 	tmpFile.Close()
 

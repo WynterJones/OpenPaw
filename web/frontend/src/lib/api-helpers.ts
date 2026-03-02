@@ -36,10 +36,6 @@ import type {
   TodoItem,
   MediaItem,
   MediaListResponse,
-  FalStatus,
-  FalModel,
-  FalGenerateRequest,
-  FalGenerateResult,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -415,14 +411,6 @@ export const mediaApi = {
     return api.get<MediaListResponse>(`/media/search?${search}`);
   },
   fileUrl: (id: string) => `/api/v1/media/${id}/file`,
-};
-
-// FAL API helpers
-export const falApi = {
-  status: () => api.get<FalStatus>('/fal/status'),
-  updateApiKey: (apiKey: string) => api.put<FalStatus>('/fal/api-key', { api_key: apiKey }),
-  models: () => api.get<FalModel[]>('/fal/models'),
-  generate: (req: FalGenerateRequest) => api.post<FalGenerateResult>('/fal/generate', req),
 };
 
 // Heartbeat API helpers

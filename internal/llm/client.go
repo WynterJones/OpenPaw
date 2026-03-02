@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+// APIError represents an HTTP error from the upstream API with the status code preserved.
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Body)
+}
+
 type Client struct {
 	httpClient           *http.Client // streaming — no timeout (SSE needs unlimited time)
 	nonStreamingClient   *http.Client // non-streaming — 30s timeout

@@ -50,7 +50,7 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// Don't expose encrypted API keys in general settings
-		if key == "openrouter_api_key" || key == "fal_api_key" {
+		if key == "openrouter_api_key" {
 			continue
 		}
 		settings[key] = value
@@ -67,7 +67,7 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	for key, value := range req {
 		// Don't allow setting API keys through general settings
-		if key == "openrouter_api_key" || key == "fal_api_key" {
+		if key == "openrouter_api_key" {
 			continue
 		}
 		h.upsertSetting(key, value)

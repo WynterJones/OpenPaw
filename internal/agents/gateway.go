@@ -57,7 +57,9 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		if hints.LastResponder != "" {
 			gatewayPrompt += fmt.Sprintf("- **Last responder**: `%s` (the agent who most recently replied in this thread)\n", hints.LastResponder)
 		}
-		if hints.MentionSlug != "" {
+		if len(hints.MentionSlugs) > 1 {
+			gatewayPrompt += fmt.Sprintf("- **User @mentioned multiple agents**: %s\n", strings.Join(hints.MentionSlugs, ", "))
+		} else if hints.MentionSlug != "" {
 			gatewayPrompt += fmt.Sprintf("- **User @mentioned**: `%s` (the user explicitly tagged this agent)\n", hints.MentionSlug)
 		}
 		if len(hints.ThreadMembers) > 0 {
@@ -135,6 +137,14 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		}
 	}
 
+	// Normalize AssignedAgents ↔ AssignedAgent for backward compatibility
+	if len(resp.AssignedAgents) == 0 && resp.AssignedAgent != "" {
+		resp.AssignedAgents = []string{resp.AssignedAgent}
+	}
+	if len(resp.AssignedAgents) > 0 && resp.AssignedAgent == "" {
+		resp.AssignedAgent = resp.AssignedAgents[0]
+	}
+
 	return &resp, usage, nil
 }
 
@@ -150,6 +160,7 @@ type GatewayResponse struct {
 	Message        string            `json:"message"`
 	ThreadTitle    string            `json:"thread_title,omitempty"`
 	AssignedAgent  string            `json:"assigned_agent,omitempty"`
+	AssignedAgents []string          `json:"assigned_agents,omitempty"`
 	WorkOrder      *GatewayWorkOrder `json:"work_order,omitempty"`
 	MemoryNote     string            `json:"memory_note,omitempty"`
 	ProjectContext *ProjectContext   `json:"project_context,omitempty"`
@@ -188,7 +199,7 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 // RoleChatTools are the tools available to agents with identity files.
 var RoleChatTools = []string{"Read", "Write", "Edit"}
 
-func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, error) {
+func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, string, string, error) {
 	resolvedModel := llm.ResolveModel(model, llm.ModelSonnet)
 
 	// Build history messages for multi-turn conversation.
@@ -250,8 +261,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 				collector.TrackToolStart(ev.ToolName, ev.ToolID, ev.ToolInput)
 				m.db.LogAudit("system", "agent_tool_call", "tool_call", "agent_role", agentRoleSlug, ev.ToolName)
 			}
-			if ev.Type == EventToolEnd && ev.ToolOutput != "" {
-				collector.Collect(ev.ToolName, ev.ToolID, ev.ToolOutput)
+			if ev.Type == EventToolEnd {
+				isError := strings.HasPrefix(ev.ToolOutput, "ERROR")
+				collector.TrackToolEnd(ev.ToolID, isError)
+				if ev.ToolOutput != "" {
+					collector.Collect(ev.ToolName, ev.ToolID, ev.ToolOutput)
+				}
 			}
 			if threadID == "" {
 				return
@@ -321,19 +336,15 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers[name] = handler
 	}
 
-	// Inject image generation tool (uses Gemini Flash by default, FAL optional)
+	// Inject image generation tool (OpenRouter with model fallback chain)
 	if m.client != nil && m.client.IsConfigured() {
-		falAvailable := m.FalClient != nil && m.FalClient.IsConfigured()
-		cfg.ExtraTools = append(cfg.ExtraTools, BuildGenerateImageDef(falAvailable))
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildGenerateImageDef())
 		if cfg.ExtraHandlers == nil {
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 		}
 		cfg.ExtraHandlers["generate_image"] = m.makeGenerateImageHandler()
-		falNote := ""
-		if falAvailable {
-			falNote = " You also have access to FAL FLUX models — but ONLY use provider 'fal' when the user explicitly requests FAL or FLUX."
-		}
-		cfg.System += "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses Gemini Flash by default. The tool supports an `images` parameter — pass local image URLs as visual references." + falNote + "\n"
+		imageNote := "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses OpenRouter with automatic model fallback. The tool supports an `images` parameter — pass local image URLs as visual references.\n"
+		cfg.System += imageNote
 		if avatarDescription != "" || avatarPath != "" {
 			cfg.System += fmt.Sprintf("\n## YOUR VISUAL IDENTITY\nYour name is %s.", agentName)
 			if avatarDescription != "" {
@@ -348,6 +359,13 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			cfg.System += "\n"
 		}
 	}
+
+	// Inject avatar self-update tool so agents can change their own avatar
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildAvatarToolDef())
+	for name, handler := range MakeAvatarToolHandler(m.db, m.DataDir, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+	cfg.System += "\n\n" + buildAvatarPromptSection(m.db, agentName)
 
 	// Inject delegate_task if other agents are available for delegation
 	availableAgents := m.getAvailableAgentsForDelegation(agentRoleSlug)
@@ -372,7 +390,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 
 	result, err := m.client.RunAgentLoop(ctx, cfg, userMessage)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("role chat failed: %w", err)
+		return "", nil, "", "", "", fmt.Errorf("role chat failed: %w", err)
 	}
 
 	responseText := strings.TrimSpace(result.Text)
@@ -389,7 +407,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			OutputTokens: result.OutputTokens,
 			CostUSD:      result.TotalCostUSD,
 		}
-		return responseText, usage, collector.JSON(), nil
+		return responseText, usage, collector.JSON(), collector.ToolCallsJSON(), result.ImageURL, nil
 	}
 
 	usage := &llm.UsageInfo{
@@ -401,7 +419,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	m.db.LogAudit("system", "agent_response", "agent", "agent_role", agentRoleSlug,
 		fmt.Sprintf("%s tokens=%d+%d cost=$%.4f", agentRoleSlug, result.InputTokens, result.OutputTokens, result.TotalCostUSD))
 
-	return responseText, usage, collector.JSON(), nil
+	return responseText, usage, collector.JSON(), collector.ToolCallsJSON(), result.ImageURL, nil
 }
 
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
@@ -464,7 +482,7 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 		}
 	}
 
-	result, usage, _, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug, agentName, avatarDescription, avatarPath)
+	result, usage, widgetJSON, toolCallsJSON, imageURL, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug, agentName, avatarDescription, avatarPath)
 	if chatErr != nil {
 		return "", threadID, fmt.Errorf("scheduled prompt failed: %w", chatErr)
 	}
@@ -479,9 +497,21 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 		inputTokens = usage.InputTokens
 		outputTokens = usage.OutputTokens
 	}
+	var imgPtr *string
+	if imageURL != "" {
+		imgPtr = &imageURL
+	}
+	var wdPtr *string
+	if widgetJSON != "" {
+		wdPtr = &widgetJSON
+	}
+	var tcPtr *string
+	if toolCallsJSON != "" {
+		tcPtr = &toolCallsJSON
+	}
 	m.db.Exec(
-		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, created_at) VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?)",
-		assistMsgID, threadID, result, agentSlug, costUSD, inputTokens, outputTokens, assistNow,
+		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, created_at) VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		assistMsgID, threadID, result, agentSlug, costUSD, inputTokens, outputTokens, wdPtr, imgPtr, tcPtr, assistNow,
 	)
 	m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", assistNow, threadID)
 

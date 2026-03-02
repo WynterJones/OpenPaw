@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
-	"github.com/openpaw/openpaw/internal/fal"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
@@ -28,6 +27,7 @@ type ToolManager interface {
 	GetStatus(toolID string) map[string]interface{}
 	CallTool(toolID, endpoint string, payload []byte) ([]byte, error)
 	CallToolWithContext(ctx context.Context, toolID, endpoint string, payload []byte) ([]byte, error)
+	FetchFile(toolID, path string) ([]byte, string, error) // returns body, contentType, error
 }
 
 // MemoryManager is the interface for the per-agent memory system (avoids circular imports).
@@ -80,7 +80,6 @@ type Manager struct {
 	ToolMgr              ToolManager
 	MemoryMgr            MemoryManager
 	BrowserMgr           BrowserManager
-	FalClient            *fal.Client
 	FrontendFS           fs.FS
 	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
 	manifestCache        sync.Map // map[toolID][]byte
@@ -191,6 +190,7 @@ type ThreadMessage struct {
 type GatewayRoutingHints struct {
 	LastResponder string   // slug of agent who last responded in the thread
 	MentionSlug   string   // slug if user @mentioned an agent in this message
+	MentionSlugs  []string // all slugs if user @mentioned multiple agents
 	ThreadMembers []string // slugs of all agents currently in the thread
 }
 

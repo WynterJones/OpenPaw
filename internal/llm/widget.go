@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"time"
 )
 
 type WidgetPayload struct {
@@ -15,27 +16,100 @@ type WidgetPayload struct {
 	Data     json.RawMessage `json:"data"`
 }
 
+type ToolCallRecord struct {
+	ToolName  string `json:"tool_name"`
+	Endpoint  string `json:"endpoint,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+}
+
 type WidgetCollector struct {
 	mu        sync.Mutex
 	widgets   []WidgetPayload
 	endpoints map[string]string // tool_id -> endpoint path
+	toolCalls []ToolCallRecord
+	toolIndex map[string]int // tool_id -> index in toolCalls
 }
 
 func NewWidgetCollector() *WidgetCollector {
 	return &WidgetCollector{
 		endpoints: make(map[string]string),
+		toolIndex: make(map[string]int),
 	}
 }
 
 func (wc *WidgetCollector) TrackToolStart(toolName, toolID string, toolInput map[string]interface{}) {
-	if toolName != "call_tool" || toolID == "" {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+
+	var endpoint, detail string
+	if toolName == "call_tool" {
+		if ep, ok := toolInput["endpoint"].(string); ok && ep != "" {
+			endpoint = ep
+			if toolID != "" {
+				wc.endpoints[toolID] = ep
+			}
+		}
+	} else {
+		detail = toolCallDetail(toolName, toolInput)
+	}
+
+	rec := ToolCallRecord{
+		ToolName:  toolName,
+		Endpoint:  endpoint,
+		Detail:    detail,
+		Status:    "running",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	wc.toolCalls = append(wc.toolCalls, rec)
+	if toolID != "" {
+		wc.toolIndex[toolID] = len(wc.toolCalls) - 1
+	}
+}
+
+func (wc *WidgetCollector) TrackToolEnd(toolID string, isError bool) {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+
+	idx, ok := wc.toolIndex[toolID]
+	if !ok {
 		return
 	}
-	if ep, ok := toolInput["endpoint"].(string); ok && ep != "" {
-		wc.mu.Lock()
-		wc.endpoints[toolID] = ep
-		wc.mu.Unlock()
+	if isError {
+		wc.toolCalls[idx].Status = "error"
+	} else {
+		wc.toolCalls[idx].Status = "success"
 	}
+}
+
+func toolCallDetail(toolName string, input map[string]interface{}) string {
+	switch toolName {
+	case "Read", "Write", "Edit":
+		if v, ok := input["file_path"].(string); ok {
+			return v
+		}
+	case "Bash":
+		if v, ok := input["command"].(string); ok {
+			if len(v) > 80 {
+				return v[:80]
+			}
+			return v
+		}
+	case "Grep", "Glob":
+		if v, ok := input["pattern"].(string); ok {
+			return v
+		}
+	case "WebFetch":
+		if v, ok := input["url"].(string); ok {
+			return v
+		}
+	case "WebSearch":
+		if v, ok := input["query"].(string); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 func (wc *WidgetCollector) Collect(toolName, toolID, output string) bool {
@@ -223,6 +297,21 @@ func (wc *WidgetCollector) JSON() string {
 	}
 
 	b, err := json.Marshal(wc.widgets)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func (wc *WidgetCollector) ToolCallsJSON() string {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+
+	if len(wc.toolCalls) == 0 {
+		return ""
+	}
+
+	b, err := json.Marshal(wc.toolCalls)
 	if err != nil {
 		return ""
 	}

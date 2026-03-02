@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { generateTheme } from "../lib/theme";
 import {
   User,
@@ -32,7 +32,6 @@ import {
   Play,
   GitBranch,
   Loader2,
-  ImageIcon,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -47,7 +46,9 @@ import { DataTable } from "../components/DataTable";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDesign } from "../contexts/DesignContext";
-import { api, type SystemInfo } from "../lib/api";
+import { api, type SystemInfo, type WSMessage } from "../lib/api";
+import { useWebSocket } from "../lib/useWebSocket";
+import type { UpdateCheckResponse } from "../lib/types";
 import { useToast } from "../components/Toast";
 import {
   isNotificationSoundEnabled,
@@ -63,7 +64,6 @@ const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "network", label: "Network", icon: Wifi },
   { id: "models", label: "AI Models", icon: Bot },
-  { id: "fal", label: "FAL AI", icon: ImageIcon },
   { id: "design", label: "Design", icon: Paintbrush },
   { id: "security", label: "Security", icon: Shield },
   { id: "system", label: "System", icon: Server },
@@ -2076,7 +2076,18 @@ function SecurityTab() {
 }
 
 function SystemTab() {
+  const { toast } = useToast();
   const [info, setInfo] = useState<SystemInfo | null>(null);
+
+  // Update state
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckResponse | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateStep, setUpdateStep] = useState("");
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [updatePercent, setUpdatePercent] = useState(0);
+  const [restarting, setRestarting] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     api
@@ -2085,49 +2096,215 @@ function SystemTab() {
       .catch(() => {});
   }, []);
 
+  // Clean up health poll on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const handleWsMessage = useCallback((msg: WSMessage) => {
+    if (msg.type !== "update_progress") return;
+    const p = msg.payload as { step?: string; status?: string; message?: string; percent?: number };
+    if (p.step) setUpdateStep(p.step);
+    if (p.message) setUpdateMessage(p.message);
+    if (typeof p.percent === "number") setUpdatePercent(p.percent);
+
+    if (p.status === "error") {
+      setUpdating(false);
+      toast("error", p.message || "Update failed");
+    }
+    if (p.step === "restart" && p.status === "running") {
+      setRestarting(true);
+      setUpdating(false);
+      // Poll for server to come back
+      let attempts = 0;
+      pollRef.current = setInterval(async () => {
+        attempts++;
+        if (attempts > 30) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setRestarting(false);
+          toast("error", "Server did not restart in time");
+          return;
+        }
+        try {
+          const resp = await fetch("/api/v1/system/health");
+          if (resp.ok) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            // Verify version changed
+            try {
+              const newInfo = await api.get<SystemInfo>("/system/info");
+              setInfo(newInfo);
+              setUpdateCheck(null);
+              toast("success", `Updated to v${newInfo.version}`);
+            } catch {
+              toast("success", "Server restarted successfully");
+            }
+            setRestarting(false);
+            setUpdateStep("");
+            setUpdateMessage("");
+            setUpdatePercent(0);
+          }
+        } catch {
+          // Server still down, keep polling
+        }
+      }, 2000);
+    }
+  }, [toast]);
+
+  useWebSocket({ onMessage: handleWsMessage, enabled: updating || restarting });
+
+  const checkForUpdates = async () => {
+    setChecking(true);
+    try {
+      const data = await api.get<UpdateCheckResponse>("/system/update/check");
+      setUpdateCheck(data);
+      if (!data.update_available) {
+        toast("success", `You're on the latest version (v${data.current_version})`);
+      }
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to check for updates");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const applyUpdate = async () => {
+    setUpdating(true);
+    setUpdateStep("");
+    setUpdateMessage("");
+    setUpdatePercent(0);
+    try {
+      await api.post("/system/update/apply", {});
+    } catch (err) {
+      setUpdating(false);
+      toast("error", err instanceof Error ? err.message : "Failed to start update");
+    }
+  };
+
   return (
-    <Card>
-      <h3 className="text-sm font-semibold text-text-1 mb-4">
-        System Information
-      </h3>
-      {info ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { label: "Version", value: info.version, icon: Info },
-              { label: "Go Version", value: info.go_version, icon: Server },
-              {
-                label: "Platform",
-                value: `${info.os}/${info.arch}`,
-                icon: HardDrive,
-              },
-              { label: "Uptime", value: info.uptime, icon: Server },
-              { label: "Database Size", value: info.db_size, icon: Database },
-              {
-                label: "Tools",
-                value: String(info.tool_count),
-                icon: Settings2,
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="flex items-center gap-3 p-3 rounded-lg bg-surface-2"
-              >
-                <item.icon className="w-4 h-4 text-text-3" />
-                <div>
-                  <p className="text-xs text-text-3">{item.label}</p>
-                  <p className="text-sm font-medium text-text-1">
-                    {item.value}
-                  </p>
+    <div className="space-y-4">
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-4">
+          System Information
+        </h3>
+        {info ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                { label: "Version", value: info.version, icon: Info },
+                { label: "Go Version", value: info.go_version, icon: Server },
+                {
+                  label: "Platform",
+                  value: `${info.os}/${info.arch}`,
+                  icon: HardDrive,
+                },
+                { label: "Uptime", value: info.uptime, icon: Server },
+                { label: "Database Size", value: info.db_size, icon: Database },
+                {
+                  label: "Tools",
+                  value: String(info.tool_count),
+                  icon: Settings2,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-surface-2"
+                >
+                  <item.icon className="w-4 h-4 text-text-3" />
+                  <div>
+                    <p className="text-xs text-text-3">{item.label}</p>
+                    <p className="text-sm font-medium text-text-1">
+                      {item.value}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <LoadingSpinner message="Loading system info..." />
-      )}
-    </Card>
+        ) : (
+          <LoadingSpinner message="Loading system info..." />
+        )}
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-4">
+          Software Update
+        </h3>
+
+        {restarting ? (
+          <div className="flex items-center gap-3 p-4 rounded-lg bg-surface-2">
+            <Loader2 className="w-5 h-5 text-accent animate-spin" />
+            <div>
+              <p className="text-sm font-medium text-text-1">Restarting server...</p>
+              <p className="text-xs text-text-3">The page will reconnect automatically.</p>
+            </div>
+          </div>
+        ) : updating ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-4 h-4 text-accent animate-spin" />
+              <p className="text-sm text-text-1">{updateMessage || "Starting update..."}</p>
+            </div>
+            <div className="w-full bg-surface-2 rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-300"
+                style={{ width: `${updatePercent}%` }}
+              />
+            </div>
+            <p className="text-xs text-text-3">
+              Step: {updateStep || "initializing"} &middot; {updatePercent}%
+            </p>
+          </div>
+        ) : updateCheck?.update_available ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-sm text-text-1">
+                Update available: <span className="font-mono">v{updateCheck.current_version}</span>
+                {" -> "}
+                <span className="font-mono font-semibold">v{updateCheck.latest_version}</span>
+              </p>
+            </div>
+            {updateCheck.can_self_update ? (
+              <Button onClick={applyUpdate}>
+                <Download className="w-4 h-4" />
+                Update Now
+              </Button>
+            ) : (
+              <div className="p-3 rounded-lg bg-surface-2">
+                <p className="text-sm text-text-1 mb-1">
+                  Update using your package manager:
+                </p>
+                <code className="text-xs font-mono text-accent">
+                  {updateCheck.install_method === "npm"
+                    ? "npm update -g openpaw"
+                    : "brew upgrade openpaw"}
+                </code>
+              </div>
+            )}
+          </div>
+        ) : updateCheck && !updateCheck.update_available ? (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-2">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <p className="text-sm text-text-1">
+              You're on the latest version <span className="font-mono">(v{updateCheck.current_version})</span>
+            </p>
+          </div>
+        ) : (
+          <Button onClick={checkForUpdates} disabled={checking} variant="secondary">
+            {checking ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            {checking ? "Checking..." : "Check for Updates"}
+          </Button>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -2804,149 +2981,6 @@ function DangerTab() {
   );
 }
 
-function FalTab() {
-  const { toast } = useToast();
-  const [falConfigured, setFalConfigured] = useState(false);
-  const [falSource, setFalSource] = useState("none");
-  const [falKey, setFalKey] = useState("");
-  const [savingFal, setSavingFal] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .get<{ configured: boolean; source: string }>("/fal/status")
-      .then((data) => {
-        setFalConfigured(data.configured);
-        setFalSource(data.source);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const saveFalKey = async () => {
-    if (!falKey.trim()) return;
-    setSavingFal(true);
-    try {
-      const data = await api.put<{ configured: boolean; source: string }>(
-        "/fal/api-key",
-        { api_key: falKey.trim() },
-      );
-      setFalConfigured(data.configured);
-      setFalSource(data.source);
-      setFalKey("");
-      toast("success", "FAL API key saved");
-    } catch (err) {
-      toast(
-        "error",
-        err instanceof Error ? err.message : "Failed to save FAL API key",
-      );
-    } finally {
-      setSavingFal(false);
-    }
-  };
-
-  if (loading) return <LoadingSpinner message="Loading FAL settings..." />;
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <h3 className="text-sm font-semibold text-text-1 mb-1">
-          FAL AI - Image Generation
-        </h3>
-        <p className="text-xs text-text-3 mb-4">
-          Generate images using FLUX models (Dev, Schnell, Pro). Set via
-          FAL_KEY env var or enter below.
-        </p>
-        <div
-          className={`flex items-center gap-3 p-3 rounded-lg border mb-4 ${
-            falConfigured
-              ? "bg-green-500/5 border-green-500/20"
-              : "bg-amber-500/5 border-amber-500/20"
-          }`}
-        >
-          <CheckCircle
-            className={`w-4 h-4 flex-shrink-0 ${falConfigured ? "text-green-400" : "text-amber-400"}`}
-          />
-          <p
-            className={`text-sm font-medium ${falConfigured ? "text-green-400" : "text-amber-400"}`}
-          >
-            {falConfigured
-              ? `Configured (source: ${falSource})`
-              : "Not configured"}
-          </p>
-        </div>
-        {falSource !== "env" && (
-          <div className="max-w-sm space-y-3">
-            <Input
-              label="FAL API Key"
-              type="password"
-              value={falKey}
-              onChange={(e) => setFalKey(e.target.value)}
-              placeholder="Enter your FAL API key..."
-            />
-            <Button
-              onClick={saveFalKey}
-              loading={savingFal}
-              disabled={!falKey.trim()}
-              icon={<Save className="w-4 h-4" />}
-            >
-              Save Key
-            </Button>
-          </div>
-        )}
-        {falSource === "env" && (
-          <p className="text-xs text-text-3">
-            Key is set via FAL_KEY environment variable and cannot be changed
-            from the UI.
-          </p>
-        )}
-      </Card>
-
-      <Card>
-        <h3 className="text-sm font-semibold text-text-1 mb-1">
-          Available Models
-        </h3>
-        <p className="text-xs text-text-3 mb-4">
-          FLUX models available for image generation when FAL is configured.
-        </p>
-        <div className="space-y-2">
-          {[
-            {
-              name: "FLUX Dev",
-              id: "flux-dev",
-              desc: "High-quality development model. Best balance of speed and quality.",
-            },
-            {
-              name: "FLUX Schnell",
-              id: "flux-schnell",
-              desc: "Fastest model. Great for quick iterations and drafts.",
-            },
-            {
-              name: "FLUX Pro Ultra",
-              id: "flux-pro",
-              desc: "Highest quality. Best for final production images.",
-            },
-          ].map((model) => (
-            <div
-              key={model.id}
-              className="flex items-start gap-3 p-3 rounded-lg border border-border-0 bg-surface-0"
-            >
-              <ImageIcon className="w-4 h-4 text-accent-text mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-text-1">{model.name}</p>
-                <p className="text-xs text-text-3">{model.desc}</p>
-                <p className="text-[10px] text-text-3 mt-0.5 font-mono">
-                  {model.id}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
 export function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -2956,7 +2990,6 @@ export function Settings() {
     notifications: <NotificationsTab />,
     network: <NetworkTab />,
     models: <ModelsTab />,
-    fal: <FalTab />,
     design: <DesignTab />,
     security: <SecurityTab />,
     system: <SystemTab />,

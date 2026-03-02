@@ -388,7 +388,12 @@ func (h *TodoListsHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 
 	h.db.LogAudit("system", "todo_item_updated", "todo", "todo_list", listID, "item="+itemID)
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	item := h.fetchItem(listID, itemID)
+	if item == nil {
+		writeError(w, http.StatusNotFound, "todo item not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }
 
 // ToggleItem toggles the completed status of a todo item.
@@ -439,10 +444,12 @@ func (h *TodoListsHandler) ToggleItem(w http.ResponseWriter, r *http.Request) {
 	}
 	h.db.LogAudit("system", action, "todo", "todo_list", listID, "item="+itemID)
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":        itemID,
-		"completed": newCompleted == 1,
-	})
+	item := h.fetchItem(listID, itemID)
+	if item == nil {
+		writeError(w, http.StatusNotFound, "todo item not found after toggle")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }
 
 // DeleteItem deletes a todo item.
@@ -495,6 +502,51 @@ func (h *TodoListsHandler) ReorderItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// fetchItem returns a single item with agent info, or nil if not found.
+func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface{} {
+	var id, listIDVal, title, notes, lastActorNote string
+	var completed, sortOrder int
+	var dueDate, agentSlug, agentName, agentAvatar sql.NullString
+	var createdAt, updatedAt time.Time
+	var completedAt sql.NullTime
+
+	err := h.db.QueryRow(`
+		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.sort_order,
+		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note,
+		       ti.created_at, ti.updated_at, ti.completed_at,
+		       ar.name as agent_name, ar.avatar_path as agent_avatar
+		FROM todo_items ti
+		LEFT JOIN agent_roles ar ON ar.slug = ti.last_actor_agent_slug
+		WHERE ti.id = ? AND ti.list_id = ?`,
+		itemID, listID,
+	).Scan(
+		&id, &listIDVal, &title, &notes, &completed, &sortOrder,
+		&dueDate, &agentSlug, &lastActorNote,
+		&createdAt, &updatedAt, &completedAt,
+		&agentName, &agentAvatar,
+	)
+	if err != nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"id":                      id,
+		"list_id":                 listIDVal,
+		"title":                   title,
+		"notes":                   notes,
+		"completed":               completed == 1,
+		"sort_order":              sortOrder,
+		"due_date":                nullStr(dueDate),
+		"last_actor_agent_slug":   nullStr(agentSlug),
+		"last_actor_note":         lastActorNote,
+		"created_at":              createdAt.Format(time.RFC3339),
+		"updated_at":              updatedAt.Format(time.RFC3339),
+		"completed_at":            nullTime(completedAt),
+		"last_actor_agent_name":   nullStr(agentName),
+		"last_actor_avatar":       nullStr(agentAvatar),
+	}
+}
+
 // fetchItems is a helper that fetches items for a list with optional completed filter.
 func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []map[string]interface{} {
 	query := `
@@ -542,20 +594,20 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 		}
 
 		item := map[string]interface{}{
-			"id":                    id,
-			"list_id":               listIDVal,
-			"title":                 title,
-			"notes":                 notes,
-			"completed":             completed == 1,
-			"sort_order":            sortOrder,
-			"due_date":              nullStr(dueDate),
-			"last_actor_agent_slug": nullStr(agentSlug),
-			"last_actor_note":       lastActorNote,
-			"created_at":            createdAt.Format(time.RFC3339),
-			"updated_at":            updatedAt.Format(time.RFC3339),
-			"completed_at":          nullTime(completedAt),
-			"agent_name":            nullStr(agentName),
-			"agent_avatar":          nullStr(agentAvatar),
+			"id":                      id,
+			"list_id":                 listIDVal,
+			"title":                   title,
+			"notes":                   notes,
+			"completed":               completed == 1,
+			"sort_order":              sortOrder,
+			"due_date":                nullStr(dueDate),
+			"last_actor_agent_slug":   nullStr(agentSlug),
+			"last_actor_note":         lastActorNote,
+			"created_at":              createdAt.Format(time.RFC3339),
+			"updated_at":              updatedAt.Format(time.RFC3339),
+			"completed_at":            nullTime(completedAt),
+			"last_actor_agent_name":   nullStr(agentName),
+			"last_actor_avatar":       nullStr(agentAvatar),
 		}
 
 		items = append(items, item)

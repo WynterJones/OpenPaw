@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
+	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
 )
 
@@ -57,17 +59,28 @@ func handleReactToMessage(db *database.DB, agentSlug string, broadcast func(stri
 		if err := json.Unmarshal(input, &params); err != nil {
 			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
 		}
-		if params.MessageID == "" {
+
+		// Defensive cleanup: strip [msg_id:...] wrapper if the LLM included it
+		msgID := strings.TrimSpace(params.MessageID)
+		msgID = strings.TrimPrefix(msgID, "[msg_id:")
+		msgID = strings.TrimSuffix(msgID, "]")
+		msgID = strings.TrimPrefix(msgID, "msg_id:")
+		msgID = strings.TrimSpace(msgID)
+
+		if msgID == "" {
 			return llm.ToolResult{Output: "message_id is required", IsError: true}
 		}
 		if len(params.Emojis) == 0 {
 			return llm.ToolResult{Output: "at least one emoji is required", IsError: true}
 		}
 
+		logger.Info("react_to_message: agent=%s msg=%s emojis=%v", agentSlug, msgID, params.Emojis)
+
 		// Verify message exists and get thread ID
 		var threadID string
-		if err := db.QueryRow("SELECT thread_id FROM chat_messages WHERE id = ?", params.MessageID).Scan(&threadID); err != nil {
-			return llm.ToolResult{Output: "Message not found: " + params.MessageID, IsError: true}
+		if err := db.QueryRow("SELECT thread_id FROM chat_messages WHERE id = ?", msgID).Scan(&threadID); err != nil {
+			logger.Warn("react_to_message: message not found id=%s (raw=%s)", msgID, params.MessageID)
+			return llm.ToolResult{Output: "Message not found: " + msgID, IsError: true}
 		}
 
 		added := 0
@@ -80,7 +93,7 @@ func handleReactToMessage(db *database.DB, agentSlug string, broadcast func(stri
 			var existingID string
 			err := db.QueryRow(
 				"SELECT id FROM chat_message_reactions WHERE message_id = ? AND emoji = ? AND source = ?",
-				params.MessageID, emoji, agentSlug,
+				msgID, emoji, agentSlug,
 			).Scan(&existingID)
 			if err == nil {
 				continue // already reacted with this emoji
@@ -88,25 +101,28 @@ func handleReactToMessage(db *database.DB, agentSlug string, broadcast func(stri
 			id := uuid.New().String()
 			if _, err := db.Exec(
 				"INSERT INTO chat_message_reactions (id, message_id, emoji, source, created_at) VALUES (?, ?, ?, ?, ?)",
-				id, params.MessageID, emoji, agentSlug, now,
+				id, msgID, emoji, agentSlug, now,
 			); err == nil {
 				added++
+			} else {
+				logger.Warn("react_to_message: insert failed: %v", err)
 			}
 		}
 
 		// Load updated reactions and broadcast
-		reactions := loadReactions(db, params.MessageID)
+		reactions := loadReactions(db, msgID)
+		logger.Info("react_to_message: added=%d total=%d thread=%s", added, len(reactions), threadID)
 		if broadcast != nil {
 			broadcast("message_reacted", models.WSMessageReacted{
 				ThreadID:  threadID,
-				MessageID: params.MessageID,
+				MessageID: msgID,
 				Reactions: reactions,
 			})
 		}
 
 		result, _ := json.Marshal(map[string]interface{}{
-			"message_id":     params.MessageID,
-			"emojis_added":   added,
+			"message_id":      msgID,
+			"emojis_added":    added,
 			"total_reactions": len(reactions),
 		})
 		return llm.ToolResult{Output: string(result)}

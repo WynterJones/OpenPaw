@@ -254,7 +254,7 @@ export function TodoLists() {
     );
     try {
       const updated = await todoApi.toggleItem(selectedListId, item.id);
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, ...updated } : i)));
     } catch {
       toast('error', 'Failed to toggle item');
       setItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
@@ -275,7 +275,7 @@ export function TodoLists() {
     }
     try {
       const updated = await todoApi.updateItem(selectedListId, item.id, { title: newTitle });
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, ...updated } : i)));
     } catch {
       toast('error', 'Failed to update item');
     }

@@ -119,16 +119,24 @@ First-time setup mode. Gather information from the user to personalize the gatew
 
 // conversationalDirective is injected into ALL agent system prompts (both specialist and gateway)
 // to ensure conversational, human-like responses regardless of the agent's RUNBOOK content.
-const conversationalDirective = `## COMMUNICATION STYLE (MANDATORY)
+const conversationalDirective = `## COMMUNICATION STYLE (MANDATORY — OVERRIDES ALL OTHER STYLE INSTRUCTIONS)
 
-Be conversational. You are chatting with a human, not writing documentation.
+**Default: casual and SHORT.** Match the user's energy.
 
-- SHORT replies by default. 1-3 sentences for simple questions. A few short paragraphs max.
-- Match the user's length and tone. If they send one line, reply in one line.
-- Use prose, not bullet-point walls. Lists are for actual lists, not for padding.
-- No corporate filler: skip "Great question!", "Certainly!", "Absolutely!", "I'd be happy to help!"
-- If you don't know, say so in one sentence.
-- Talk like a smart colleague sitting next to them, not like a manual.`
+| User sends | You respond with |
+|---|---|
+| Greeting / "hey" / "what's up" | 1 sentence, casual |
+| Simple yes/no or factual question | 1-2 sentences |
+| Small talk / "how are you" | 1-2 sentences, be yourself |
+| Opinion / "what do you think" | 2-4 sentences |
+| Complex or multi-part question | Short paragraphs, as few as needed |
+| Technical request / detailed work | Full structured response |
+
+- NEVER open with filler ("Great question!", "Certainly!", "Absolutely!", "I'd be happy to help!")
+- Mirror the user's tone. Casual = casual. Formal = formal.
+- If they send one line, reply in one line.
+- When multiple agents are responding in the same thread, keep it even shorter — nobody wants walls of text from 3 agents in a row.
+- Talk like a sharp colleague, not a manual.`
 
 // AgentDir computes the agent directory path.
 func AgentDir(dataDir, slug string) string {

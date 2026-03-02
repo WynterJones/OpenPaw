@@ -217,9 +217,12 @@ export interface MemoryItem {
 
 export interface ToolCallResult {
   tool_name: string;
-  input: Record<string, unknown>;
-  output: string;
-  status: 'success' | 'error';
+  endpoint?: string;
+  detail?: string;
+  timestamp?: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  status: 'success' | 'error' | 'running';
 }
 
 export interface Schedule {
@@ -654,7 +657,7 @@ export interface MediaItem {
   id: string;
   thread_id: string;
   message_id: string;
-  source: 'fal' | 'dalle' | 'tool' | 'upload';
+  source: 'openrouter' | 'fal' | 'dalle' | 'tool' | 'upload';
   source_model: string;
   media_type: 'image' | 'audio' | 'video';
   url: string;
@@ -673,32 +676,11 @@ export interface MediaListResponse {
   total: number;
 }
 
-export interface FalStatus {
-  configured: boolean;
-  source: 'settings' | 'env' | 'none';
-}
 
-export interface FalModel {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface FalGenerateRequest {
-  model: string;
-  prompt: string;
-  image_size?: string;
-  num_inference_steps?: number;
-  guidance_scale?: number;
-  seed?: number;
-}
-
-export interface FalGenerateResult {
-  id: string;
-  url: string;
-  width: number;
-  height: number;
-  prompt: string;
-  seed: number;
-  local_url: string;
+export interface UpdateCheckResponse {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  install_method: string;
+  can_self_update: boolean;
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -32,6 +33,7 @@ type ChatHandler struct {
 	dashboardsDir    string
 	threadCancels    sync.Map // map[threadID]context.CancelFunc
 	compactingGuard  sync.Map // map[threadID]bool — prevents double-compaction
+	multiAgentActive sync.Map // map[threadID]bool — suppresses per-agent agent_completed during multi-agent sequences
 	roleCache        struct {
 		sync.RWMutex
 		roles     []struct{ slug, name string }
@@ -307,7 +309,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
 		threadID,
 	)
 	if err != nil {
@@ -320,9 +322,13 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	var messageIDs []string
 	for rows.Next() {
 		var m models.ChatMessage
-		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &m.CreatedAt); err != nil {
+		var tcJSON *string
+		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &tcJSON, &m.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan message")
 			return
+		}
+		if tcJSON != nil && *tcJSON != "" {
+			m.ToolCalls = json.RawMessage(*tcJSON)
 		}
 		messages = append(messages, m)
 		messageIDs = append(messageIDs, m.ID)
@@ -638,9 +644,13 @@ func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content stri
 	if len(extras) > 1 && extras[1] != "" {
 		imgURL = &extras[1]
 	}
+	var tcJSON *string
+	if len(extras) > 2 && extras[2] != "" {
+		tcJSON = &extras[2]
+	}
 	if _, err := h.db.Exec(
-		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		id, threadID, "assistant", content, agentRoleSlug, costUSD, inputTokens, outputTokens, wd, imgURL, now,
+		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, threadID, "assistant", content, agentRoleSlug, costUSD, inputTokens, outputTokens, wd, imgURL, tcJSON, now,
 	); err != nil {
 		logger.Error("Failed to save assistant message: %v", err)
 	}

@@ -35,6 +35,7 @@ type AgentResult struct {
 	TotalCostUSD float64
 	NumTurns     int
 	StopReason   string
+	ImageURL     string // last image URL produced by generate_image tool
 }
 
 type UsageInfo struct {
@@ -83,6 +84,7 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 	var textBuf strings.Builder
 	numTurns := 0
 	lastStopReason := ""
+	lastImageURL := ""
 
 	emit := func(ev StreamEvent) {
 		if cfg.OnEvent != nil {
@@ -232,6 +234,10 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 			result := executor.Execute(ctx, tc.Function.Name, inputJSON)
 			close(progressDone)
 
+			if result.ImageURL != "" {
+				lastImageURL = result.ImageURL
+			}
+
 			emit(StreamEvent{
 				Type:       EventToolEnd,
 				ToolName:   tc.Function.Name,
@@ -246,6 +252,11 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 			// Truncate large current-turn tool output to prevent context flooding.
 			// The widget collector already captured the full output via OnEvent.
 			llmContent = truncateToolOutput(llmContent, 8192)
+
+			// Ensure errors are clearly marked so the agent can diagnose and report them
+			if result.IsError && !strings.HasPrefix(llmContent, "ERROR") {
+				llmContent = "ERROR: " + llmContent
+			}
 
 			messages = append(messages, ChatMessage{
 				Role:       "tool",
@@ -281,6 +292,7 @@ func (c *Client) RunAgentLoop(ctx context.Context, cfg AgentConfig, userMessage 
 		TotalCostUSD: cost,
 		NumTurns:     numTurns,
 		StopReason:   stopReason,
+		ImageURL:     lastImageURL,
 	}, nil
 }
 

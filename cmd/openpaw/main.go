@@ -17,7 +17,6 @@ import (
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
-	"github.com/openpaw/openpaw/internal/fal"
 	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -204,23 +203,6 @@ func main() {
 	llmClient := llm.NewClient(apiKey)
 	agents.CheckAPIKey(llmClient)
 
-	// Resolve FAL API key: FAL_KEY env var > encrypted DB value
-	envFALKey := os.Getenv("FAL_KEY")
-	var dbFALKey string
-	var encryptedFALKey string
-	err = db.QueryRow("SELECT value FROM settings WHERE key = 'fal_api_key'").Scan(&encryptedFALKey)
-	if err == nil && encryptedFALKey != "" {
-		decrypted, decErr := secretsMgr.Decrypt(encryptedFALKey)
-		if decErr == nil {
-			dbFALKey = decrypted
-		}
-	}
-	falAPIKey := envFALKey
-	if falAPIKey == "" {
-		falAPIKey = dbFALKey
-	}
-	falClient := fal.NewClient(falAPIKey)
-
 	// Media directory
 	mediaDir := filepath.Join(cfg.DataDir, "..", "media")
 	os.MkdirAll(mediaDir, 0755)
@@ -282,7 +264,6 @@ func main() {
 		})
 	})
 	agentMgr.BrowserMgr = browserMgr
-	agentMgr.FalClient = falClient
 
 	// Create memory manager
 	memoryMgr := memory.NewManager(cfg.DataDir)
@@ -362,7 +343,6 @@ func main() {
 		MemoryMgr:    memoryMgr,
 		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
-		FalClient:    falClient,
 		FrontendFS:   frontendFS,
 		ToolsDir:     toolsDir,
 		DataDir:      cfg.DataDir,
@@ -418,8 +398,14 @@ func main() {
 		}
 	}()
 
-	<-done
-	logger.Shutdown("Shutting down server...")
+	restartRequested := false
+	select {
+	case <-done:
+		logger.Shutdown("Shutting down server...")
+	case <-updater.RestartCh:
+		logger.Info("Restart requested after update...")
+		restartRequested = true
+	}
 
 	// Shut down heartbeat manager
 	heartbeatMgr.Stop()
@@ -447,6 +433,15 @@ func main() {
 
 	if err := httpServer.Shutdown(ctx); err != nil {
 		logger.Fatal("Server shutdown failed: %v", err)
+	}
+
+	if restartRequested {
+		exe, err := os.Executable()
+		if err != nil {
+			logger.Fatal("Failed to locate executable for restart: %v", err)
+		}
+		logger.Info("Restarting with new binary: %s", exe)
+		syscall.Exec(exe, os.Args, os.Environ())
 	}
 
 	logger.Bye()

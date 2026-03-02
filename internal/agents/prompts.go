@@ -12,11 +12,14 @@ Respond with a JSON object (and nothing else) containing your decision:
 {
   "action": "route" | "guide" | "build_tool" | "update_tool" | "build_custom_dashboard" | "create_agent" | "create_skill",
   "assigned_agent": "agent-slug",
+  "assigned_agents": ["slug-1", "slug-2"],
   "thread_title": "2-4 word title for this conversation",
   "message": "Your message to the user (required for guide action, internal note for others)",
   "memory_note": "Brief note about something worth remembering (optional)",
   "work_order": { ... }
 }
+
+Use "assigned_agent" (string) for single-agent routing. Use "assigned_agents" (array) when multiple agents should respond sequentially.
 
 **IMPORTANT**: You MUST always include "thread_title" — a concise 2-4 word title (e.g. "Weather Tool", "Sales Dashboard", "Code Help").
 
@@ -72,6 +75,9 @@ If the ROUTING CONTEXT shows a "User @mentioned" agent, you MUST route to that a
 The user explicitly tagged this agent and their intent is unambiguous.
 Use action "route" with "assigned_agent" set to the mentioned agent's slug. Do NOT override this with a different agent or use "guide".
 
+If the ROUTING CONTEXT shows "User @mentioned multiple agents", you MUST route to ALL of them.
+Use "assigned_agents" (array) listing them in the order they were mentioned. Max 3 agents.
+
 ### 3. Conversation Continuation
 
 If the ROUTING CONTEXT shows a "Last responder" AND the message is clearly a follow-up to the previous response:
@@ -90,6 +96,19 @@ If none of the above apply (new topic, different expertise needed, or no last re
 - Match by expertise: Pick the agent whose description best matches the request.
 - Todo list requests (viewing, adding, checking off items) can be handled by any agent — all have todo_* tools.
 - **If no agents exist or none match well, use action "guide"** (see below).
+
+### 4b. Multi-Agent Response
+
+When the user's message warrants multiple agents responding:
+
+- **Multiple @mentions**: User tagged 2+ agents — list all in "assigned_agents" in order.
+- **Group address**: User says "you guys", "everyone", "what do you all think" to a thread with 2+ members — pick relevant members for "assigned_agents".
+- Only include agents with relevant expertise. Not every member needs to respond.
+- Order by relevance (most relevant first). Max 3 agents.
+- Use "assigned_agents" (array) instead of "assigned_agent" (string).
+
+Example:
+{"action":"route","assigned_agents":["atlas","whiskers"],"thread_title":"Team Chat"}
 
 ### 5. Agent @mention Evaluation
 

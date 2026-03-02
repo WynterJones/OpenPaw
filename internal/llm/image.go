@@ -5,20 +5,30 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+var ImageGenModels = []string{
+	"google/gemini-3-pro-image-preview",
+	"sourceful/riverflow-v2-pro",
+	"bytedance-seed/seedream-4.5",
+}
 
 type ImageResult struct {
 	Base64        string `json:"b64_json"`
 	RevisedPrompt string `json:"revised_prompt"`
 }
 
+// GenerateImage sends an image generation request to OpenRouter with retry on 429 rate limits.
 func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, images []string) (*ImageResult, error) {
 	key := c.getAPIKey()
 	if key == "" {
@@ -26,7 +36,7 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, 
 	}
 
 	if model == "" {
-		model = "google/gemini-2.5-flash-image-preview"
+		model = ImageGenModels[0]
 	}
 	if size == "" {
 		size = "1024x1024"
@@ -35,7 +45,6 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, 
 	// Build user message content
 	var content interface{}
 	if len(images) > 0 {
-		// Multipart content: text prompt + reference images
 		parts := []map[string]interface{}{
 			{"type": "text", "text": prompt},
 		}
@@ -66,6 +75,38 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Retry on 429 with exponential backoff
+	const maxRetries = 3
+	backoff := 2 * time.Second
+
+	for attempt := range maxRetries {
+		result, err := c.doImageRequest(ctx, key, body, prompt)
+		if err == nil {
+			return result, nil
+		}
+
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != 429 {
+			return nil, err
+		}
+
+		if attempt == maxRetries-1 {
+			return nil, err
+		}
+
+		log.Printf("image gen model %s rate limited (attempt %d/%d), retrying in %v", model, attempt+1, maxRetries, backoff)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+	}
+
+	return nil, fmt.Errorf("unreachable")
+}
+
+func (c *Client) doImageRequest(ctx context.Context, key string, body []byte, prompt string) (*ImageResult, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -84,7 +125,7 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, 
 
 	if resp.StatusCode != 200 {
 		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("image generation failed (status %d): %s", resp.StatusCode, string(errBody))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(errBody)}
 	}
 
 	// Parse chat completions response
@@ -92,8 +133,7 @@ func (c *Client) GenerateImage(ctx context.Context, model, prompt, size string, 
 		Choices []struct {
 			Message struct {
 				Content json.RawMessage `json:"content"`
-				// OpenRouter returns images in a separate "images" field
-				Images []struct {
+				Images  []struct {
 					Type     string `json:"type"`
 					ImageURL struct {
 						URL string `json:"url"`

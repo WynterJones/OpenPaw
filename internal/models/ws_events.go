@@ -55,3 +55,10 @@ type WSMessageReacted struct {
 	MessageID string     `json:"message_id"`
 	Reactions []Reaction `json:"reactions"`
 }
+
+// WSAgentAvatarUpdated is the payload for "agent_avatar_updated" broadcasts.
+type WSAgentAvatarUpdated struct {
+	AgentRoleSlug     string `json:"agent_role_slug"`
+	AvatarPath        string `json:"avatar_path"`
+	AvatarDescription string `json:"avatar_description"`
+}

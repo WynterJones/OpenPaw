@@ -473,6 +473,17 @@ func (m *Manager) ProxyRequest(toolID, path string) (*ProxyResponse, error) {
 	}, nil
 }
 
+func (m *Manager) FetchFile(toolID, path string) ([]byte, string, error) {
+	resp, err := m.ProxyRequest(toolID, path)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, "", fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, path)
+	}
+	return resp.Body, resp.ContentType, nil
+}
+
 func (m *Manager) GetStatus(toolID string) map[string]interface{} {
 	m.mu.RLock()
 	rt, exists := m.tools[toolID]

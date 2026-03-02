@@ -10,8 +10,9 @@ import (
 )
 
 type ToolResult struct {
-	Output  string
-	IsError bool
+	Output   string
+	IsError  bool
+	ImageURL string // populated by generate_image tool for display in chat
 }
 
 type ToolHandler func(ctx context.Context, workDir string, input json.RawMessage) ToolResult

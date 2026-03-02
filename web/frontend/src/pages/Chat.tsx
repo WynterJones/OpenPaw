@@ -424,11 +424,18 @@ export function Chat() {
     }
 
     // Live-update emoji reactions
-    if (msg.type === 'message_reacted' && isActiveThread) {
+    if (msg.type === 'message_reacted') {
       const messageId = payload?.message_id as string;
       const reactions = payload?.reactions as { emoji: string; source: string; count: number }[] | undefined;
       if (messageId) {
-        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: reactions || [] } : m));
+        setMessages(prev => {
+          const updated = prev.map(m => m.id === messageId ? { ...m, reactions: reactions || [] } : m);
+          const found = prev.some(m => m.id === messageId);
+          if (!found) {
+            console.warn('[reaction] message not found in state:', messageId, 'active:', activeThreadRef.current, 'thread:', threadId);
+          }
+          return updated;
+        });
       }
     }
 
@@ -530,17 +537,17 @@ export function Chat() {
           if (event.tool_name) {
             const detail = event.tool_input ? getToolDetail(event.tool_name!, event.tool_input) : '';
             const toolId = event.tool_id || `tool-${Date.now()}`;
+            let endpoint: string | undefined;
             if (event.tool_name === 'call_tool' && event.tool_input) {
-              toolInputMapRef.current.set(toolId, {
-                endpoint: (event.tool_input.endpoint as string) || undefined,
-              });
+              endpoint = (event.tool_input.endpoint as string) || undefined;
+              toolInputMapRef.current.set(toolId, { endpoint });
             }
             setStreamingTools(prev => {
               const existing = prev.findIndex(t => t.id === toolId);
               if (existing >= 0) {
-                return prev.map((t, i) => i === existing ? { ...t, done: false, detail: detail || t.detail } : t);
+                return prev.map((t, i) => i === existing ? { ...t, done: false, detail: detail || t.detail, endpoint: endpoint || t.endpoint } : t);
               }
-              return [...prev, { name: event.tool_name!, id: toolId, done: false, detail }];
+              return [...prev, { name: event.tool_name!, id: toolId, done: false, detail, endpoint }];
             });
           }
           break;

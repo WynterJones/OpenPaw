@@ -35,9 +35,23 @@ export function getToolDetail(toolName: string, input: Record<string, unknown>):
       return (input.url as string) || '';
     case 'WebSearch':
       return (input.query as string) || '';
+    case 'call_tool':
+      return (input.endpoint as string) || '';
     default:
       return '';
   }
+}
+
+export function toolDisplayName(toolName: string, endpoint?: string): string {
+  if (toolName !== 'call_tool' || !endpoint) return toolName;
+  const last = endpoint.split('/').filter(Boolean).pop();
+  return last || endpoint;
+}
+
+export function toolGroupKey(t: { name: string; endpoint?: string } | { tool_name: string; endpoint?: string }): string {
+  const name = 'tool_name' in t ? t.tool_name : t.name;
+  if (name === 'call_tool' && t.endpoint) return `call_tool:${t.endpoint}`;
+  return name;
 }
 
 export interface StreamingTool {
@@ -45,6 +59,7 @@ export interface StreamingTool {
   id: string;
   done: boolean;
   detail?: string;
+  endpoint?: string;
 }
 
 export interface CostInfo {

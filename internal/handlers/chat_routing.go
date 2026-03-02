@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/agents"
+	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
 )
@@ -70,6 +72,32 @@ func (h *ChatHandler) extractMention(content string) string {
 		}
 	}
 	return ""
+}
+
+// extractMentions returns all valid @mentioned agent slugs in order of appearance.
+func (h *ChatHandler) extractMentions(content string) []string {
+	allMatches := mentionRegex.FindAllStringSubmatch(content, -1)
+	if len(allMatches) == 0 {
+		return nil
+	}
+	roles := h.loadRolesCache()
+	roleSet := make(map[string]bool)
+	for _, r := range roles {
+		roleSet[r.slug] = true
+	}
+	seen := make(map[string]bool)
+	var slugs []string
+	for _, match := range allMatches {
+		if len(match) < 2 {
+			continue
+		}
+		slug := match[1]
+		if roleSet[slug] && !seen[slug] {
+			seen[slug] = true
+			slugs = append(slugs, slug)
+		}
+	}
+	return slugs
 }
 
 func (h *ChatHandler) setThreadTitle(threadID, title string) {
@@ -153,17 +181,25 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
-	// Priority 2: User @mentioned an agent — route directly, skip gateway
-	if mentionSlug := h.extractMention(content); mentionSlug != "" {
+	// Priority 2: User @mentioned agent(s) — route directly, skip gateway
+	if mentionSlugs := h.extractMentions(content); len(mentionSlugs) > 0 {
 		if isFirstMsg {
 			go h.generateThreadTitle(threadID, content)
 		}
-		h.db.LogAudit(userID, "routing_mention", "agent", "agent_role", mentionSlug, "@"+mentionSlug)
-		h.addThreadMember(threadID, mentionSlug)
-		h.beginAgentWork(threadID, mentionSlug)
-		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
-		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, mentionSlug, 0, nil)
+		if len(mentionSlugs) == 1 {
+			// Single mention — existing path
+			slug := mentionSlugs[0]
+			h.db.LogAudit(userID, "routing_mention", "agent", "agent_role", slug, "@"+slug)
+			h.addThreadMember(threadID, slug)
+			h.beginAgentWork(threadID, slug)
+			roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+			defer roleChatCancel()
+			h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, nil)
+		} else {
+			// Multi-mention — sequential responses
+			h.db.LogAudit(userID, "routing_multi_mention", "agent", "agent_role", mentionSlugs[0], fmt.Sprintf("@%s", strings.Join(mentionSlugs, " @")))
+			h.handleMultiAgentResponse(parentCtx, threadID, content, userID, mentionSlugs, nil, 0)
+		}
 		return
 	}
 
@@ -223,6 +259,7 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 	hints := &agents.GatewayRoutingHints{
 		LastResponder: h.getLastResponder(threadID),
 		MentionSlug:   h.extractMention(content),
+		MentionSlugs:  h.extractMentions(content),
 		ThreadMembers: h.getThreadMemberSlugs(threadID),
 	}
 
@@ -313,6 +350,10 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		h.broadcastRoutingIndicator(threadID, "pounce")
 		h.saveAssistantMessage(threadID, "pounce", resp.Message, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		h.endAgentWork(threadID)
+	} else if len(resp.AssignedAgents) > 1 && (resp.Action == "respond" || resp.Action == "route") {
+		// Gateway assigned multiple agents — sequential responses
+		h.db.LogAudit(userID, "routing_gateway_multi", "agent", "agent_role", resp.AssignedAgents[0], fmt.Sprintf("%s -> %s", resp.Action, strings.Join(resp.AssignedAgents, ", ")))
+		h.handleMultiAgentResponse(parentCtx, threadID, content, userID, resp.AssignedAgents, resp.ProjectContext, gatewayCostUSD)
 	} else if resp.AssignedAgent != "" && (resp.Action == "respond" || resp.Action == "route") {
 		// Gateway assigned a specialist agent — hand off (no gateway message saved)
 		h.db.LogAudit(userID, "routing_gateway", "agent", "agent_role", resp.AssignedAgent, resp.Action+" -> "+resp.AssignedAgent)
@@ -332,6 +373,36 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		h.saveAssistantMessage(threadID, "pounce", fallbackMsg, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		h.endAgentWork(threadID)
 	}
+}
+
+// handleMultiAgentResponse runs multiple agents sequentially, deferring agent_completed until the last one.
+func (h *ChatHandler) handleMultiAgentResponse(parentCtx context.Context, threadID, content, userID string, agentSlugs []string, projectCtx *agents.ProjectContext, gatewayCostUSD float64) {
+	if len(agentSlugs) > 3 {
+		agentSlugs = agentSlugs[:3]
+	}
+
+	h.multiAgentActive.Store(threadID, true)
+	defer h.multiAgentActive.Delete(threadID)
+
+	for i, slug := range agentSlugs {
+		h.addThreadMember(threadID, slug)
+		h.beginAgentWork(threadID, slug)
+
+		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+		var extraCost float64
+		if i == 0 {
+			extraCost = gatewayCostUSD
+		}
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, projectCtx, extraCost)
+		roleChatCancel()
+
+		if parentCtx.Err() != nil {
+			break
+		}
+	}
+
+	// Final agent_completed after all agents are done
+	h.agentManager.Broadcast("agent_completed", models.WSAgentCompleted{ThreadID: threadID})
 }
 
 const maxMentionDepth = 3
@@ -394,11 +465,19 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	// Fetch thread history for multi-turn context (excludes current message)
 	history := h.fetchThreadHistory(threadID)
 	// Remove the last message (it's the current user message we're about to send separately)
+	// but capture its ID so we can prefix the content with [msg_id:xxx] for reaction support.
+	userMsgID := ""
 	if len(history) > 0 && history[len(history)-1].Role == "user" {
+		userMsgID = history[len(history)-1].ID
 		history = history[:len(history)-1]
 	}
+	// Prepend msg_id so the agent can react to the current user message
+	msgContent := content
+	if userMsgID != "" {
+		msgContent = fmt.Sprintf("[msg_id:%s]\n%s", userMsgID, content)
+	}
 
-	response, usage, widgetJSON, imageURL, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, content, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
+	response, usage, widgetJSON, toolCallsJSON, imageURL, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, msgContent, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
 	if err != nil {
 		h.agentManager.ClearStreamState(threadID)
 		errMsg := "I'm sorry, I encountered an error: " + err.Error()
@@ -421,17 +500,25 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	if len(extraCostUSD) > 0 {
 		costUSD += extraCostUSD[0]
 	}
-	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL)
+	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL, toolCallsJSON)
+
+	// Save any audio widgets to the media library (async, best-effort)
+	if widgetJSON != "" {
+		go h.saveAudioWidgetsToMedia(widgetJSON, threadID)
+	}
 
 	h.agentManager.ClearStreamState(threadID)
 
 	// Notify frontend the message is saved before clearing streaming state
 	h.broadcastStatus(threadID, "message_saved", "")
 
-	h.agentManager.Broadcast("agent_completed", models.WSAgentCompleted{
-		ThreadID:      threadID,
-		AgentRoleSlug: agentRoleSlug,
-	})
+	// Only broadcast agent_completed if not in multi-agent mode (final broadcast is deferred)
+	if _, multi := h.multiAgentActive.Load(threadID); !multi {
+		h.agentManager.Broadcast("agent_completed", models.WSAgentCompleted{
+			ThreadID:      threadID,
+			AgentRoleSlug: agentRoleSlug,
+		})
+	}
 
 	// Check for agent-to-agent @mentions in the response (with depth limit)
 	if depth < maxMentionDepth {
@@ -816,4 +903,108 @@ func (h *ChatHandler) handleBootstrapComplete(threadID string, resp *agents.Gate
 	h.broadcastRoutingIndicator(threadID, "pounce")
 	h.saveAssistantMessage(threadID, "pounce", confirmMsg, costUSD, inTok, outTok)
 	h.endAgentWork(threadID)
+}
+
+// saveAudioWidgetsToMedia inspects widget JSON for audio-player widgets and
+// copies their audio files to the media library (data/media/) so they appear
+// in the media library alongside generated images.
+func (h *ChatHandler) saveAudioWidgetsToMedia(widgetJSON, threadID string) {
+	var widgets []llm.WidgetPayload
+	if err := json.Unmarshal([]byte(widgetJSON), &widgets); err != nil {
+		return
+	}
+
+	toolMgr := h.agentManager.ToolMgr
+	if toolMgr == nil {
+		return
+	}
+
+	mediaDir := filepath.Join(h.dataDir, "..", "media")
+	os.MkdirAll(mediaDir, 0755)
+
+	for _, w := range widgets {
+		if w.Type != "audio-player" {
+			continue
+		}
+
+		var data map[string]json.RawMessage
+		if err := json.Unmarshal(w.Data, &data); err != nil {
+			continue
+		}
+
+		// Extract audio filename from widget data
+		var audioFile string
+		for _, key := range []string{"audio_file", "file_path", "path", "filename"} {
+			if raw, ok := data[key]; ok {
+				var s string
+				if json.Unmarshal(raw, &s) == nil && s != "" {
+					audioFile = s
+					break
+				}
+			}
+		}
+		if audioFile == "" || w.ToolID == "" {
+			continue
+		}
+
+		// Extract text/prompt from widget data for metadata
+		var prompt string
+		if raw, ok := data["text"]; ok {
+			json.Unmarshal(raw, &prompt)
+		}
+
+		// Extract source model info
+		var sourceModel string
+		if raw, ok := data["voice_id"]; ok {
+			json.Unmarshal(raw, &sourceModel)
+		}
+		if raw, ok := data["voice"]; ok && sourceModel == "" {
+			json.Unmarshal(raw, &sourceModel)
+		}
+
+		// Fetch the audio file via tool proxy
+		proxyPath := "/audio/" + audioFile
+		audioData, contentType, err := toolMgr.FetchFile(w.ToolID, proxyPath)
+		if err != nil {
+			logger.Warn("Failed to fetch audio for media library: %v", err)
+			continue
+		}
+
+		if contentType == "" {
+			contentType = "audio/mpeg"
+		}
+
+		// Determine file extension from content type
+		ext := ".mp3"
+		switch {
+		case strings.Contains(contentType, "wav"):
+			ext = ".wav"
+		case strings.Contains(contentType, "ogg"):
+			ext = ".ogg"
+		case strings.Contains(contentType, "opus"):
+			ext = ".opus"
+		case strings.Contains(contentType, "flac"):
+			ext = ".flac"
+		case strings.Contains(contentType, "m4a"), strings.Contains(contentType, "mp4"):
+			ext = ".m4a"
+		}
+
+		mediaID := uuid.New().String()
+		filename := mediaID + ext
+		destPath := filepath.Join(mediaDir, filename)
+
+		if err := os.WriteFile(destPath, audioData, 0644); err != nil {
+			logger.Warn("Failed to save audio to media: %v", err)
+			continue
+		}
+
+		now := time.Now().UTC()
+		if _, err := h.db.Exec(
+			`INSERT INTO media (id, thread_id, source, source_model, media_type, url, filename, mime_type, size_bytes, prompt, created_at)
+			 VALUES (?, ?, 'tool', ?, 'audio', '', ?, ?, ?, ?, ?)`,
+			mediaID, threadID, sourceModel, filename, contentType, len(audioData), prompt, now,
+		); err != nil {
+			logger.Warn("Failed to insert audio media record: %v", err)
+		}
+	}
 }

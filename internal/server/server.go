@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
-	"github.com/openpaw/openpaw/internal/fal"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/auth"
@@ -58,7 +58,6 @@ type Config struct {
 	MemoryMgr    *memory.Manager
 	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
-	FalClient    *fal.Client
 	FrontendFS   fs.FS
 	ToolsDir     string
 	DataDir      string
@@ -84,7 +83,7 @@ func New(cfg Config) *Server {
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.FalClient, cfg.Port)
+	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Port)
 	s.setupFrontend(cfg.FrontendFS)
 
 	return s
@@ -99,7 +98,7 @@ func (s *Server) setupMiddleware() {
 	s.Router.Use(chiMiddleware.Recoverer)
 }
 
-func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, falClient *fal.Client, port int) {
+func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, port int) {
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
 	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, dataDir)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
@@ -128,8 +127,12 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
-	falHandler := handlers.NewFalHandler(s.DB, falClient, secretsMgr, dataDir)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
+	updateBroadcast := func(msgType string, payload interface{}) {
+		data, _ := json.Marshal(payload)
+		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})
+	}
+	updateHandler := handlers.NewUpdateHandler(s.DB, dataDir, updateBroadcast)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -476,14 +479,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/{id}/items/{itemId}", todoListsHandler.DeleteItem)
 			})
 
-			// FAL Image Generation
-			r.Route("/fal", func(r chi.Router) {
-				r.Get("/status", falHandler.Status)
-				r.Put("/api-key", falHandler.UpdateAPIKey)
-				r.Get("/models", falHandler.Models)
-				r.Post("/generate", falHandler.Generate)
-			})
-
 			// Media Library
 			r.Route("/media", func(r chi.Router) {
 				r.Get("/", mediaHandler.List)
@@ -503,6 +498,10 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Get("/system/balance", systemHandler.Balance)
 			r.Delete("/system/data", systemHandler.DeleteData)
 			r.Post("/system/pick-folder", systemHandler.PickFolder)
+
+			// System Update
+			r.Get("/system/update/check", updateHandler.CheckUpdate)
+			r.Post("/system/update/apply", updateHandler.ApplyUpdate)
 
 			// Settings
 			r.Get("/settings", settingsHandler.Get)
