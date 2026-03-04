@@ -9,7 +9,12 @@ import (
 	llm "github.com/openpaw/openpaw/internal/llm"
 )
 
-func BuildBrowserActionDef() llm.ToolDef {
+// BuildBrowserActionDef satisfies the agents.BrowserManager interface.
+func (m *Manager) BuildBrowserActionDef() llm.ToolDef {
+	return buildBrowserActionDef()
+}
+
+func buildBrowserActionDef() llm.ToolDef {
 	params, _ := json.Marshal(map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{

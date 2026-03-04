@@ -51,6 +51,15 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		gatewayPrompt += "\n\n" + projectsSection
 	}
 
+	// Inject browser session info so gateway can route browser-related requests
+	if m.BrowserMgr != nil {
+		sessionPrompt := m.BrowserMgr.BuildSessionsPromptSection("")
+		if sessionPrompt != "" {
+			gatewayPrompt += "\n\n" + sessionPrompt
+			gatewayPrompt += "\nWhen the user asks to interact with websites or browser sessions, route to an agent that can use the browser_action tool.\n"
+		}
+	}
+
 	// Inject routing hints so gateway has full context
 	if hints != nil {
 		gatewayPrompt += "\n\n## ROUTING CONTEXT\n"
@@ -387,6 +396,19 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers[name] = handler
 	}
 	cfg.System += "\n\n" + buildReactionPromptSection()
+
+	// Inject browser_action tool if browser manager has active sessions
+	if m.BrowserMgr != nil {
+		sessionPrompt := m.BrowserMgr.BuildSessionsPromptSection(agentRoleSlug)
+		if sessionPrompt != "" {
+			cfg.ExtraTools = append(cfg.ExtraTools, m.BrowserMgr.BuildBrowserActionDef())
+			if cfg.ExtraHandlers == nil {
+				cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+			}
+			cfg.ExtraHandlers["browser_action"] = m.BrowserMgr.MakeBrowserActionHandler()
+			cfg.System += "\n\n" + sessionPrompt
+		}
+	}
 
 	result, err := m.client.RunAgentLoop(ctx, cfg, userMessage)
 	if err != nil {

@@ -852,7 +852,7 @@ export function Chat() {
     const interval = wsConnected ? 10000 : 2500;
     pollingRef.current = window.setInterval(async () => {
       ticks++;
-      if (ticks > maxTicks) { setThinking(false); setWorkStatus(null); setActiveThreadIds(prev => { const next = new Set(prev); next.delete(threadId); return next; }); stopPolling(); return; }
+      if (ticks > maxTicks) { resetStreaming(); setStreamActive(false); setThinking(false); setWorkStatus(null); setActiveThreadIds(prev => { const next = new Set(prev); next.delete(threadId); return next; }); stopPolling(); return; }
       try {
         const [msgs, status] = await Promise.all([
           api.get<ChatMessage[]>(`/chat/threads/${threadId}/messages`),
@@ -870,8 +870,13 @@ export function Chat() {
           setWorkStatus(label);
           setThinking(true);
         } else if (hasAssistantReply) {
+          resetStreaming();
+          setStreamActive(false);
+          setSubAgentTasks([]);
           setThinking(false);
           setWorkStatus(null);
+          setRoutingIndicator(null);
+          setActiveAgentSlug(null);
           setActiveThreadIds(prev => { const next = new Set(prev); next.delete(threadId); return next; });
           stopPolling();
           loadThreads();

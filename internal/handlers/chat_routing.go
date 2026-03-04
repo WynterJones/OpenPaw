@@ -300,8 +300,15 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 	h.handleGatewayAction(parentCtx, threadID, content, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 }
 
-// handleGatewayAction processes a parsed gateway response — routing to agents,
-// spawning builders, or delivering guide/fallback messages.
+// getDefaultAgentSlug returns the slug of the first enabled agent (excluding builder).
+func (h *ChatHandler) getDefaultAgentSlug() string {
+	var slug string
+	h.db.QueryRow("SELECT slug FROM agent_roles WHERE enabled = 1 AND slug != 'builder' ORDER BY sort_order ASC LIMIT 1").Scan(&slug)
+	return slug
+}
+
+// handleGatewayAction processes a parsed gateway response — routing to agents
+// or spawning builders. The gateway never responds directly.
 func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, content, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
 	// Save memory note if the gateway detected something worth remembering
 	if resp.MemoryNote != "" {
@@ -343,35 +350,34 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		case "create_skill":
 			h.handleCreateSkill(threadID, resp)
 		}
-	} else if resp.Action == "guide" && resp.Message != "" {
-		// Gateway is proactively guiding the user
-		h.db.LogAudit(userID, "routing_gateway", "agent", "agent_role", "pounce", "guide")
-		h.addThreadMember(threadID, "pounce")
-		h.broadcastRoutingIndicator(threadID, "pounce")
-		h.saveAssistantMessage(threadID, "pounce", resp.Message, gatewayCostUSD, gatewayInTok, gatewayOutTok)
-		h.endAgentWork(threadID)
-	} else if len(resp.AssignedAgents) > 1 && (resp.Action == "respond" || resp.Action == "route") {
+	} else if len(resp.AssignedAgents) > 1 {
 		// Gateway assigned multiple agents — sequential responses
-		h.db.LogAudit(userID, "routing_gateway_multi", "agent", "agent_role", resp.AssignedAgents[0], fmt.Sprintf("%s -> %s", resp.Action, strings.Join(resp.AssignedAgents, ", ")))
+		h.db.LogAudit(userID, "routing_gateway_multi", "agent", "agent_role", resp.AssignedAgents[0], fmt.Sprintf("route -> %s", strings.Join(resp.AssignedAgents, ", ")))
 		h.handleMultiAgentResponse(parentCtx, threadID, content, userID, resp.AssignedAgents, resp.ProjectContext, gatewayCostUSD)
-	} else if resp.AssignedAgent != "" && (resp.Action == "respond" || resp.Action == "route") {
-		// Gateway assigned a specialist agent — hand off (no gateway message saved)
-		h.db.LogAudit(userID, "routing_gateway", "agent", "agent_role", resp.AssignedAgent, resp.Action+" -> "+resp.AssignedAgent)
+	} else if resp.AssignedAgent != "" {
+		// Gateway assigned a specialist agent — hand off
+		h.db.LogAudit(userID, "routing_gateway", "agent", "agent_role", resp.AssignedAgent, "route -> "+resp.AssignedAgent)
 		h.addThreadMember(threadID, resp.AssignedAgent)
 		h.beginAgentWork(threadID, resp.AssignedAgent)
 		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
 		defer roleChatCancel()
 		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0, resp.ProjectContext, gatewayCostUSD)
 	} else {
-		// No assigned agent and no work order — use gateway message if available, else fallback
-		fallbackMsg := resp.Message
-		if fallbackMsg == "" {
-			fallbackMsg = "I'm not sure how to help with that. You can tag an agent directly with **@**, ask me to build a tool or dashboard, or say **hi** and I'll show you what's available."
+		// No agent assigned — pick a default agent
+		slug := h.getDefaultAgentSlug()
+		if slug == "" {
+			h.addThreadMember(threadID, "pounce")
+			h.broadcastRoutingIndicator(threadID, "pounce")
+			h.saveAssistantMessage(threadID, "pounce", "No agents are available yet. Create one from the **Agents** page to get started.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
+			h.endAgentWork(threadID)
+			return
 		}
-		h.addThreadMember(threadID, "pounce")
-		h.broadcastRoutingIndicator(threadID, "pounce")
-		h.saveAssistantMessage(threadID, "pounce", fallbackMsg, gatewayCostUSD, gatewayInTok, gatewayOutTok)
-		h.endAgentWork(threadID)
+		h.db.LogAudit(userID, "routing_gateway_default", "agent", "agent_role", slug, "default -> "+slug)
+		h.addThreadMember(threadID, slug)
+		h.beginAgentWork(threadID, slug)
+		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+		defer roleChatCancel()
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, resp.ProjectContext, gatewayCostUSD)
 	}
 }
 

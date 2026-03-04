@@ -40,9 +40,12 @@ type MemoryManager interface {
 }
 
 // BrowserManager is the interface for the browser session manager (avoids circular imports).
-// The agents package stores a reference but doesn't call methods on it directly;
-// the server package passes it to handlers that use the concrete type.
-type BrowserManager interface{}
+// Used by RoleChat and GatewayAnalyze to inject browser_action tool into agent conversations.
+type BrowserManager interface {
+	BuildBrowserActionDef() llm.ToolDef
+	MakeBrowserActionHandler() llm.ToolHandler
+	BuildSessionsPromptSection(agentSlug string) string
+}
 
 
 // StreamState tracks the live streaming output of an active agent for a thread.
