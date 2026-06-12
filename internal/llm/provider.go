@@ -74,6 +74,8 @@ func tierOf(name string) string {
 		return ""
 	case strings.Contains(n, "haiku"):
 		return "haiku"
+	case strings.Contains(n, "fable"), strings.Contains(n, "mythos"):
+		return "fable"
 	case strings.Contains(n, "opus"):
 		return "opus"
 	case strings.Contains(n, "sonnet"):

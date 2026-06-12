@@ -70,8 +70,11 @@ func TestCodexResolveModel(t *testing.T) {
 	cases := []struct{ in, fallback, want string }{
 		{"haiku", "", "gpt-5.4-mini"},
 		{"anthropic/claude-sonnet-4-6", "", "gpt-5.4"},
-		{"opus", "", "gpt-5.4"},
+		{"opus", "", "gpt-5.5"},
+		{"fable", "", "gpt-5.5"},
+		{"anthropic/claude-fable-5", "", "gpt-5.5"},
 		{"gpt-5.4", "", "gpt-5.4"},
+		{"gpt-5.5", "", "gpt-5.5"},
 		{"", llm.ModelHaiku, "gpt-5.4-mini"},
 	}
 	for _, c := range cases {

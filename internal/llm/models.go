@@ -14,6 +14,7 @@ var (
 	ModelHaiku  = "anthropic/claude-haiku-4-5"
 	ModelSonnet = "anthropic/claude-sonnet-4-6"
 	ModelOpus   = "anthropic/claude-opus-4-6"
+	ModelFable  = "anthropic/claude-fable-5"
 )
 
 // Legacy short name -> OpenRouter model ID mapping
@@ -21,6 +22,7 @@ var legacyModels = map[string]string{
 	"haiku":  ModelHaiku,
 	"sonnet": ModelSonnet,
 	"opus":   ModelOpus,
+	"fable":  ModelFable,
 }
 
 func ResolveModel(name string, fallback string) string {
@@ -49,7 +51,7 @@ func ContextWindowForModel(model string) int {
 
 func MaxTokensForModel(model string) int64 {
 	switch model {
-	case ModelOpus:
+	case ModelOpus, ModelFable:
 		return 32000
 	case ModelSonnet:
 		return 16000

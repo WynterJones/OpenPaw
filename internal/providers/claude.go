@@ -62,7 +62,8 @@ func (p *ClaudeProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error
 	return []llm.ModelInfo{
 		{ID: "haiku", Name: "Claude Haiku (fast)"},
 		{ID: "sonnet", Name: "Claude Sonnet (balanced)"},
-		{ID: "opus", Name: "Claude Opus (most capable)"},
+		{ID: "opus", Name: "Claude Opus (powerful)"},
+		{ID: "fable", Name: "Claude Fable (latest, most capable)"},
 	}, nil
 }
 

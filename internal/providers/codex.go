@@ -13,11 +13,13 @@ import (
 )
 
 // Codex model IDs per canonical tier. ChatGPT-subscription accounts only
-// support the mainline gpt-5.x models (verified against codex-cli 0.139).
+// support the mainline gpt-5.x models (verified live against codex-cli
+// 0.139: gpt-5.4-mini, gpt-5.4, and gpt-5.5 work; -codex variants do not).
 var codexModels = map[string]string{
 	"haiku":  "gpt-5.4-mini",
 	"sonnet": "gpt-5.4",
-	"opus":   "gpt-5.4",
+	"opus":   "gpt-5.5",
+	"fable":  "gpt-5.5",
 }
 
 // CodexProvider runs inference through the OpenAI Codex CLI in headless mode
@@ -78,7 +80,8 @@ func (p *CodexProvider) ResolveModel(name, fallback string) string {
 func (p *CodexProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	return []llm.ModelInfo{
 		{ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini (fast)"},
-		{ID: "gpt-5.4", Name: "GPT-5.4 (most capable)"},
+		{ID: "gpt-5.4", Name: "GPT-5.4 (balanced)"},
+		{ID: "gpt-5.5", Name: "GPT-5.5 (latest, most capable)"},
 	}, nil
 }
 
