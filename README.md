@@ -19,9 +19,19 @@
 
 ---
 
+> ### 🆕 Update: Use your Claude or ChatGPT subscription — no API costs
+>
+> OpenPaw can now run all chat, routing, and agent inference through the **Claude Code CLI** (Claude subscription) or **Codex CLI** (ChatGPT subscription) installed on your machine — instead of paying per token through OpenRouter. Switch providers in **Settings → Models**, or pick a detected CLI during setup and skip the API key entirely.
+>
+> - **Additive** — OpenRouter stays the default and is unchanged; CLI providers are opt-in
+> - **Full tool parity** — agents keep their memory, todos, delegation, browser, and image tools via a built-in MCP bridge
+> - **Session continuity** — multi-turn threads resume native CLI sessions instead of replaying history
+> - **Latest models** — Claude Haiku/Sonnet/Opus/**Fable** and GPT-5.4/**5.5**, with per-model context window tracking
+> - Image generation still uses OpenRouter (optional key — works alongside either CLI provider)
+
 OpenPaw is a single app you run on your computer. You chat with AI agents, describe what you want — a Slack bot, a weather checker, a scheduled report — and they build it for you as a real, running service. Pick from 39 pre-built tools or let agents create something custom. Schedule tasks, build dashboards, automate browsers, all through conversation.
 
-The app and everything it builds runs locally. AI chat is handled through [OpenRouter](https://openrouter.ai/) (bring your own API key).
+The app and everything it builds runs locally. AI chat runs through [OpenRouter](https://openrouter.ai/) (bring your own API key) — or through your existing **Claude Code** or **Codex** CLI subscription with no per-token billing.
 
 <table>
   <tr>
