@@ -73,6 +73,7 @@ type Manager struct {
 	mu              sync.RWMutex
 	broadcast       BroadcastFunc
 	client          *llm.Client
+	Providers       *llm.ProviderRouter
 	GatewayModel    string
 	BuilderModel    string
 	MaxTurns        int
@@ -128,7 +129,18 @@ func (m *Manager) Broadcast(msgType string, payload interface{}) {
 	m.broadcast(msgType, payload)
 }
 
+// Client returns the OpenRouter client. It is always available regardless of
+// the active provider — image generation and balance info stay on OpenRouter.
 func (m *Manager) Client() *llm.Client {
+	return m.client
+}
+
+// Provider returns the active LLM provider (OpenRouter, Claude Code, or
+// Codex). All chat/agent inference must go through this.
+func (m *Manager) Provider() llm.Provider {
+	if m.Providers != nil {
+		return m.Providers.Active()
+	}
 	return m.client
 }
 
@@ -179,6 +191,27 @@ func CheckAPIKey(client *llm.Client) {
 		return
 	}
 	logger.Success("OpenRouter API key configured")
+}
+
+// CheckProvider logs the active LLM provider and whether it is ready.
+func CheckProvider(router *llm.ProviderRouter) {
+	if router == nil {
+		return
+	}
+	active := router.Active()
+	switch active.Name() {
+	case llm.ProviderOpenRouter:
+		CheckAPIKey(router.OpenRouter())
+	default:
+		if active.IsConfigured() {
+			logger.Success("LLM provider: %s (subscription CLI)", active.Name())
+		} else {
+			logger.Warn("LLM provider %s selected but its CLI is not available — chat agents will not work until it is installed and logged in", active.Name())
+		}
+		if !router.OpenRouter().IsConfigured() {
+			logger.Info("OpenRouter key not set — image generation disabled (optional)")
+		}
+	}
 }
 
 // ThreadMessage represents a message from the chat thread history.

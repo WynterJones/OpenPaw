@@ -337,11 +337,20 @@ type SetupHandler struct {
 	auth       *auth.Service
 	secretsMgr *secrets.Manager
 	client     *llm.Client
+	providers  *llm.ProviderRouter
 	dataDir    string
 }
 
-func NewSetupHandler(db *database.DB, authService *auth.Service, secretsMgr *secrets.Manager, client *llm.Client, dataDir string) *SetupHandler {
-	return &SetupHandler{db: db, auth: authService, secretsMgr: secretsMgr, client: client, dataDir: dataDir}
+func NewSetupHandler(db *database.DB, authService *auth.Service, secretsMgr *secrets.Manager, client *llm.Client, providers *llm.ProviderRouter, dataDir string) *SetupHandler {
+	return &SetupHandler{db: db, auth: authService, secretsMgr: secretsMgr, client: client, providers: providers, dataDir: dataDir}
+}
+
+// provider returns the active LLM provider, falling back to the OpenRouter client.
+func (h *SetupHandler) provider() llm.Provider {
+	if h.providers != nil {
+		return h.providers.Active()
+	}
+	return h.client
 }
 
 func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +379,7 @@ func (h *SetupHandler) Init(w http.ResponseWriter, r *http.Request) {
 		DisplayName  string   `json:"display_name"`
 		EnabledRoles []string `json:"enabled_roles"`
 		APIKey       string   `json:"api_key"`
+		Provider     string   `json:"provider"` // optional: claude-code / codex instead of an API key
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -421,6 +431,17 @@ func (h *SetupHandler) Init(w http.ResponseWriter, r *http.Request) {
 					h.client.UpdateAPIKey(req.APIKey)
 				}
 			}
+		}
+	}
+
+	// Select a subscription CLI provider if requested (alternative to an API key)
+	if req.Provider != "" && req.Provider != llm.ProviderOpenRouter && h.providers != nil {
+		if p := h.providers.Get(req.Provider); p != nil && p.IsConfigured() {
+			h.providers.SetActive(req.Provider)
+			h.db.Exec(
+				"INSERT INTO settings (id, key, value) VALUES (?, 'llm_provider', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+				generateID(), req.Provider,
+			)
 		}
 	}
 
@@ -503,7 +524,7 @@ func (h *SetupHandler) Personalize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate SOUL.md from name + goal using a fast model
-	if h.client != nil && h.client.IsConfigured() {
+	if provider := h.provider(); provider != nil && provider.IsConfigured() {
 		soulPrompt := fmt.Sprintf(
 			"Generate a short personality file (SOUL.md) for an AI assistant named %q. "+
 				"Include an emoji that represents them, a one-word vibe, and 3-4 bullet points about their personality and speaking style. "+
@@ -517,7 +538,12 @@ func (h *SetupHandler) Personalize(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 
-		soul, _, err := h.client.RunOneShot(ctx, "google/gemini-2.0-flash-001", "You write concise AI personality profiles.", soulPrompt)
+		provider := h.provider()
+		soulModel := "google/gemini-2.0-flash-001"
+		if provider.Name() != llm.ProviderOpenRouter {
+			soulModel = provider.ResolveModel("haiku", llm.ModelHaiku)
+		}
+		soul, _, err := provider.RunOneShot(ctx, soulModel, "You write concise AI personality profiles.", soulPrompt)
 		if err == nil && strings.TrimSpace(soul) != "" {
 			soulPath := filepath.Join(h.dataDir, "gateway", agents.FileSoul)
 			os.WriteFile(soulPath, []byte(strings.TrimSpace(soul)), 0644)

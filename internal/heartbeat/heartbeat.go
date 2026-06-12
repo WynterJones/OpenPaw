@@ -735,8 +735,8 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 		extraHandlers[name] = handler
 	}
 
-	result, err := m.agentMgr.Client().RunAgentLoop(ctx, llm.AgentConfig{
-		Model:         llm.ResolveModel(model, llm.ModelSonnet),
+	result, err := m.agentMgr.Provider().RunAgentLoop(ctx, llm.AgentConfig{
+		Model:         m.agentMgr.Provider().ResolveModel(model, llm.ModelSonnet),
 		System:        systemPrompt,
 		MaxTurns:      5,
 		ExtraTools:    extraTools,

@@ -26,6 +26,9 @@ type AgentConfig struct {
 	History       []HistoryMessage
 	ExtraTools    []ToolDef
 	ExtraHandlers map[string]ToolHandler
+	// Session enables native session resume for CLI providers (ignored by
+	// the OpenRouter client, which always replays History). Nil = fresh run.
+	Session *SessionKey
 }
 
 type AgentResult struct {

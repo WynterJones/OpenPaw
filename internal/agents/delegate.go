@@ -280,7 +280,7 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 	defer cancel()
 
 	cfg := llm.AgentConfig{
-		Model:    llm.ResolveModel(model, llm.ModelSonnet),
+		Model:    m.Provider().ResolveModel(model, llm.ModelSonnet),
 		System:   systemPrompt,
 		MaxTurns: subAgentMaxTurns,
 		OnEvent: func(ev StreamEvent) {
@@ -309,7 +309,7 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 		}
 	}
 
-	result, err := m.client.RunAgentLoop(subCtx, cfg, task)
+	result, err := m.Provider().RunAgentLoop(subCtx, cfg, task)
 	if err != nil {
 		return nil, fmt.Errorf("sub-agent %s failed: %w", agentSlug, err)
 	}

@@ -26,12 +26,13 @@ type SettingsHandler struct {
 	agentMgr   *agents.Manager
 	secretsMgr *secrets.Manager
 	client     *llm.Client
+	providers  *llm.ProviderRouter
 	dataDir    string
 	port       int
 }
 
-func NewSettingsHandler(db *database.DB, agentMgr *agents.Manager, secretsMgr *secrets.Manager, client *llm.Client, dataDir string, port int) *SettingsHandler {
-	return &SettingsHandler{db: db, agentMgr: agentMgr, secretsMgr: secretsMgr, client: client, dataDir: dataDir, port: port}
+func NewSettingsHandler(db *database.DB, agentMgr *agents.Manager, secretsMgr *secrets.Manager, client *llm.Client, providers *llm.ProviderRouter, dataDir string, port int) *SettingsHandler {
+	return &SettingsHandler{db: db, agentMgr: agentMgr, secretsMgr: secretsMgr, client: client, providers: providers, dataDir: dataDir, port: port}
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -157,13 +158,23 @@ func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// On OpenRouter, normalize legacy short names to full model IDs. CLI
+	// providers use their own IDs (haiku/sonnet/opus, gpt-5.1-codex...) —
+	// store them as-is; each provider resolves names at call time.
+	onOpenRouter := h.providers == nil || h.providers.ActiveName() == llm.ProviderOpenRouter
 	if req.GatewayModel != "" {
-		model := agents.ParseModel(req.GatewayModel, llm.ModelHaiku)
+		model := req.GatewayModel
+		if onOpenRouter {
+			model = agents.ParseModel(req.GatewayModel, llm.ModelHaiku)
+		}
 		h.agentMgr.GatewayModel = model
 		h.upsertSetting("gateway_model", model)
 	}
 	if req.BuilderModel != "" {
-		model := agents.ParseModel(req.BuilderModel, llm.ModelSonnet)
+		model := req.BuilderModel
+		if onOpenRouter {
+			model = agents.ParseModel(req.BuilderModel, llm.ModelSonnet)
+		}
 		h.agentMgr.BuilderModel = model
 		h.upsertSetting("builder_model", model)
 	}
@@ -261,6 +272,17 @@ func (h *SettingsHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SettingsHandler) AvailableModels(w http.ResponseWriter, r *http.Request) {
+	// CLI providers expose a static tier list instead of the OpenRouter catalog
+	if h.providers != nil && h.providers.ActiveName() != llm.ProviderOpenRouter {
+		models, err := h.providers.Active().ListModels(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list models: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, models)
+		return
+	}
+
 	if h.client == nil || !h.client.IsConfigured() {
 		writeJSON(w, http.StatusOK, []interface{}{})
 		return
@@ -271,6 +293,75 @@ func (h *SettingsHandler) AvailableModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, models)
+}
+
+// GetLLMProvider returns the active LLM provider and the status of every
+// registered provider (OpenRouter key state, CLI availability + auth).
+func (h *SettingsHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) {
+	active := llm.ProviderOpenRouter
+	statuses := map[string]interface{}{
+		llm.ProviderOpenRouter: map[string]interface{}{
+			"configured": h.client != nil && h.client.IsConfigured(),
+			"source":     resolveAPIKeySource(h.client),
+		},
+	}
+
+	if h.providers != nil {
+		active = h.providers.ActiveName()
+		for _, name := range h.providers.Names() {
+			if name == llm.ProviderOpenRouter {
+				continue
+			}
+			p := h.providers.Get(name)
+			if sp, ok := p.(interface{ StatusInfo() map[string]interface{} }); ok {
+				statuses[name] = sp.StatusInfo()
+			} else {
+				statuses[name] = map[string]interface{}{"available": p.IsConfigured()}
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"active":    active,
+		"providers": statuses,
+	})
+}
+
+// UpdateLLMProvider switches the active LLM provider. OpenRouter is always a
+// valid target; CLI providers must be installed (and logged in) first.
+func (h *SettingsHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if h.providers == nil {
+		writeError(w, http.StatusInternalServerError, "provider router not configured")
+		return
+	}
+
+	p := h.providers.Get(req.Provider)
+	if p == nil {
+		writeError(w, http.StatusBadRequest, "unknown provider: "+req.Provider)
+		return
+	}
+	if req.Provider != llm.ProviderOpenRouter && !p.IsConfigured() {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("%s CLI is not available — install it and log in first", req.Provider))
+		return
+	}
+
+	if err := h.providers.SetActive(req.Provider); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.upsertSetting("llm_provider", req.Provider)
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "llm_provider_updated", "settings", "settings", "llm_provider", req.Provider)
+
+	h.GetLLMProvider(w, r)
 }
 
 func (h *SettingsHandler) UploadBackground(w http.ResponseWriter, r *http.Request) {

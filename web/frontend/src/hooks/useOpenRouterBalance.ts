@@ -14,6 +14,8 @@ interface BalanceResponse {
   rate_limit?: { requests: number; interval: string };
   total_credits?: number;
   total_usage?: number;
+  provider?: string;
+  subscription?: boolean;
 }
 
 export interface BalanceData {
@@ -26,6 +28,8 @@ export interface BalanceData {
   rateLimit: { requests: number; interval: string } | null;
   totalCredits: number | null;
   totalUsage: number | null;
+  provider: string | null;
+  subscription: boolean;
 }
 
 const EMPTY: BalanceData = {
@@ -38,6 +42,8 @@ const EMPTY: BalanceData = {
   rateLimit: null,
   totalCredits: null,
   totalUsage: null,
+  provider: null,
+  subscription: false,
 };
 
 export function useOpenRouterBalance(): BalanceData {
@@ -48,6 +54,11 @@ export function useOpenRouterBalance(): BalanceData {
     if (document.visibilityState === 'hidden') return;
     try {
       const res = await api.get<BalanceResponse>('/system/balance');
+      // CLI subscription providers (Claude Code / Codex) have no balance
+      if (res.subscription) {
+        setData({ ...EMPTY, provider: res.provider ?? null, subscription: true });
+        return;
+      }
       setData({
         usage: res.usage ?? null,
         usageMonthly: res.usage_monthly ?? null,
@@ -58,6 +69,8 @@ export function useOpenRouterBalance(): BalanceData {
         rateLimit: res.rate_limit ?? null,
         totalCredits: res.total_credits ?? null,
         totalUsage: res.total_usage ?? null,
+        provider: 'openrouter',
+        subscription: false,
       });
     } catch {
       setData(EMPTY);

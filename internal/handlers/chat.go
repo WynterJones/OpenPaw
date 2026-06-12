@@ -208,6 +208,7 @@ func (h *ChatHandler) DeleteThread(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec("DELETE FROM chat_messages WHERE thread_id = ?", id); err != nil {
 		logger.Error("Failed to delete thread messages: %v", err)
 	}
+	h.db.DeleteThreadProviderSessions(id)
 
 	result, err := h.db.Exec("DELETE FROM chat_threads WHERE id = ?", id)
 	if err != nil {
@@ -538,7 +539,7 @@ func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string
 	compactCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	summary, usage, err := h.agentManager.Client().RunOneShot(compactCtx, llm.ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
+	summary, usage, err := h.agentManager.Provider().RunOneShot(compactCtx, h.agentManager.Provider().ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
 	if err != nil {
 		return fmt.Errorf("summarization failed: %w", err)
 	}

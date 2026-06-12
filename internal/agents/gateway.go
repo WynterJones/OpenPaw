@@ -102,36 +102,57 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		prompt += "\n\n---\n\n" + todoSection
 	}
 
-	todoTools := BuildTodoToolDefs()
-	todoHandlers := MakeTodoToolHandlers(m.db, "pounce", m.broadcast)
+	var outputText string
+	var usage *llm.UsageInfo
 
-	result, err := m.client.RunAgentLoop(ctx, llm.AgentConfig{
-		Model:         llm.ResolveModel(m.GatewayModel, llm.ModelHaiku),
-		System:        "",
-		MaxTurns:      3,
-		ExtraTools:    todoTools,
-		ExtraHandlers: todoHandlers,
-		OnEvent: func(ev StreamEvent) {
-			if ev.Type == EventTextDelta && ev.Text != "" {
-				m.broadcast("gateway_thinking", map[string]interface{}{
-					"thread_id": threadID,
-					"text":      ev.Text,
-				})
-			}
-		},
-	}, prompt)
-	if err != nil {
-		return nil, nil, fmt.Errorf("gateway agent failed: %w", err)
-	}
+	if provider := m.Provider(); provider.Name() != llm.ProviderOpenRouter {
+		// CLI providers (Claude Code / Codex): a single one-shot call with a
+		// strict JSON instruction. No tools — todo tools are an OpenRouter-loop
+		// nicety the routing decision doesn't depend on.
+		text, u, err := provider.RunOneShot(ctx,
+			provider.ResolveModel(m.GatewayModel, llm.ModelHaiku), "",
+			prompt+"\n\nRespond with ONLY a single JSON object as specified by the instructions above — no prose, no markdown fences.")
+		if err != nil {
+			return nil, nil, fmt.Errorf("gateway agent failed: %w", err)
+		}
+		outputText = text
+		usage = u
+		if usage == nil {
+			usage = &llm.UsageInfo{}
+		}
+	} else {
+		todoTools := BuildTodoToolDefs()
+		todoHandlers := MakeTodoToolHandlers(m.db, "pounce", m.broadcast)
 
-	usage := &llm.UsageInfo{
-		InputTokens:  result.InputTokens,
-		OutputTokens: result.OutputTokens,
-		CostUSD:      result.TotalCostUSD,
+		result, err := m.client.RunAgentLoop(ctx, llm.AgentConfig{
+			Model:         llm.ResolveModel(m.GatewayModel, llm.ModelHaiku),
+			System:        "",
+			MaxTurns:      3,
+			ExtraTools:    todoTools,
+			ExtraHandlers: todoHandlers,
+			OnEvent: func(ev StreamEvent) {
+				if ev.Type == EventTextDelta && ev.Text != "" {
+					m.broadcast("gateway_thinking", map[string]interface{}{
+						"thread_id": threadID,
+						"text":      ev.Text,
+					})
+				}
+			},
+		}, prompt)
+		if err != nil {
+			return nil, nil, fmt.Errorf("gateway agent failed: %w", err)
+		}
+
+		outputText = result.Text
+		usage = &llm.UsageInfo{
+			InputTokens:  result.InputTokens,
+			OutputTokens: result.OutputTokens,
+			CostUSD:      result.TotalCostUSD,
+		}
 	}
 
 	var resp GatewayResponse
-	output := strings.TrimSpace(result.Text)
+	output := strings.TrimSpace(outputText)
 
 	jsonStart := strings.Index(output, "{")
 	jsonEnd := strings.LastIndex(output, "}")
@@ -142,7 +163,7 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	if err := json.Unmarshal([]byte(output), &resp); err != nil {
 		resp = GatewayResponse{
 			Action:  "respond",
-			Message: result.Text,
+			Message: outputText,
 		}
 	}
 
@@ -197,7 +218,8 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 
 	prompt := fmt.Sprintf(BuildSummaryPrompt, wo.Title, wo.Type, wo.Description, output)
 
-	text, _, err := m.client.RunOneShot(ctx, llm.ResolveModel(m.GatewayModel, llm.ModelHaiku), "", prompt)
+	provider := m.Provider()
+	text, _, err := provider.RunOneShot(ctx, provider.ResolveModel(m.GatewayModel, llm.ModelHaiku), "", prompt)
 	if err != nil {
 		return "", fmt.Errorf("gateway summarize failed: %w", err)
 	}
@@ -209,7 +231,8 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 var RoleChatTools = []string{"Read", "Write", "Edit"}
 
 func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, string, string, error) {
-	resolvedModel := llm.ResolveModel(model, llm.ModelSonnet)
+	provider := m.Provider()
+	resolvedModel := provider.ResolveModel(model, llm.ModelSonnet)
 
 	// Build history messages for multi-turn conversation.
 	// Messages from OTHER agents are re-attributed as user-role context so the
@@ -410,7 +433,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		}
 	}
 
-	result, err := m.client.RunAgentLoop(ctx, cfg, userMessage)
+	// Enable native session resume for CLI providers (per thread + agent)
+	if threadID != "" && agentRoleSlug != "" {
+		cfg.Session = &llm.SessionKey{ThreadID: threadID, AgentSlug: agentRoleSlug}
+	}
+
+	result, err := provider.RunAgentLoop(ctx, cfg, userMessage)
 	if err != nil {
 		return "", nil, "", "", "", fmt.Errorf("role chat failed: %w", err)
 	}

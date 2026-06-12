@@ -32,6 +32,8 @@ import {
   Play,
   GitBranch,
   Loader2,
+  Terminal,
+  Cloud,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -759,6 +761,145 @@ function NetworkTab() {
   );
 }
 
+interface ProviderStatus {
+  configured?: boolean;
+  source?: string;
+  available?: boolean;
+  version?: string;
+  path?: string;
+  logged_in?: boolean;
+}
+
+interface LLMProviderInfo {
+  active: string;
+  providers: Record<string, ProviderStatus>;
+}
+
+const PROVIDER_OPTIONS = [
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    description: "Pay-per-token API. Access to hundreds of models.",
+    icon: Cloud,
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    description:
+      "Uses your local Claude Code CLI and Claude subscription — no per-token cost.",
+    icon: Terminal,
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    description:
+      "Uses your local Codex CLI and ChatGPT subscription — no per-token cost.",
+    icon: Terminal,
+  },
+];
+
+function LLMProviderCard({
+  info,
+  onChanged,
+}: {
+  info: LLMProviderInfo | null;
+  onChanged: (info: LLMProviderInfo) => void;
+}) {
+  const { toast } = useToast();
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  const selectProvider = async (id: string) => {
+    if (!info || id === info.active) return;
+    setSwitching(id);
+    try {
+      const updated = await api.put<LLMProviderInfo>("/settings/llm-provider", {
+        provider: id,
+      });
+      onChanged(updated);
+      toast("success", `LLM provider switched to ${id}`);
+    } catch (err) {
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to switch provider",
+      );
+    } finally {
+      setSwitching(null);
+    }
+  };
+
+  const statusFor = (id: string): { ready: boolean; label: string } => {
+    const s = info?.providers?.[id];
+    if (!s) return { ready: false, label: "Unknown" };
+    if (id === "openrouter") {
+      return s.configured
+        ? { ready: true, label: `Key configured (${s.source})` }
+        : { ready: false, label: "No API key" };
+    }
+    if (!s.available) return { ready: false, label: "CLI not installed" };
+    if (s.logged_in === false) return { ready: false, label: "Not logged in" };
+    return { ready: true, label: s.version || "Installed" };
+  };
+
+  return (
+    <Card>
+      <h3 className="text-sm font-semibold text-text-1 mb-1">LLM Provider</h3>
+      <p className="text-xs text-text-3 mb-4">
+        Where chat and agent inference runs. Switch to a CLI provider to use
+        your existing subscription instead of paying per token. Image
+        generation always uses OpenRouter.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {PROVIDER_OPTIONS.map((opt) => {
+          const status = statusFor(opt.id);
+          const isActive = info?.active === opt.id;
+          const Icon = opt.icon;
+          const disabled =
+            (!status.ready && opt.id !== "openrouter") || switching !== null;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => selectProvider(opt.id)}
+              disabled={disabled || isActive}
+              aria-pressed={isActive}
+              className={`text-left p-3 rounded-lg border transition-colors ${
+                isActive
+                  ? "border-accent-primary bg-accent-muted"
+                  : disabled
+                    ? "border-border-1 bg-surface-2 opacity-50 cursor-not-allowed"
+                    : "border-border-1 bg-surface-2 hover:border-border-0 cursor-pointer"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <Icon
+                  className={`w-4 h-4 ${isActive ? "text-accent-text" : "text-text-2"}`}
+                />
+                <span
+                  className={`text-sm font-medium ${isActive ? "text-accent-text" : "text-text-1"}`}
+                >
+                  {opt.name}
+                </span>
+                {switching === opt.id && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-text-3" />
+                )}
+              </div>
+              <p className="text-[11px] text-text-3 mb-2">{opt.description}</p>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                  status.ready
+                    ? "bg-green-500/10 text-green-400"
+                    : "bg-amber-500/10 text-amber-400"
+                }`}
+              >
+                {status.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function ModelPicker({
   label,
   description,
@@ -876,8 +1017,15 @@ function ModelsTab() {
   const [apiKeySource, setApiKeySource] = useState("none");
   const [newApiKey, setNewApiKey] = useState("");
   const [savingKey, setSavingKey] = useState(false);
+  const [providerInfo, setProviderInfo] = useState<LLMProviderInfo | null>(
+    null,
+  );
 
   useEffect(() => {
+    api
+      .get<LLMProviderInfo>("/settings/llm-provider")
+      .then(setProviderInfo)
+      .catch(() => {});
     api
       .get<{
         gateway_model: string;
@@ -952,15 +1100,21 @@ function ModelsTab() {
     }
   };
 
+  const onCLIProvider =
+    providerInfo !== null && providerInfo.active !== "openrouter";
+
   return (
     <div className="space-y-6">
+      <LLMProviderCard info={providerInfo} onChanged={setProviderInfo} />
+
       <Card>
         <h3 className="text-sm font-semibold text-text-1 mb-1">
           OpenRouter API Key
         </h3>
         <p className="text-xs text-text-3 mb-4">
-          Required for all AI features. Set via OPENROUTER_API_KEY env var or
-          enter below.
+          {onCLIProvider
+            ? "Optional — only used for image generation while a CLI provider is active."
+            : "Required for all AI features. Set via OPENROUTER_API_KEY env var or enter below."}
         </p>
         <div
           className={`flex items-center gap-3 p-3 rounded-lg border mb-4 ${
@@ -1008,6 +1162,7 @@ function ModelsTab() {
       </Card>
 
       <ModelPicker
+        key={`gateway-${providerInfo?.active ?? "openrouter"}`}
         label="Gateway Model"
         description="Used to analyze user messages, route requests, and generate summaries. A fast, cheap model is recommended."
         value={gatewayModel}
@@ -1015,6 +1170,7 @@ function ModelsTab() {
       />
 
       <ModelPicker
+        key={`builder-${providerInfo?.active ?? "openrouter"}`}
         label="Builder Model"
         description="Used when building tools and dashboards. A balanced model is recommended for speed and quality."
         value={builderModel}

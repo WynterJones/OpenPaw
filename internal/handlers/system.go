@@ -24,14 +24,15 @@ var startTime = time.Now()
 var AppVersion = "dev"
 
 type SystemHandler struct {
-	db      *database.DB
-	dataDir string
-	client  *llm.Client
-	port    int
+	db        *database.DB
+	dataDir   string
+	client    *llm.Client
+	providers *llm.ProviderRouter
+	port      int
 }
 
-func NewSystemHandler(db *database.DB, dataDir string, client *llm.Client, port int) *SystemHandler {
-	return &SystemHandler{db: db, dataDir: dataDir, client: client, port: port}
+func NewSystemHandler(db *database.DB, dataDir string, client *llm.Client, providers *llm.ProviderRouter, port int) *SystemHandler {
+	return &SystemHandler{db: db, dataDir: dataDir, client: client, providers: providers, port: port}
 }
 
 func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +155,15 @@ func (h *SystemHandler) DeleteData(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SystemHandler) Balance(w http.ResponseWriter, r *http.Request) {
+	// CLI providers run off a flat-rate subscription — there is no balance.
+	if h.providers != nil && h.providers.ActiveName() != llm.ProviderOpenRouter {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"provider":     h.providers.ActiveName(),
+			"subscription": true,
+		})
+		return
+	}
+
 	if h.client == nil || !h.client.IsConfigured() {
 		writeError(w, http.StatusServiceUnavailable, "API key not configured")
 		return
@@ -198,9 +208,31 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 func (h *SystemHandler) Prerequisites(w http.ResponseWriter, r *http.Request) {
 	apiKeyConfigured := h.client != nil && h.client.IsConfigured()
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	providerReady := apiKeyConfigured
+	activeProvider := llm.ProviderOpenRouter
+	if h.providers != nil {
+		activeProvider = h.providers.ActiveName()
+		if activeProvider != llm.ProviderOpenRouter {
+			providerReady = h.providers.Active().IsConfigured()
+		}
+	}
+
+	resp := map[string]interface{}{
 		"api_key_configured": apiKeyConfigured,
-	})
+		"provider":           activeProvider,
+		"provider_ready":     providerReady,
+	}
+
+	// CLI availability so the setup wizard can offer subscription providers
+	if h.providers != nil {
+		for _, name := range []string{llm.ProviderClaudeCode, llm.ProviderCodex} {
+			if p := h.providers.Get(name); p != nil {
+				resp[name+"_available"] = p.IsConfigured()
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // PickFolder opens a native folder selection dialog and returns the chosen path.

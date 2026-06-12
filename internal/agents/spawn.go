@@ -95,7 +95,7 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 		defer cancel()
 
 		agentCfg := llm.AgentConfig{
-			Model:    llm.ResolveModel(m.BuilderModel, llm.ModelSonnet),
+			Model:    m.Provider().ResolveModel(m.BuilderModel, llm.ModelSonnet),
 			Tools:    cfg.tools,
 			WorkDir:  cfg.workDir,
 			MaxTurns: cfg.maxTurns,
@@ -138,7 +138,7 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 			},
 		}
 
-		result, err := m.client.RunAgentLoop(agentCtx, agentCfg, cfg.prompt)
+		result, err := m.Provider().RunAgentLoop(agentCtx, agentCfg, cfg.prompt)
 
 		output := outputBuf.String()
 		status := "completed"

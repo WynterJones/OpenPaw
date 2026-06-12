@@ -30,11 +30,21 @@ export function Setup() {
   const [setupComplete, setSetupComplete] = useState(false);
 
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
+  const [cliProviders, setCliProviders] = useState<{ id: string; name: string }[]>([]);
+  const [provider, setProvider] = useState('');
 
   useEffect(() => {
-    api.get<{ api_key_configured: boolean }>('/system/prerequisites')
+    api.get<{
+      api_key_configured: boolean;
+      'claude-code_available'?: boolean;
+      codex_available?: boolean;
+    }>('/system/prerequisites')
       .then(data => {
         setApiKeyConfigured(data.api_key_configured);
+        const available: { id: string; name: string }[] = [];
+        if (data['claude-code_available']) available.push({ id: 'claude-code', name: 'Claude Code (Claude subscription)' });
+        if (data.codex_available) available.push({ id: 'codex', name: 'Codex (ChatGPT subscription)' });
+        setCliProviders(available);
       })
       .catch(() => setApiKeyConfigured(false));
   }, []);
@@ -84,6 +94,7 @@ export function Setup() {
         port: parseInt(port, 10),
         enabled_roles: enabledRoles,
         api_key: apiKey || undefined,
+        provider: provider || undefined,
       });
       await login(username, password);
       setSetupComplete(true);
@@ -164,19 +175,55 @@ export function Setup() {
           </div>
           {!apiKeyConfigured && (
             <>
-              <p className="text-sm text-text-2 text-center">
-                Enter your OpenRouter API key to enable AI features. You can also set this later in Settings.
-              </p>
-              <Input
-                label="OpenRouter API Key"
-                type="password"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder="sk-or-..."
-              />
-              <p className="text-xs text-text-3 text-center">
-                Get a key at <span className="font-mono text-text-2">openrouter.ai/keys</span>
-              </p>
+              {!provider && (
+                <>
+                  <p className="text-sm text-text-2 text-center">
+                    Enter your OpenRouter API key to enable AI features. You can also set this later in Settings.
+                  </p>
+                  <Input
+                    label="OpenRouter API Key"
+                    type="password"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    placeholder="sk-or-..."
+                  />
+                  <p className="text-xs text-text-3 text-center">
+                    Get a key at <span className="font-mono text-text-2">openrouter.ai/keys</span>
+                  </p>
+                </>
+              )}
+              {cliProviders.length > 0 && (
+                <div className="pt-3 border-t border-border-1 space-y-2">
+                  <p className="text-xs text-text-3 text-center">
+                    {provider ? 'Using your subscription — no API key needed.' : 'Or use a subscription you already have:'}
+                  </p>
+                  {cliProviders.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setProvider(provider === p.id ? '' : p.id)}
+                      aria-pressed={provider === p.id}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg border text-sm transition-colors cursor-pointer ${
+                        provider === p.id
+                          ? 'border-accent-primary bg-accent-muted text-accent-text'
+                          : 'border-border-1 bg-surface-2 text-text-1 hover:border-border-0'
+                      }`}
+                    >
+                      {provider === p.id ? (
+                        <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                      ) : (
+                        <Key className="w-4 h-4 flex-shrink-0 text-text-3" />
+                      )}
+                      <span>{p.name}</span>
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">CLI detected</span>
+                    </button>
+                  ))}
+                  {provider && (
+                    <p className="text-[11px] text-text-3 text-center">
+                      Image generation needs an OpenRouter key — you can add one later in Settings.
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
           {apiKeyConfigured && (

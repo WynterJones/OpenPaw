@@ -19,6 +19,7 @@ import (
 	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/handlers"
+	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/memory"
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -58,6 +59,8 @@ type Config struct {
 	MemoryMgr    *memory.Manager
 	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
+	Providers    *llm.ProviderRouter
+	MCPRegistry  *mcp.Registry
 	FrontendFS   fs.FS
 	ToolsDir     string
 	DataDir      string
@@ -83,7 +86,7 @@ func New(cfg Config) *Server {
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Port)
+	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Providers, cfg.MCPRegistry, cfg.Port)
 	s.setupFrontend(cfg.FrontendFS)
 
 	return s
@@ -98,9 +101,9 @@ func (s *Server) setupMiddleware() {
 	s.Router.Use(chiMiddleware.Recoverer)
 }
 
-func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, port int) {
+func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, providers *llm.ProviderRouter, mcpRegistry *mcp.Registry, port int) {
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
-	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, dataDir)
+	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, providers, dataDir)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
 	secretsHandler := handlers.NewSecretsHandler(s.DB, s.Secrets, toolMgr)
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
@@ -111,9 +114,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	skillsHandler := handlers.NewSkillsHandler(dataDir)
 	logsHandler := handlers.NewLogsHandler(s.DB)
-	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, dataDir, port)
+	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, providers, dataDir, port)
 	agentsHandler := handlers.NewAgentsHandler(s.DB, s.AgentManager)
-	systemHandler := handlers.NewSystemHandler(s.DB, dataDir, llmClient, port)
+	systemHandler := handlers.NewSystemHandler(s.DB, dataDir, llmClient, providers, port)
 	browserHandler := handlers.NewBrowserHandler(s.DB, s.BrowserMgr)
 	notificationsHandler := handlers.NewNotificationsHandler(s.DB)
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
@@ -174,6 +177,11 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// Public media file serving (so images can be displayed without auth issues)
 		r.Get("/media/{id}/file", mediaHandler.ServeFile)
+
+		// MCP bridge for CLI providers (auth = unguessable per-run token)
+		if mcpRegistry != nil {
+			r.HandleFunc("/mcp/{token}", mcpRegistry.Handler())
+		}
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
@@ -516,6 +524,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Get("/settings/api-key", settingsHandler.GetAPIKey)
 			r.Put("/settings/api-key", settingsHandler.UpdateAPIKey)
 			r.Get("/settings/available-models", settingsHandler.AvailableModels)
+			r.Get("/settings/llm-provider", settingsHandler.GetLLMProvider)
+			r.Put("/settings/llm-provider", settingsHandler.UpdateLLMProvider)
 		})
 	})
 }

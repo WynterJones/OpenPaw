@@ -16,8 +16,25 @@ function fmt(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
+
 function BalanceBadge({ balance }: { balance: BalanceData }) {
   const [hover, setHover] = useState(false);
+
+  if (balance.subscription) {
+    const label = PROVIDER_LABELS[balance.provider ?? ""] ?? balance.provider;
+    return (
+      <span
+        className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-accent-primary/10 text-accent-primary cursor-default"
+        title="Running on your local CLI subscription — no per-token billing"
+      >
+        {label}
+      </span>
+    );
+  }
 
   const hasCredits = balance.totalCredits !== null;
   const creditBalance = hasCredits

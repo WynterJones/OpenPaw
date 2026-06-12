@@ -56,7 +56,7 @@ func (m *Manager) makeGenerateImageHandler() llm.ToolHandler {
 
 func (m *Manager) generateImage(ctx context.Context, prompt, model, size string, images []string) llm.ToolResult {
 	if m.client == nil || !m.client.IsConfigured() {
-		return llm.ToolResult{Output: "ERROR: OpenRouter API key not configured. Set it up in Settings.", IsError: true}
+		return llm.ToolResult{Output: "ERROR: Image generation requires an OpenRouter API key (it works alongside CLI providers). Add one in Settings → Models.", IsError: true}
 	}
 
 	if size == "" {

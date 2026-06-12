@@ -135,7 +135,7 @@ func (h *ChatHandler) generateThreadTitle(threadID, content string) {
 	defer cancel()
 
 	prompt := fmt.Sprintf("Generate a 2-4 word title for this chat message. Reply with ONLY the title, nothing else.\n\nMessage: %s", content)
-	title, _, err := h.agentManager.Client().RunOneShot(ctx, llm.ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
+	title, _, err := h.agentManager.Provider().RunOneShot(ctx, h.agentManager.Provider().ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
 	if err != nil || title == "" {
 		return
 	}

@@ -21,6 +21,8 @@ import (
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/auth"
+	"github.com/openpaw/openpaw/internal/mcp"
+	"github.com/openpaw/openpaw/internal/providers"
 	"github.com/openpaw/openpaw/internal/config"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/logger"
@@ -201,7 +203,28 @@ func main() {
 	}
 	apiKey, _ := llm.ResolveAPIKey(envAPIKey, dbAPIKey)
 	llmClient := llm.NewClient(apiKey)
-	agents.CheckAPIKey(llmClient)
+
+	// Provider router: OpenRouter (default) + subscription CLI providers.
+	// The MCP registry exposes OpenPaw tools to CLI providers over HTTP.
+	mcpRegistry := mcp.NewRegistry()
+	mcpBaseURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/mcp/", cfg.Port)
+	claudeProvider := providers.NewClaudeProvider(db, mcpRegistry)
+	claudeProvider.SetMCPBaseURL(mcpBaseURL)
+	codexProvider := providers.NewCodexProvider(db, mcpRegistry)
+	codexProvider.SetMCPBaseURL(mcpBaseURL)
+
+	providerRouter := llm.NewProviderRouter(llmClient)
+	providerRouter.Register(claudeProvider)
+	providerRouter.Register(codexProvider)
+
+	var savedProvider string
+	db.QueryRow("SELECT value FROM settings WHERE key = 'llm_provider'").Scan(&savedProvider)
+	if savedProvider != "" && savedProvider != llm.ProviderOpenRouter {
+		if err := providerRouter.SetActive(savedProvider); err != nil {
+			logger.Warn("Saved LLM provider %q unknown — falling back to OpenRouter", savedProvider)
+		}
+	}
+	agents.CheckProvider(providerRouter)
 
 	// Media directory
 	mediaDir := filepath.Join(cfg.DataDir, "..", "media")
@@ -229,6 +252,7 @@ func main() {
 	}
 
 	agentMgr := agents.NewManager(db, toolsDir, broadcastFn, llmClient)
+	agentMgr.Providers = providerRouter
 	agentMgr.DataDir = cfg.DataDir
 	agentMgr.FrontendFS = frontendFS
 
@@ -343,6 +367,8 @@ func main() {
 		MemoryMgr:    memoryMgr,
 		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
+		Providers:    providerRouter,
+		MCPRegistry:  mcpRegistry,
 		FrontendFS:   frontendFS,
 		ToolsDir:     toolsDir,
 		DataDir:      cfg.DataDir,
