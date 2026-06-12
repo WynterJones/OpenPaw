@@ -66,3 +66,6 @@ tests/.auth/
 desktop/src-tauri/binaries/
 desktop/src-tauri/target/
 desktop/node_modules/
+
+# Dolt database files (added by bd init)
+.dolt/
