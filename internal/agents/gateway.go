@@ -476,12 +476,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
 func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (response, usedThreadID string, err error) {
-	var systemPrompt, model, agentName, avatarDescription, avatarPath string
+	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	err = m.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath)
+	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
 	if err != nil {
 		return "", "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
 	}
@@ -532,7 +532,15 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 		}
 	}
 
-	result, usage, widgetJSON, toolCallsJSON, imageURL, chatErr := m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug, agentName, avatarDescription, avatarPath)
+	var result, widgetJSON, toolCallsJSON, imageURL string
+	var usage *llm.UsageInfo
+	var chatErr error
+	if remoteProvider == openClawProvider {
+		// Remote OpenClaw agent — proxy the turn; the remote side owns context
+		result, chatErr = m.OpenClawChat(ctx, remoteAgentID, threadID, prompt)
+	} else {
+		result, usage, widgetJSON, toolCallsJSON, imageURL, chatErr = m.RoleChat(ctx, systemPrompt, model, history, prompt, threadID, agentDir, agentSlug, agentName, avatarDescription, avatarPath)
+	}
 	if chatErr != nil {
 		return "", threadID, fmt.Errorf("scheduled prompt failed: %w", chatErr)
 	}

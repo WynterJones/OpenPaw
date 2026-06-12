@@ -526,6 +526,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Get("/settings/available-models", settingsHandler.AvailableModels)
 			r.Get("/settings/llm-provider", settingsHandler.GetLLMProvider)
 			r.Put("/settings/llm-provider", settingsHandler.UpdateLLMProvider)
+			r.Get("/settings/openclaw", settingsHandler.GetOpenClaw)
+			r.Post("/settings/openclaw/sync", settingsHandler.SyncOpenClaw)
+			r.Delete("/settings/openclaw", settingsHandler.RemoveOpenClaw)
 		})
 	})
 }

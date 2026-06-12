@@ -364,6 +364,47 @@ func (h *SettingsHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Reque
 	h.GetLLMProvider(w, r)
 }
 
+// GetOpenClaw reports the OpenClaw CLI status and how many agents are imported.
+func (h *SettingsHandler) GetOpenClaw(w http.ResponseWriter, r *http.Request) {
+	available, version := agents.OpenClawStatus()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"available": available,
+		"version":   version,
+		"imported":  h.agentMgr.CountOpenClawAgents(),
+	})
+}
+
+// SyncOpenClaw imports/updates OpenClaw agents as remote chat agents.
+func (h *SettingsHandler) SyncOpenClaw(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	count, err := h.agentMgr.SyncOpenClawAgents(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "OpenClaw sync failed: "+err.Error())
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "openclaw_agents_synced", "settings", "settings", "openclaw", fmt.Sprintf("%d agents", count))
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"imported": count})
+}
+
+// RemoveOpenClaw deletes all imported OpenClaw agents.
+func (h *SettingsHandler) RemoveOpenClaw(w http.ResponseWriter, r *http.Request) {
+	removed, err := h.agentMgr.RemoveOpenClawAgents()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to remove OpenClaw agents: "+err.Error())
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "openclaw_agents_removed", "settings", "settings", "openclaw", fmt.Sprintf("%d agents", removed))
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"removed": removed})
+}
+
 func (h *SettingsHandler) UploadBackground(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(5 << 20)
 

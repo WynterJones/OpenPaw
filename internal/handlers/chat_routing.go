@@ -415,15 +415,22 @@ const maxMentionDepth = 3
 
 func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, projectCtx *agents.ProjectContext, extraCostUSD ...float64) {
 	// Look up the role from the database
-	var systemPrompt, model, agentName, avatarDescription, avatarPath string
+	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	err := h.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentRoleSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath)
+	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
 	if err != nil {
 		h.saveAssistantMessage(threadID, agentRoleSlug, "I'm sorry, I couldn't find that agent role or it's disabled.", 0, 0, 0)
 		h.broadcastStatus(threadID, "done", "")
+		return
+	}
+
+	// Remote agents (OpenClaw) run on their own assistant — proxy the turn
+	// instead of running OpenPaw's LLM loop.
+	if remoteProvider == "openclaw" {
+		h.handleRemoteAgentChat(ctx, threadID, content, agentRoleSlug, remoteAgentID)
 		return
 	}
 
@@ -531,6 +538,32 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		if mentionedSlug := h.extractMention(response); mentionedSlug != "" && mentionedSlug != agentRoleSlug {
 			h.evaluateAgentMention(ctx, threadID, agentRoleSlug, mentionedSlug, response, depth)
 		}
+	}
+}
+
+// handleRemoteAgentChat proxies a chat turn to a remote OpenClaw agent. The
+// remote side owns memory, tools, and session state — OpenPaw only transports
+// the message and displays the reply.
+func (h *ChatHandler) handleRemoteAgentChat(ctx context.Context, threadID, content, agentRoleSlug, remoteAgentID string) {
+	response, err := h.agentManager.OpenClawChat(ctx, remoteAgentID, threadID, content)
+	if err != nil {
+		errMsg := "I'm sorry, I couldn't reach the OpenClaw agent: " + err.Error()
+		if ctx.Err() == context.DeadlineExceeded {
+			errMsg = "The OpenClaw agent took too long to respond. You can try again or adjust the timeout in Settings."
+		}
+		h.saveAssistantMessage(threadID, agentRoleSlug, errMsg, 0, 0, 0)
+		h.broadcastStatus(threadID, "done", "")
+		return
+	}
+
+	h.saveAssistantMessage(threadID, agentRoleSlug, response, 0, 0, 0)
+	h.broadcastStatus(threadID, "message_saved", "")
+
+	if _, multi := h.multiAgentActive.Load(threadID); !multi {
+		h.agentManager.Broadcast("agent_completed", models.WSAgentCompleted{
+			ThreadID:      threadID,
+			AgentRoleSlug: agentRoleSlug,
+		})
 	}
 }
 

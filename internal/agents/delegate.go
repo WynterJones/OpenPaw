@@ -51,7 +51,7 @@ type delegateTaskResult struct {
 // excluding the parent agent itself.
 func (m *Manager) getAvailableAgentsForDelegation(parentSlug string) []delegateAgentInfo {
 	rows, err := m.db.Query(
-		"SELECT slug, name, description FROM agent_roles WHERE enabled = 1 AND slug != ? ORDER BY sort_order ASC",
+		"SELECT slug, name, description FROM agent_roles WHERE enabled = 1 AND slug != ? AND remote_provider = '' ORDER BY sort_order ASC",
 		parentSlug,
 	)
 	if err != nil {
