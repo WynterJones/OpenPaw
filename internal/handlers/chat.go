@@ -465,7 +465,7 @@ func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
 		`SELECT COALESCE(MAX(input_tokens), 0) FROM chat_messages
 		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`, threadID,
 	).Scan(&contextUsed)
-	contextLimit := h.getEffectiveContextLimit()
+	contextLimit := h.getEffectiveContextLimit(threadID)
 
 	autoCompactEnabled := false
 	autoCompactThreshold := 85
@@ -590,14 +590,29 @@ func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string
 	return nil
 }
 
-// getEffectiveContextLimit returns the context limit override if set, otherwise the model default.
-func (h *ChatHandler) getEffectiveContextLimit() int {
+// getEffectiveContextLimit returns the context limit override if set,
+// otherwise the context window of the model actually used in the thread —
+// the model of the agent who last responded — resolved through the active
+// provider so tier names map to real models. Falls back to the builder model.
+func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
 	if h.agentManager.ContextLimitOverride > 0 {
 		return h.agentManager.ContextLimitOverride
 	}
-	model := ""
-	if h.agentManager != nil {
+
+	var model string
+	if threadID != "" {
+		h.db.QueryRow(
+			`SELECT COALESCE(ar.model, '') FROM chat_messages cm
+			 JOIN agent_roles ar ON ar.slug = cm.agent_role_slug
+			 WHERE cm.thread_id = ? AND cm.role = 'assistant' AND cm.agent_role_slug != ''
+			 ORDER BY cm.created_at DESC LIMIT 1`, threadID,
+		).Scan(&model)
+	}
+	if model == "" && h.agentManager != nil {
 		model = h.agentManager.BuilderModel
+	}
+	if h.agentManager != nil {
+		model = h.agentManager.Provider().ResolveModel(model, llm.ModelSonnet)
 	}
 	return llm.ContextWindowForModel(model)
 }
@@ -615,7 +630,7 @@ func (h *ChatHandler) shouldAutoCompact(threadID string) bool {
 	).Scan(&contextUsed); err != nil || contextUsed == 0 {
 		return false
 	}
-	contextLimit := h.getEffectiveContextLimit()
+	contextLimit := h.getEffectiveContextLimit(threadID)
 	if contextLimit <= 0 {
 		return false
 	}

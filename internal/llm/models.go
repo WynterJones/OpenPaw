@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -42,9 +43,43 @@ func ResolveModel(name string, fallback string) string {
 	return fallback
 }
 
+// staticContextWindows covers models the OpenRouter cache can't resolve:
+// CLI provider tier names and OpenPaw's dash-style Anthropic IDs (OpenRouter's
+// canonical IDs use dots). Values verified against OpenRouter metadata.
+var staticContextWindows = map[string]int{
+	// Claude Code CLI tiers (standard subscription session window; fable is 1M)
+	"haiku":  200_000,
+	"sonnet": 200_000,
+	"opus":   200_000,
+	"fable":  1_000_000,
+	// OpenPaw's OpenRouter model IDs (API-served windows)
+	ModelHaiku:  200_000,
+	ModelSonnet: 1_000_000,
+	ModelOpus:   1_000_000,
+	ModelFable:  1_000_000,
+	// Codex CLI models (ChatGPT-account)
+	"gpt-5.4-mini": 400_000,
+	"gpt-5.4":      1_050_000,
+	"gpt-5.5":      1_050_000,
+}
+
+// dashVersionRe matches a trailing dash-separated version ("-4-5") so it can
+// be normalized to OpenRouter's dotted form ("-4.5") for cache lookups.
+var dashVersionRe = regexp.MustCompile(`-(\d+)-(\d+)$`)
+
 func ContextWindowForModel(model string) int {
-	if cached := globalModelCache.get(model); cached != nil {
+	if cached := globalModelCache.get(model); cached != nil && cached.ContextLength > 0 {
 		return cached.ContextLength
+	}
+	// OpenPaw historically uses dash-style Anthropic IDs (claude-haiku-4-5)
+	// but OpenRouter's catalog keys are dotted (claude-haiku-4.5).
+	if dotted := dashVersionRe.ReplaceAllString(model, "-$1.$2"); dotted != model {
+		if cached := globalModelCache.get(dotted); cached != nil && cached.ContextLength > 0 {
+			return cached.ContextLength
+		}
+	}
+	if w, ok := staticContextWindows[strings.ToLower(model)]; ok {
+		return w
 	}
 	return 200_000
 }

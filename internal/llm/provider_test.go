@@ -31,6 +31,48 @@ func TestTierForModel(t *testing.T) {
 	}
 }
 
+func TestContextWindowForModel(t *testing.T) {
+	cases := []struct {
+		model string
+		want  int
+	}{
+		// CLI tier names
+		{"haiku", 200_000},
+		{"sonnet", 200_000},
+		{"fable", 1_000_000},
+		// OpenPaw's dash-style OpenRouter IDs (static fallback, no cache)
+		{ModelHaiku, 200_000},
+		{ModelSonnet, 1_000_000},
+		{ModelOpus, 1_000_000},
+		{ModelFable, 1_000_000},
+		// Codex models
+		{"gpt-5.4-mini", 400_000},
+		{"gpt-5.4", 1_050_000},
+		{"gpt-5.5", 1_050_000},
+		// Unknown falls back to 200k
+		{"some/unknown-model", 200_000},
+		{"", 200_000},
+	}
+	for _, c := range cases {
+		if got := ContextWindowForModel(c.model); got != c.want {
+			t.Errorf("ContextWindowForModel(%q) = %d, want %d", c.model, got, c.want)
+		}
+	}
+}
+
+func TestContextWindowDottedCacheLookup(t *testing.T) {
+	// Simulate a populated OpenRouter cache keyed by the canonical dotted ID;
+	// the dash-style constant must still resolve to it.
+	globalModelCache.update([]ModelInfo{
+		{ID: "anthropic/claude-haiku-4.5", ContextLength: 123_456},
+	})
+	defer globalModelCache.update(nil)
+
+	if got := ContextWindowForModel("anthropic/claude-haiku-4-5"); got != 123_456 {
+		t.Errorf("dash→dot cache lookup = %d, want 123456", got)
+	}
+}
+
 func TestProviderRouter(t *testing.T) {
 	client := NewClient("test-key")
 	router := NewProviderRouter(client)
