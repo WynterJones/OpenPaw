@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os/exec"
 	"strings"
 	"sync"
@@ -247,9 +248,10 @@ func (m *Manager) SyncOpenClawAgents(ctx context.Context) (int, error) {
 		maxSort++
 		_, err := m.db.Exec(
 			`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, enabled, sort_order, is_preset, identity_initialized, remote_provider, remote_agent_id, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, '', ?, '', 1, ?, 0, 0, ?, ?, ?, ?)
-			 ON CONFLICT(slug) DO UPDATE SET name = excluded.name, description = excluded.description, model = excluded.model, updated_at = excluded.updated_at`,
-			uuid.New().String(), slug, agent.DisplayName(), desc, agent.Model, maxSort, openClawProvider, agent.ID, now, now,
+			 VALUES (?, ?, ?, ?, '', ?, ?, 1, ?, 0, 0, ?, ?, ?, ?)
+			 ON CONFLICT(slug) DO UPDATE SET name = excluded.name, description = excluded.description, model = excluded.model, updated_at = excluded.updated_at,
+			   avatar_path = CASE WHEN agent_roles.avatar_path = '' THEN excluded.avatar_path ELSE agent_roles.avatar_path END`,
+			uuid.New().String(), slug, agent.DisplayName(), desc, agent.Model, presetAvatarFor(agent.ID), maxSort, openClawProvider, agent.ID, now, now,
 		)
 		if err != nil {
 			logger.Error("openclaw sync: upsert %s failed: %v", slug, err)
@@ -269,6 +271,15 @@ func (m *Manager) SyncOpenClawAgents(ctx context.Context) (int, error) {
 	m.db.Exec(query, args...)
 
 	return len(seen), nil
+}
+
+// presetAvatarFor deterministically assigns one of the 45 bundled preset
+// avatars so imported agents render properly (and keep the same avatar
+// across re-syncs). Users can still customize it afterwards.
+func presetAvatarFor(remoteID string) string {
+	h := fnv.New32a()
+	h.Write([]byte(remoteID))
+	return fmt.Sprintf("/avatars/avatar-%d.webp", (h.Sum32()%45)+1)
 }
 
 // openClawSlugFor picks a chat slug for a remote agent: the OpenClaw id
