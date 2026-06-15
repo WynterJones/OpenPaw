@@ -136,6 +136,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})
 	}
 	updateHandler := handlers.NewUpdateHandler(s.DB, dataDir, updateBroadcast)
+	pixelLabHandler := handlers.NewPixelLabHandler(s.DB, secretsMgr, dataDir)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth required)
@@ -172,11 +173,18 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 		// Public uploaded background serving
 		r.Get("/uploads/backgrounds/{filename}", settingsHandler.ServeBackground)
 
+		// Public PixelLab sprite frame serving (rendered in <img> tags, like avatars)
+		r.Get("/pixellab/sprites/{id}/*", pixelLabHandler.ServeFrame)
+
 		// Public dashboard assets (served in sandboxed iframes that can't send auth cookies)
 		r.Get("/dashboards/{id}/assets/*", dashboardsHandler.ServeAssets)
 
 		// Public media file serving (so images can be displayed without auth issues)
 		r.Get("/media/{id}/file", mediaHandler.ServeFile)
+
+		// Public OpenClaw file serving — inline images an OpenClaw agent produced
+		// (gated to image paths that appear in a stored chat message)
+		r.Get("/openclaw/file", settingsHandler.ServeOpenClawFile)
 
 		// MCP bridge for CLI providers (auth = unguessable per-run token)
 		if mcpRegistry != nil {
@@ -523,6 +531,14 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Put("/settings/models", settingsHandler.UpdateModels)
 			r.Get("/settings/api-key", settingsHandler.GetAPIKey)
 			r.Put("/settings/api-key", settingsHandler.UpdateAPIKey)
+			r.Get("/settings/pixellab-api-key", pixelLabHandler.GetAPIKey)
+			r.Put("/settings/pixellab-api-key", pixelLabHandler.UpdateAPIKey)
+			r.Post("/pixellab/proxy", pixelLabHandler.Proxy)
+			r.Get("/pixellab/characters", pixelLabHandler.ListCharacters)
+			r.Post("/pixellab/characters", pixelLabHandler.CreateCharacter)
+			r.Post("/pixellab/characters/{id}/animations", pixelLabHandler.AddAnimation)
+			r.Put("/pixellab/characters/{id}", pixelLabHandler.UpdateCharacter)
+			r.Delete("/pixellab/characters/{id}", pixelLabHandler.DeleteCharacter)
 			r.Get("/settings/available-models", settingsHandler.AvailableModels)
 			r.Get("/settings/llm-provider", settingsHandler.GetLLMProvider)
 			r.Put("/settings/llm-provider", settingsHandler.UpdateLLMProvider)

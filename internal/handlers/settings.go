@@ -405,6 +405,55 @@ func (h *SettingsHandler) RemoveOpenClaw(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"removed": removed})
 }
 
+// openClawImageExts are the local-file extensions OpenClaw agents produce that
+// can be safely shown inline in chat.
+var openClawImageExts = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+	".webp": true, ".svg": true, ".bmp": true,
+}
+
+// ServeOpenClawFile serves a local image file that an OpenClaw agent referenced
+// in a chat reply (e.g. `[offer.png](/Users/.../offer.png)`). OpenClaw runs on
+// the same machine, so its replies link to absolute local paths. Access is
+// gated two ways: the extension must be an allowed image type, and the exact
+// path must appear in a stored chat message — so only files an agent actually
+// produced are reachable, never arbitrary files on disk.
+func (h *SettingsHandler) ServeOpenClawFile(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" || !filepath.IsAbs(path) || strings.Contains(path, "..") {
+		http.NotFound(w, r)
+		return
+	}
+	path = filepath.Clean(path)
+
+	if !openClawImageExts[strings.ToLower(filepath.Ext(path))] {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Only serve files an OpenClaw agent actually linked in a chat message.
+	var exists int
+	err := h.db.QueryRow(
+		`SELECT 1 FROM chat_messages WHERE content LIKE '%' || ? || '%' ESCAPE '\' LIMIT 1`,
+		escapeLike(path),
+	).Scan(&exists)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if info, statErr := os.Stat(path); statErr != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
+	// SVGs can embed scripts; neutralize them if a browser loads this URL
+	// directly (an <img> tag never executes them, but a direct nav could).
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeFile(w, r, path)
+}
+
 func (h *SettingsHandler) UploadBackground(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(5 << 20)
 

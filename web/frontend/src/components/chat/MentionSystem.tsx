@@ -74,6 +74,46 @@ function processChildren(children: ReactNode, roles: AgentRole[]): ReactNode {
   return children;
 }
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
+
+// imageSrcFor returns a displayable image URL for a markdown link href, or null
+// if the href isn't an image. Local file paths (what OpenClaw agents return,
+// since they run on the same machine) are routed through the file-serving
+// endpoint; remote http(s) image URLs are shown directly.
+function imageSrcFor(href: string): string | null {
+  if (!href || !IMAGE_EXT_RE.test(href.split(/[?#]/)[0])) return null;
+  if (/^https?:\/\//i.test(href)) return href;
+  if (/^(data:|blob:)/i.test(href)) return href;
+  if (href.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(href)) {
+    return `/api/v1/openclaw/file?path=${encodeURIComponent(href)}`;
+  }
+  return null;
+}
+
+function renderInlineImage(src: string, label: string): ReactNode {
+  return (
+    <span className="block my-2">
+      <span className="relative group inline-block rounded-xl overflow-hidden border border-border-1 max-w-full">
+        <img
+          src={src}
+          alt={label || 'image'}
+          className="max-w-full max-h-[400px] rounded-xl object-contain block"
+        />
+        <a
+          href={src}
+          download
+          target="_blank"
+          rel="noreferrer"
+          className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+          title="Open / download image"
+        >
+          Open
+        </a>
+      </span>
+    </span>
+  );
+}
+
 let _mcRolesRef: AgentRole[] = [];
 let _mcResult: Partial<Components> | null = null;
 
@@ -81,6 +121,14 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
   if (roles === _mcRolesRef && _mcResult) return _mcResult;
   _mcRolesRef = roles;
   _mcResult = {
+    a: ({ href, children, ...props }) => {
+      const imgSrc = href ? imageSrcFor(href) : null;
+      if (imgSrc) {
+        const label = typeof children === 'string' ? children : extractText(children as ReactNode);
+        return renderInlineImage(imgSrc, label);
+      }
+      return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}</a>;
+    },
     p: ({ children, ...props }) => <p {...props}>{processChildren(children, roles)}</p>,
     li: ({ children, ...props }) => <li {...props}>{processChildren(children, roles)}</li>,
     td: ({ children, ...props }) => <td {...props}>{processChildren(children, roles)}</td>,

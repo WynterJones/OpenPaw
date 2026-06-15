@@ -34,6 +34,9 @@ import {
   Loader2,
   Terminal,
   Cloud,
+  Sparkles,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -50,8 +53,16 @@ import { useAuth } from "../contexts/AuthContext";
 import { useDesign } from "../contexts/DesignContext";
 import { api, type SystemInfo, type WSMessage } from "../lib/api";
 import { useWebSocket } from "../lib/useWebSocket";
-import type { UpdateCheckResponse } from "../lib/types";
+import type { UpdateCheckResponse, AgentRole } from "../lib/types";
 import { useToast } from "../components/Toast";
+import { CompanionWizard } from "../components/companion/CompanionWizard";
+import { SpriteAnimation } from "../components/companion/SpriteAnimation";
+import {
+  companionStore,
+  useCompanionStore,
+  clipForName,
+  type PixelLabCharacter,
+} from "../lib/companionStore";
 import {
   isNotificationSoundEnabled,
   setNotificationSoundEnabled,
@@ -67,6 +78,7 @@ const TABS = [
   { id: "network", label: "Network", icon: Wifi },
   { id: "models", label: "AI Models", icon: Bot },
   { id: "design", label: "Design", icon: Paintbrush },
+  { id: "companion", label: "Companion", icon: Sparkles },
   { id: "security", label: "Security", icon: Shield },
   { id: "system", label: "System", icon: Server },
   { id: "backup", label: "Backup", icon: HardDrive },
@@ -3227,6 +3239,173 @@ function DangerTab() {
   );
 }
 
+function CompanionCard({
+  character,
+  agentRoles,
+  onChange,
+}: {
+  character: PixelLabCharacter;
+  agentRoles: AgentRole[];
+  onChange: () => void;
+}) {
+  const { toast } = useToast();
+  const idle = clipForName(character, "idle");
+  const frames = idle?.frames?.length ? idle.frames : character.base_url ? [character.base_url] : [];
+
+  const togglePin = async () => {
+    await api.put(`/pixellab/characters/${character.id}`, { pinned: !character.pinned });
+    await companionStore.load();
+    onChange();
+  };
+  const assign = async (slug: string) => {
+    await api.put(`/pixellab/characters/${character.id}`, { agent_slug: slug });
+    await companionStore.load();
+    onChange();
+  };
+  const remove = async () => {
+    if (!window.confirm(`Delete companion "${character.name}"?`)) return;
+    await api.delete(`/pixellab/characters/${character.id}`);
+    await companionStore.load();
+    onChange();
+    toast("success", "Companion deleted");
+  };
+
+  return (
+    <Card>
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 rounded-lg bg-surface-2 p-1">
+          {frames.length > 0 ? (
+            <SpriteAnimation frames={frames} fps={idle?.fps ?? 4} size={56} />
+          ) : (
+            <div className="w-14 h-14" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-text-0 truncate">{character.name}</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant={character.pinned ? "secondary" : "ghost"}
+                size="sm"
+                onClick={togglePin}
+                icon={character.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+              >
+                {character.pinned ? "Pinned" : "Pin"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={remove} icon={<Trash2 className="w-3.5 h-3.5" />}>
+                <span className="sr-only">Delete</span>
+              </Button>
+            </div>
+          </div>
+          <Select
+            value={character.agent_slug}
+            onChange={(e) => assign(e.target.value)}
+            options={[
+              { value: "", label: "Any agent (global)" },
+              ...agentRoles.map((a) => ({ value: a.slug, label: a.name })),
+            ]}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CompanionTab() {
+  const { toast } = useToast();
+  const { characters } = useCompanionStore();
+  const [configured, setConfigured] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [agentRoles, setAgentRoles] = useState<AgentRole[]>([]);
+
+  const reload = useCallback(() => {
+    api.get<{ configured: boolean }>("/settings/pixellab-api-key").then((d) => setConfigured(d.configured)).catch(() => {});
+    api.get<AgentRole[]>("/agent-roles").then(setAgentRoles).catch(() => {});
+    companionStore.load().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const saveKey = async () => {
+    if (!keyInput.trim()) return;
+    setSavingKey(true);
+    try {
+      await api.put("/settings/pixellab-api-key", { api_key: keyInput.trim() });
+      setConfigured(true);
+      setKeyInput("");
+      toast("success", "PixelLab key saved");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to save key");
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h3 className="text-sm font-semibold text-text-1 mb-1">PixelLab API Key</h3>
+        <p className="text-xs text-text-3 mb-4">
+          Used to generate and animate pixel-art companions. Stored encrypted; never sent to the browser.
+        </p>
+        <div
+          className={`flex items-center gap-3 p-3 rounded-lg border mb-4 ${
+            configured ? "bg-green-500/5 border-green-500/20" : "bg-amber-500/5 border-amber-500/20"
+          }`}
+        >
+          <CheckCircle className={`w-4 h-4 flex-shrink-0 ${configured ? "text-green-400" : "text-amber-400"}`} />
+          <p className={`text-sm font-medium ${configured ? "text-green-400" : "text-amber-400"}`}>
+            {configured ? "Configured" : "Not configured"}
+          </p>
+        </div>
+        <div className="max-w-sm space-y-3">
+          <Input
+            label={configured ? "Replace key" : "API Key"}
+            type="password"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder="PixelLab API key"
+          />
+          <Button onClick={saveKey} loading={savingKey} disabled={!keyInput.trim()} icon={<Save className="w-4 h-4" />}>
+            Validate & Save
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-1">Companions</h3>
+            <p className="text-xs text-text-3">Pin them to chat — they react as agents work.</p>
+          </div>
+          <Button onClick={() => setWizardOpen(true)} icon={<Plus className="w-4 h-4" />} disabled={!configured}>
+            Create companion
+          </Button>
+        </div>
+        {characters.length === 0 ? (
+          <EmptyState
+            icon={<Sparkles className="w-8 h-8" />}
+            title="No companions yet"
+            description={configured ? "Create your first pixel-art companion." : "Add a PixelLab API key to get started."}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {characters.map((c) => (
+              <CompanionCard key={c.id} character={c} agentRoles={agentRoles} onChange={reload} />
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <CompanionWizard open={wizardOpen} onClose={() => { setWizardOpen(false); reload(); }} />
+    </div>
+  );
+}
+
 export function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -3237,6 +3416,7 @@ export function Settings() {
     network: <NetworkTab />,
     models: <ModelsTab />,
     design: <DesignTab />,
+    companion: <CompanionTab />,
     security: <SecurityTab />,
     system: <SystemTab />,
     backup: <BackupTab />,

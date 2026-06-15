@@ -20,10 +20,13 @@ export function Login() {
   const [checkingSetup, setCheckingSetup] = useState(true);
 
   useEffect(() => {
-    api.get<{ needs_setup: boolean }>('/setup/status')
+    api.get<{ needs_setup: boolean; username?: string }>('/setup/status')
       .then(data => {
         if (data.needs_setup) {
           setNeedsSetup(true);
+        } else if (data.username) {
+          // Pre-fill the installed user's name so it's clear which account is set up.
+          setUsername(data.username);
         }
       })
       .catch(() => {})

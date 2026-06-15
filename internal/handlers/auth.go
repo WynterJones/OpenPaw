@@ -359,7 +359,14 @@ func (h *SetupHandler) Status(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to check setup status")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"needs_setup": !hasAdmin})
+	// Surface the installed user's name so the login screen can pre-fill it —
+	// handy on a self-hosted box to confirm which account is set up.
+	var username string
+	h.db.QueryRow("SELECT username FROM users ORDER BY created_at ASC LIMIT 1").Scan(&username)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"needs_setup": !hasAdmin,
+		"username":    username,
+	})
 }
 
 func (h *SetupHandler) Init(w http.ResponseWriter, r *http.Request) {
