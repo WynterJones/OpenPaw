@@ -720,8 +720,11 @@ just desktop-sidecar
 # Run in dev mode (hot-reloads the Tauri shell, rebuilds sidecar first)
 just desktop-dev
 
-# Build a production .app / .dmg / .msi / .deb (rebuilds sidecar first)
+# Build a production .app / .dmg / .msi / .deb (rebuilds sidecar first, unsigned)
 just desktop-build
+
+# Build a SIGNED + NOTARIZED macOS .app / .dmg (requires Apple Developer cert + creds)
+just desktop-release
 ```
 
 ### How It Works
@@ -736,13 +739,21 @@ Data is stored in the platform-standard app data directory (e.g. `~/Library/Appl
 
 ### Code Signing
 
-Desktop builds are **not code-signed or notarized**. This means:
-
-- **macOS** — Gatekeeper will block the app. Right-click the `.dmg` or `.app` and choose **Open**, then click **Open** again in the dialog to bypass the warning. You only need to do this once.
-- **Windows** — SmartScreen will show a "Windows protected your PC" warning. Click **More info** then **Run anyway**.
+- **macOS** — Official releases are **code-signed with a Developer ID and notarized by Apple**, so they open without Gatekeeper warnings. (Unsigned local `just desktop-build` artifacts still need a right-click → **Open** the first time.)
+- **Windows** — Not yet code-signed. SmartScreen will show a "Windows protected your PC" warning. Click **More info** then **Run anyway**.
 - **Linux** — No signing required. Works as-is.
 
-If you want to sign builds for your own distribution, you'll need an [Apple Developer account](https://developer.apple.com/) ($99/year) for macOS notarization and a Windows code-signing certificate. See the [Tauri signing guide](https://tauri.app/distribute/) for setup details.
+To produce signed macOS builds yourself, you need an [Apple Developer account](https://developer.apple.com/) ($99/year) with a **Developer ID Application** certificate in your keychain, then:
+
+```bash
+export APPLE_ID="you@example.com"          # Apple ID
+export APPLE_PASSWORD="abcd-efgh-ijkl-mnop" # app-specific password
+export APPLE_TEAM_ID="XXXXXXXXXX"           # 10-char team ID
+# optional: export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+just desktop-release
+```
+
+Tauri signs the bundle (and the embedded Go sidecar) with the hardened runtime, submits it to Apple's notary service, and staples the ticket automatically. CI does the same on tag push using the matching GitHub Actions secrets. See the [Tauri signing guide](https://tauri.app/distribute/) for full setup details.
 
 ### Desktop Utility Commands
 

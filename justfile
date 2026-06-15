@@ -227,9 +227,16 @@ desktop-sidecar: frontend-build
 desktop-dev: desktop-sidecar
     cd desktop && npm run tauri dev
 
-# Build production Tauri app (rebuilds sidecar first)
+# Build production Tauri app (rebuilds sidecar first, unsigned)
 desktop-build: desktop-sidecar
     cd desktop && npm run tauri build
+
+# Build a SIGNED + NOTARIZED macOS app (rebuilds sidecar first).
+# Requires a "Developer ID Application" cert in the keychain and
+# APPLE_ID / APPLE_PASSWORD (app-specific) / APPLE_TEAM_ID in the environment.
+# Override the cert with APPLE_SIGNING_IDENTITY=... if needed.
+desktop-release: desktop-sidecar
+    cd desktop && APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-Developer ID Application: Wynter Jones (7X2UF4FZHC)}" npm run tauri build
 
 # Clean desktop build artifacts
 desktop-clean:
