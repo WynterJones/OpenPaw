@@ -81,9 +81,10 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
+      data-tauri-drag-region
       className={`hidden md:flex flex-col bg-surface-1 border-r border-border-0 transition-all duration-200 relative z-[1] ${collapsed ? "w-16" : "w-56"}`}
     >
-      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+      <nav data-tauri-drag-region className="op-sidebar-nav flex-1 py-3 px-2 overflow-y-auto">
         {navGroups.map((group, gi) => (
           <div key={gi}>
             {gi > 0 && <div className="mx-3 my-2 border-b border-border-0" />}

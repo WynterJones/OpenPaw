@@ -276,20 +276,29 @@ func decodeDataURI(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(strings.TrimSpace(s))
 }
 
+// pngMagic is the 8-byte signature every PNG file begins with.
+var pngMagic = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+
 // saveFrames writes a clip's frames under {sprites}/{charID}/{clipID}/ and
-// returns their relative ("{clipID}/frame_N.png") paths.
+// returns their relative ("{clipID}/frame_N.png") paths. Non-PNG payloads are
+// skipped rather than written: PixelLab responses can include base64 blobs that
+// aren't renderable images, and writing those produced "broken image" frames.
 func (h *PixelLabHandler) saveFrames(charID, clipID string, frames []string) ([]string, error) {
 	dir := filepath.Join(h.spritesDir(), charID, clipID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	rel := make([]string, 0, len(frames))
-	for i, f := range frames {
+	for _, f := range frames {
 		bytesPNG, err := decodeDataURI(f)
 		if err != nil {
 			return nil, err
 		}
-		name := "frame_" + strconv.Itoa(i) + ".png"
+		if !bytes.HasPrefix(bytesPNG, pngMagic) {
+			logger.Error("pixellab: skipping non-PNG frame for char %s clip %s (%d bytes)", charID, clipID, len(bytesPNG))
+			continue
+		}
+		name := "frame_" + strconv.Itoa(len(rel)) + ".png"
 		if err := os.WriteFile(filepath.Join(dir, name), bytesPNG, 0o644); err != nil {
 			return nil, err
 		}

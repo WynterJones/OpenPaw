@@ -1,6 +1,19 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/forms";
 
+/* --- Desktop (Tauri) overlay title bar ---
+   The macOS desktop window uses titleBarStyle: Overlay, so the traffic-light
+   buttons float over the top-left of the app and there is no native toolbar to
+   drag. Push the sidebar nav below the buttons, and let the toolbar/sidebar act
+   as window-drag regions. Interactive children stay clickable because Tauri
+   only starts a drag when the drag-region element itself is the event target. */
+html[data-desktop] .op-sidebar-nav {
+  padding-top: 2.25rem;
+}
+[data-tauri-drag-region] {
+  cursor: default;
+}
+
 @theme {
   --color-surface-0: var(--op-surface-0);
   --color-surface-1: var(--op-surface-1);

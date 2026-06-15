@@ -213,9 +213,10 @@ export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps
   const profilePic = user?.avatar_path;
 
   return (
-    <header className="relative z-30 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
-      <div className="relative min-w-0 flex-1 mr-2 flex items-center gap-2.5">
+    <header data-tauri-drag-region className="relative z-30 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
+      <div data-tauri-drag-region className="relative min-w-0 flex-1 mr-2 flex items-center gap-2.5">
         <h1
+          data-tauri-drag-region
           className={`text-lg md:text-xl font-bold text-text-0 truncate ${hideTitleOnMobile ? 'hidden md:block' : ''}`}
           title={title}
         >

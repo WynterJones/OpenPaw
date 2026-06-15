@@ -226,19 +226,33 @@ export interface PollOptions {
   maxAttempts?: number;
 }
 
-/** Collect every base64 image found anywhere in a completed job response. */
+/** A base64-encoded PNG always begins with the bytes \x89PNG…, which encode to
+ *  the prefix "iVBORw0KGgo". Anything else (raw pixel buffers, masks, metadata
+ *  blobs the API may also return) is not an image we can render. */
+function isPngBase64(s: string): boolean {
+  const body = s.startsWith('data:') ? s.slice(s.indexOf(',') + 1) : s;
+  return body.startsWith('iVBORw0KGgo');
+}
+
+/** Collect every base64 *PNG* found anywhere in a completed job response.
+ *  We must recurse the whole tree and accept only PNG-signed payloads: the
+ *  animate response can carry non-image base64 fields (raw buffers, masks)
+ *  alongside the real frames, and grabbing those produced unrenderable
+ *  "broken image" frames. */
 function collectFrames(response: unknown): string[] {
   const frames: string[] = [];
   const visit = (node: unknown) => {
-    if (!node) return;
-    if (typeof node === 'object') {
-      const b64 = extractBase64(node);
-      if (b64) {
-        frames.push(toDataUri(b64));
-        return;
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    for (const value of Object.values(node as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        if (isPngBase64(value)) frames.push(toDataUri(value));
+      } else if (value && typeof value === 'object') {
+        visit(value);
       }
-      if (Array.isArray(node)) node.forEach(visit);
-      else Object.values(node as Record<string, unknown>).forEach(visit);
     }
   };
   visit(response);
