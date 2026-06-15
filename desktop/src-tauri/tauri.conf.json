@@ -1,6 +1,6 @@
 {
   "productName": "OpenPaw",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.openpaw.desktop",
   "build": {
     "frontendDist": "../src"
