@@ -262,8 +262,30 @@ type charOut struct {
 	CreatedAt  string    `json:"created_at"`
 }
 
+// spriteURLPrefix is the public path under which stored frames are served.
+const spriteURLPrefix = "/api/v1/pixellab/sprites/"
+
 func (h *PixelLabHandler) frameURL(charID, relPath string) string {
-	return "/api/v1/pixellab/sprites/" + charID + "/" + relPath
+	return spriteURLPrefix + charID + "/" + relPath
+}
+
+// spriteFilePath maps a stored-sprite URL ("/api/v1/pixellab/sprites/{char}/{rel}")
+// to its file on disk, or returns "" if s is not such a URL. It rejects paths that
+// would escape the sprites directory.
+func (h *PixelLabHandler) spriteFilePath(s string) string {
+	if !strings.HasPrefix(s, spriteURLPrefix) {
+		return ""
+	}
+	rel := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(s, spriteURLPrefix)))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return ""
+	}
+	base := h.spritesDir()
+	full := filepath.Join(base, rel)
+	if full != base && !strings.HasPrefix(full, base+string(os.PathSeparator)) {
+		return ""
+	}
+	return full
 }
 
 // decodeDataURI turns a base64 (optionally data:-prefixed) string into bytes.
@@ -290,9 +312,23 @@ func (h *PixelLabHandler) saveFrames(charID, clipID string, frames []string) ([]
 	}
 	rel := make([]string, 0, len(frames))
 	for _, f := range frames {
-		bytesPNG, err := decodeDataURI(f)
-		if err != nil {
-			return nil, err
+		// A frame is either a freshly generated base64 (data:) PNG, or a reference
+		// to an already-stored sprite ("/api/v1/pixellab/sprites/{char}/{path}")
+		// when the client reuses an existing frame as a fallback. Resolve the
+		// latter from disk instead of trying to base64-decode the URL.
+		var bytesPNG []byte
+		if src := h.spriteFilePath(f); src != "" {
+			b, err := os.ReadFile(src)
+			if err != nil {
+				return nil, err
+			}
+			bytesPNG = b
+		} else {
+			b, err := decodeDataURI(f)
+			if err != nil {
+				return nil, err
+			}
+			bytesPNG = b
 		}
 		if !bytes.HasPrefix(bytesPNG, pngMagic) {
 			logger.Error("pixellab: skipping non-PNG frame for char %s clip %s (%d bytes)", charID, clipID, len(bytesPNG))
@@ -372,6 +408,7 @@ func (h *PixelLabHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 	if req.BaseSprite != "" {
 		rel, err := h.saveFrames(id, "base", []string{req.BaseSprite})
 		if err != nil {
+			logger.Error("pixellab: save base sprite for char %s: %v", id, err)
 			writeError(w, http.StatusInternalServerError, "failed to save base sprite")
 			return
 		}
@@ -385,6 +422,7 @@ func (h *PixelLabHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 		clipID := uuid.New().String()
 		rel, err := h.saveFrames(id, clipID, c.Frames)
 		if err != nil {
+			logger.Error("pixellab: save clip %q for char %s: %v", c.Name, id, err)
 			os.RemoveAll(filepath.Join(h.spritesDir(), id))
 			writeError(w, http.StatusInternalServerError, "failed to save animation frames")
 			return
@@ -431,6 +469,7 @@ func (h *PixelLabHandler) AddAnimation(w http.ResponseWriter, r *http.Request) {
 	clipID := uuid.New().String()
 	rel, err := h.saveFrames(id, clipID, req.Frames)
 	if err != nil {
+		logger.Error("pixellab: save clip %q for char %s: %v", req.Name, id, err)
 		writeError(w, http.StatusInternalServerError, "failed to save animation frames")
 		return
 	}
