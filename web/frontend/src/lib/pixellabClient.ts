@@ -228,18 +228,93 @@ export interface PollOptions {
 
 /** A base64-encoded PNG always begins with the bytes \x89PNG…, which encode to
  *  the prefix "iVBORw0KGgo". Anything else (raw pixel buffers, masks, metadata
- *  blobs the API may also return) is not an image we can render. */
+ *  blobs the API may also return) is not a PNG we can render directly. */
 function isPngBase64(s: string): boolean {
   const body = s.startsWith('data:') ? s.slice(s.indexOf(',') + 1) : s;
   return body.startsWith('iVBORw0KGgo');
 }
 
-/** Collect every base64 *PNG* found anywhere in a completed job response.
- *  We must recurse the whole tree and accept only PNG-signed payloads: the
- *  animate response can carry non-image base64 fields (raw buffers, masks)
- *  alongside the real frames, and grabbing those produced unrenderable
- *  "broken image" frames. */
+/** A single frame as PixelLab returns it: a base64 payload that is either a PNG
+ *  or — for animation frames — a raw `rgba_bytes` buffer plus its dimensions. */
+interface FrameImage {
+  base64: string;
+  type?: string;
+  width?: number;
+  height?: number;
+}
+
+function isFrameImage(o: unknown): o is FrameImage {
+  return (
+    !!o && typeof o === 'object' && typeof (o as Record<string, unknown>).base64 === 'string'
+  );
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const body = base64.startsWith('data:') ? base64.slice(base64.indexOf(',') + 1) : base64;
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/** Re-encode a raw RGBA buffer into a PNG data URI via a canvas. PixelLab's
+ *  animate endpoint returns each frame as `rgba_bytes` (raw pixels), NOT a PNG,
+ *  so frames must be drawn and exported before they can render — otherwise every
+ *  clip collapses to a single static fallback frame. */
+function rgbaBytesToPngDataUri(base64: string, width: number, height: number): string | null {
+  const bytes = base64ToBytes(base64);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const imageData = ctx.createImageData(width, height);
+  imageData.data.set(bytes.subarray(0, imageData.data.length));
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+/** Turn a single PixelLab frame object into a renderable PNG data URI,
+ *  re-encoding `rgba_bytes` frames as needed. */
+function frameImageToDataUri(img: FrameImage): string | null {
+  if (!img.base64) return null;
+  if (img.type === 'rgba_bytes' && img.width && img.height) {
+    return rgbaBytesToPngDataUri(img.base64, img.width, img.height);
+  }
+  return toDataUri(img.base64);
+}
+
+/** Collect a clip's frames from a completed job response. PixelLab nests the
+ *  frame array in varying shapes, so we locate the first array whose elements
+ *  all look like frame images and re-encode each (handling rgba_bytes). Falls
+ *  back to a recursive scan for any base64 PNG strings. */
 function collectFrames(response: unknown): string[] {
+  let imagesArray: FrameImage[] | null = null;
+  const findImages = (node: unknown) => {
+    if (imagesArray || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      if (node.length > 0 && node.every(isFrameImage)) {
+        imagesArray = node as FrameImage[];
+        return;
+      }
+      node.forEach(findImages);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (Array.isArray(obj.images) && obj.images.length > 0 && obj.images.every(isFrameImage)) {
+      imagesArray = obj.images as FrameImage[];
+      return;
+    }
+    Object.values(obj).forEach(findImages);
+  };
+  findImages(response);
+  if (imagesArray) {
+    return (imagesArray as FrameImage[])
+      .map(frameImageToDataUri)
+      .filter((s): s is string => !!s);
+  }
+
+  // Fallback: walk the whole tree for any base64 PNG strings.
   const frames: string[] = [];
   const visit = (node: unknown) => {
     if (!node || typeof node !== 'object') return;

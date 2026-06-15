@@ -545,7 +545,30 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 // remote side owns memory, tools, and session state — OpenPaw only transports
 // the message and displays the reply.
 func (h *ChatHandler) handleRemoteAgentChat(ctx context.Context, threadID, content, agentRoleSlug, remoteAgentID string) {
+	// OpenClaw runs the whole turn as a single blocking CLI call with no
+	// intermediate streaming — the remote agent owns its own thinking and tools.
+	// Without feedback the chat goes silent until the reply lands, which on long
+	// turns reads as "nothing is happening". Show a thinking indicator up front
+	// and a heartbeat with elapsed time so the user can see it's still working.
+	h.broadcastStatus(threadID, "thinking", "Thinking...")
+	hbCtx, hbCancel := context.WithCancel(ctx)
+	go func() {
+		start := time.Now()
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-hbCtx.Done():
+				return
+			case <-ticker.C:
+				secs := int(time.Since(start).Seconds())
+				h.broadcastStatus(threadID, "thinking", fmt.Sprintf("Thinking… %ds", secs))
+			}
+		}
+	}()
+
 	response, err := h.agentManager.OpenClawChat(ctx, remoteAgentID, threadID, content)
+	hbCancel()
 	if err != nil {
 		errMsg := "I'm sorry, I couldn't reach the OpenClaw agent: " + err.Error()
 		if ctx.Err() == context.DeadlineExceeded {
