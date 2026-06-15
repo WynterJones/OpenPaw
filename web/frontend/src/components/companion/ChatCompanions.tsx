@@ -115,6 +115,10 @@ function CompanionSprite({
   }, [character, mood]);
 
   const onPointerDown = (e: React.PointerEvent) => {
+    // Don't start a drag (and don't capture the pointer) when the press begins on
+    // a control like the unpin button — capturing here would redirect the pointerup
+    // to this div and swallow the button's click.
+    if ((e.target as HTMLElement).closest('button')) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     dragRef.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, moved: false };
   };

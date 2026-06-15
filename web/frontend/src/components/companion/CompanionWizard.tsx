@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, Sparkles, Pin, PinOff, Plus, Check, ExternalLink } from 'lucide-react';
+import { Loader2, Sparkles, Pin, PinOff, Plus, Check, ExternalLink, RefreshCw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input, Textarea, Select } from '../Input';
@@ -34,6 +34,8 @@ import type { AgentRole } from '../../lib/types';
 interface CompanionWizardProps {
   open: boolean;
   onClose: () => void;
+  /** When set, the wizard opens straight into the manage view for this companion. */
+  editCharacter?: PixelLabCharacter | null;
 }
 
 type Step = 'apikey' | 'describe' | 'pick' | 'animate' | 'manage';
@@ -59,10 +61,12 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
+export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizardProps) {
   const { toast } = useToast();
 
   const [step, setStep] = useState<Step>('apikey');
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const [keyDraft, setKeyDraft] = useState('');
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,12 +87,26 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
     if (!open) return;
     setError(null);
     setBusy(false);
+    api.get<AgentRole[]>('/agent-roles').then(setAgentRoles).catch(() => {});
+
+    // Edit mode: jump straight to the manage view for the chosen companion.
+    if (editCharacter) {
+      setSaved(editCharacter);
+      setName(editCharacter.name);
+      setStep('manage');
+      return;
+    }
+
+    setSaved(null);
+    setName('');
+    setDescription('');
+    setOptions([]);
+    setSelected(null);
     api
       .get<{ configured: boolean }>('/settings/pixellab-api-key')
       .then((d) => setStep(d.configured ? 'describe' : 'apikey'))
       .catch(() => setStep('apikey'));
-    api.get<AgentRole[]>('/agent-roles').then(setAgentRoles).catch(() => {});
-  }, [open]);
+  }, [open, editCharacter]);
 
   const handleSaveKey = async () => {
     setError(null);
@@ -214,6 +232,46 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
     }
   };
 
+  const handleRegenerate = async (action: string) => {
+    if (!saved) return;
+    setError(null);
+    setRegenerating(action);
+    try {
+      const frames = await animateAndCollect({
+        characterId: saved.pixellab_id,
+        action: action === 'idle' ? 'idle breathing' : action,
+      });
+      await api.post(`/pixellab/characters/${saved.id}/animations`, {
+        name: action,
+        fps: action === 'idle' ? 4 : 6,
+        frames: frames.length > 0 ? frames : saved.base_url ? [saved.base_url] : [],
+      });
+      await refreshSaved();
+      toast('success', `Regenerated "${action}"`);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setRegenerating(null);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!saved) return;
+    const next = name.trim();
+    if (!next || next === saved.name) return;
+    setError(null);
+    setRenaming(true);
+    try {
+      await api.put(`/pixellab/characters/${saved.id}`, { name: next });
+      await refreshSaved();
+      toast('success', 'Companion renamed');
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const togglePin = async () => {
     if (!saved) return;
     await api.put(`/pixellab/characters/${saved.id}`, { pinned: !saved.pinned });
@@ -236,7 +294,7 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Create companion" size="xl">
+    <Modal open={open} onClose={onClose} title={editCharacter ? 'Edit companion' : 'Create companion'} size="xl">
       <div className="flex flex-col gap-4">
         {error && (
           <button
@@ -355,8 +413,26 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
 
         {step === 'manage' && saved && (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text-0">{saved.name}</h3>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Input
+                  className="max-w-xs"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                  placeholder="Companion name"
+                  disabled={renaming}
+                />
+                <Button
+                  variant="ghost"
+                  onClick={handleRename}
+                  loading={renaming}
+                  disabled={!name.trim() || name.trim() === saved.name}
+                  icon={<Check className="w-4 h-4" />}
+                >
+                  Rename
+                </Button>
+              </div>
               <Button variant={saved.pinned ? 'secondary' : 'primary'} onClick={togglePin} icon={saved.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}>
                 {saved.pinned ? 'Unpin' : 'Pin to chat'}
               </Button>
@@ -364,9 +440,19 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
 
             <div className="grid grid-cols-4 gap-3">
               {saved.animations.map((clip) => (
-                <div key={clip.id} className="flex flex-col items-center gap-1 rounded-lg border border-border-1 bg-surface-2 p-2">
+                <div key={clip.id} className="flex flex-col items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 p-2">
                   <SpriteAnimation frames={clip.frames} fps={clip.fps} size={64} />
                   <span className="text-xs capitalize text-text-3">{clip.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRegenerate(clip.name)}
+                    loading={regenerating === clip.name}
+                    disabled={regenerating !== null}
+                    icon={<RefreshCw className="w-3 h-3" />}
+                  >
+                    Regenerate
+                  </Button>
                 </div>
               ))}
             </div>
@@ -398,9 +484,11 @@ export function CompanionWizard({ open, onClose }: CompanionWizardProps) {
             </div>
 
             <div className="flex items-center gap-2 border-t border-border-0 pt-3">
-              <Button variant="ghost" onClick={startOver}>
-                Create another
-              </Button>
+              {!editCharacter && (
+                <Button variant="ghost" onClick={startOver}>
+                  Create another
+                </Button>
+              )}
               <Button onClick={onClose}>Done</Button>
             </div>
           </div>

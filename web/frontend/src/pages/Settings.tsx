@@ -37,6 +37,7 @@ import {
   Sparkles,
   Pin,
   PinOff,
+  Pencil,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -3243,12 +3244,16 @@ function CompanionCard({
   character,
   agentRoles,
   onChange,
+  onEdit,
 }: {
   character: PixelLabCharacter;
   agentRoles: AgentRole[];
   onChange: () => void;
+  onEdit: (character: PixelLabCharacter) => void;
 }) {
   const { toast } = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const idle = clipForName(character, "idle");
   const frames = idle?.frames?.length ? idle.frames : character.base_url ? [character.base_url] : [];
 
@@ -3263,11 +3268,18 @@ function CompanionCard({
     onChange();
   };
   const remove = async () => {
-    if (!window.confirm(`Delete companion "${character.name}"?`)) return;
-    await api.delete(`/pixellab/characters/${character.id}`);
-    await companionStore.load();
-    onChange();
-    toast("success", "Companion deleted");
+    setDeleting(true);
+    try {
+      await api.delete(`/pixellab/characters/${character.id}`);
+      await companionStore.load();
+      onChange();
+      toast("success", "Companion deleted");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Failed to delete companion");
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
   };
 
   return (
@@ -3292,7 +3304,10 @@ function CompanionCard({
               >
                 {character.pinned ? "Pinned" : "Pin"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={remove} icon={<Trash2 className="w-3.5 h-3.5" />}>
+              <Button variant="ghost" size="sm" onClick={() => onEdit(character)} icon={<Pencil className="w-3.5 h-3.5" />}>
+                <span className="sr-only">Edit</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} icon={<Trash2 className="w-3.5 h-3.5" />}>
                 <span className="sr-only">Delete</span>
               </Button>
             </div>
@@ -3307,6 +3322,23 @@ function CompanionCard({
           />
         </div>
       </div>
+
+      <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete companion" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-2">
+            Delete companion <span className="font-semibold text-text-0">{character.name}</span>? This removes its
+            sprites and animations and can't be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={remove} loading={deleting} icon={<Trash2 className="w-4 h-4" />}>
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Card>
   );
 }
@@ -3318,6 +3350,7 @@ function CompanionTab() {
   const [keyInput, setKeyInput] = useState("");
   const [savingKey, setSavingKey] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [editChar, setEditChar] = useState<PixelLabCharacter | null>(null);
   const [agentRoles, setAgentRoles] = useState<AgentRole[]>([]);
 
   const reload = useCallback(() => {
@@ -3382,7 +3415,7 @@ function CompanionTab() {
             <h3 className="text-sm font-semibold text-text-1">Companions</h3>
             <p className="text-xs text-text-3">Pin them to chat — they react as agents work.</p>
           </div>
-          <Button onClick={() => setWizardOpen(true)} icon={<Plus className="w-4 h-4" />} disabled={!configured}>
+          <Button onClick={() => { setEditChar(null); setWizardOpen(true); }} icon={<Plus className="w-4 h-4" />} disabled={!configured}>
             Create companion
           </Button>
         </div>
@@ -3395,13 +3428,23 @@ function CompanionTab() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {characters.map((c) => (
-              <CompanionCard key={c.id} character={c} agentRoles={agentRoles} onChange={reload} />
+              <CompanionCard
+                key={c.id}
+                character={c}
+                agentRoles={agentRoles}
+                onChange={reload}
+                onEdit={(char) => { setEditChar(char); setWizardOpen(true); }}
+              />
             ))}
           </div>
         )}
       </Card>
 
-      <CompanionWizard open={wizardOpen} onClose={() => { setWizardOpen(false); reload(); }} />
+      <CompanionWizard
+        open={wizardOpen}
+        editCharacter={editChar}
+        onClose={() => { setWizardOpen(false); setEditChar(null); reload(); }}
+      />
     </div>
   );
 }

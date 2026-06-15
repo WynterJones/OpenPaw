@@ -1,6 +1,6 @@
 {
   "name": "@openpaw-ai/darwin-arm64",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "description": "OpenPaw binary for macOS ARM64",
   "os": ["darwin"],
   "cpu": ["arm64"],
