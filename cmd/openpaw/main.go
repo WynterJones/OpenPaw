@@ -15,19 +15,19 @@ import (
 	"time"
 
 	"github.com/openpaw/openpaw/internal/agents"
+	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/browser"
+	"github.com/openpaw/openpaw/internal/config"
+	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
-	"github.com/openpaw/openpaw/internal/auth"
-	"github.com/openpaw/openpaw/internal/mcp"
-	"github.com/openpaw/openpaw/internal/providers"
-	"github.com/openpaw/openpaw/internal/config"
-	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/memory"
 	"github.com/openpaw/openpaw/internal/platform"
+	"github.com/openpaw/openpaw/internal/providers"
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
 	"github.com/openpaw/openpaw/internal/server"
@@ -62,6 +62,11 @@ func main() {
 		cfg := config.Load()
 		updater.RunUpdateCommand(version, cfg.DataDir)
 	}
+
+	// Augment PATH so CLI providers (claude, codex, openclaw, …) are
+	// discoverable when launched as a GUI/desktop app, which inherits only a
+	// minimal PATH from launchd/Finder.
+	platform.FixPath()
 
 	logger.Banner()
 
@@ -472,5 +477,3 @@ func main() {
 
 	logger.Bye()
 }
-
-

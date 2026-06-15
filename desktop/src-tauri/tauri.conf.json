@@ -15,6 +15,7 @@
         "minHeight": 600,
         "visible": false,
         "decorations": true,
+        "titleBarStyle": "Overlay",
         "resizable": true
       }
     ]
