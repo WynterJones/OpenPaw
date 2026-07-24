@@ -70,7 +70,7 @@ export function AgentEdit() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [model, setModel] = useState('anthropic/claude-sonnet-4-6');
+  const [model, setModel] = useState('anthropic/claude-sonnet-5');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [folder, setFolder] = useState('');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);

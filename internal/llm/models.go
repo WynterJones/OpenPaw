@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	ModelHaiku  = "anthropic/claude-haiku-4-5"
-	ModelSonnet = "anthropic/claude-sonnet-4-6"
-	ModelOpus   = "anthropic/claude-opus-4-6"
+	ModelHaiku  = "anthropic/claude-haiku-4.5"
+	ModelSonnet = "anthropic/claude-sonnet-5"
+	ModelOpus   = "anthropic/claude-opus-5"
 	ModelFable  = "anthropic/claude-fable-5"
 )
 

@@ -29,19 +29,26 @@ const PRESET_AVATARS = [
 ];
 
 const MODEL_OPTIONS = [
-  { id: "anthropic/claude-haiku-4-5", label: "Haiku 4.5" },
-  { id: "anthropic/claude-sonnet-4-6", label: "Sonnet 4.6" },
-  { id: "anthropic/claude-opus-4-6", label: "Opus 4.6" },
+  { id: "anthropic/claude-haiku-4.5", label: "Haiku 4.5" },
+  { id: "anthropic/claude-sonnet-5", label: "Sonnet 5" },
+  { id: "anthropic/claude-opus-5", label: "Opus 5" },
+  { id: "anthropic/claude-fable-5", label: "Fable 5" },
 ];
 
 function formatModelName(model: string): string {
   const known: Record<string, string> = {
+    "anthropic/claude-haiku-4.5": "Haiku 4.5",
+    "anthropic/claude-sonnet-5": "Sonnet 5",
+    "anthropic/claude-opus-5": "Opus 5",
+    "anthropic/claude-fable-5": "Fable 5",
+    // Legacy IDs kept so existing agents still render a friendly name.
     "anthropic/claude-haiku-4-5": "Haiku 4.5",
     "anthropic/claude-sonnet-4-6": "Sonnet 4.6",
     "anthropic/claude-opus-4-6": "Opus 4.6",
     haiku: "Haiku 4.5",
-    sonnet: "Sonnet 4.6",
-    opus: "Opus 4.6",
+    sonnet: "Sonnet 5",
+    opus: "Opus 5",
+    fable: "Fable 5",
   };
   if (known[model]) return known[model];
   const parts = model.split("/");
@@ -61,7 +68,7 @@ function CreateAgentModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [model, setModel] = useState("anthropic/claude-haiku-4-5");
+  const [model, setModel] = useState("anthropic/claude-sonnet-5");
   const [avatarPath, setAvatarPath] = useState(PRESET_AVATARS[0]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -117,7 +124,7 @@ function CreateAgentModal({
       setName("");
       setDescription("");
       setSystemPrompt("");
-      setModel("anthropic/claude-haiku-4-5");
+      setModel("anthropic/claude-sonnet-5");
       setAvatarPath(PRESET_AVATARS[0]);
       toast("success", "Agent created");
     } catch (err) {

@@ -1112,10 +1112,10 @@ function ModelPicker({
 function ModelsTab() {
   const { toast } = useToast();
   const [gatewayModel, setGatewayModel] = useState(
-    "anthropic/claude-haiku-4-5",
+    "anthropic/claude-haiku-4.5",
   );
   const [builderModel, setBuilderModel] = useState(
-    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-sonnet-5",
   );
   const [maxTurns, setMaxTurns] = useState(300);
   const [agentTimeoutMin, setAgentTimeoutMin] = useState(60);
@@ -1148,8 +1148,8 @@ function ModelsTab() {
         context_limit_override: number;
       }>("/settings/models")
       .then((data) => {
-        setGatewayModel(data.gateway_model || "anthropic/claude-haiku-4-5");
-        setBuilderModel(data.builder_model || "anthropic/claude-sonnet-4-6");
+        setGatewayModel(data.gateway_model || "anthropic/claude-haiku-4.5");
+        setBuilderModel(data.builder_model || "anthropic/claude-sonnet-5");
         if (data.max_turns > 0) setMaxTurns(data.max_turns);
         if (data.agent_timeout_min > 0)
           setAgentTimeoutMin(data.agent_timeout_min);
