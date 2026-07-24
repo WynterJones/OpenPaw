@@ -31,6 +31,7 @@ import type {
   MediaItem,
   MediaListResponse,
   Workspace,
+  WorkspaceFileNode,
   WorkspaceFilesResponse,
   WorkspaceDirectory,
 } from './types';
@@ -379,6 +380,10 @@ export const workspaces = {
   getActive: () => api.get<Workspace>('/workspaces/active'),
   setActive: (id: string) => api.put<Workspace>('/workspaces/active', { workspace_id: id }),
   listFiles: (id: string) => api.get<WorkspaceFilesResponse>(`/workspaces/${id}/files`),
+  browse: (id: string, dir: string, path: string) =>
+    api.get<{ path: string; files: WorkspaceFileNode[] }>(
+      `/workspaces/${id}/browse?dir=${encodeURIComponent(dir)}&path=${encodeURIComponent(path)}`,
+    ),
   reveal: (id: string) => api.post<{ path: string }>(`/workspaces/${id}/reveal`, {}),
   listDirectories: (id: string) => api.get<WorkspaceDirectory[]>(`/workspaces/${id}/directories`),
   addDirectory: (id: string, path: string) =>

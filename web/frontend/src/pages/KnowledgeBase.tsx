@@ -32,15 +32,43 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function DirTreeNode({ node, level }: { node: WorkspaceFileNode; level: number }) {
-  const [open, setOpen] = useState(true);
+// One tree row. Folders start COLLAPSED and load their immediate children on
+// first expand (via loadChildren) — the backend lists a single level at a time,
+// so opening a repo never walks node_modules/.git.
+function DirTreeNode({
+  node,
+  level,
+  loadChildren,
+}: {
+  node: WorkspaceFileNode;
+  level: number;
+  loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [children, setChildren] = useState<WorkspaceFileNode[] | null>(node.children ?? null);
+  const [loading, setLoading] = useState(false);
   const pad = { paddingLeft: `${8 + level * 16}px` };
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && children === null && !loading) {
+      setLoading(true);
+      try {
+        setChildren(await loadChildren(node.path));
+      } catch {
+        setChildren([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
   if (node.is_dir) {
     return (
       <div>
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggle}
           style={pad}
           className="w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
         >
@@ -55,12 +83,20 @@ function DirTreeNode({ node, level }: { node: WorkspaceFileNode; level: number }
             <Folder className="w-4 h-4 text-text-2 flex-shrink-0" aria-hidden="true" />
           )}
           <span className="flex-1 min-w-0 truncate text-left">{node.name}</span>
+          {loading && (
+            <span className="w-3 h-3 border-2 border-text-3 border-t-transparent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
+          )}
         </button>
-        {open && node.children && node.children.length > 0 && (
+        {open && children && children.length > 0 && (
           <div>
-            {node.children.map((child) => (
-              <DirTreeNode key={child.path} node={child} level={level + 1} />
+            {children.map((child) => (
+              <DirTreeNode key={child.path} node={child} level={level + 1} loadChildren={loadChildren} />
             ))}
+          </div>
+        )}
+        {open && !loading && children && children.length === 0 && (
+          <div style={{ paddingLeft: `${8 + (level + 1) * 16}px` }} className="py-1 text-[11px] text-text-3 italic">
+            empty
           </div>
         )}
       </div>
@@ -83,10 +119,12 @@ function AttachedDirectorySection({
   dir,
   onRemove,
   removing,
+  loadChildren,
 }: {
   dir: WorkspaceDirectory;
   onRemove: () => void;
   removing: boolean;
+  loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
 }) {
   return (
     <div className="mb-5">
@@ -112,7 +150,7 @@ function AttachedDirectorySection({
       ) : (
         <div>
           {dir.files.map((node) => (
-            <DirTreeNode key={node.path} node={node} level={0} />
+            <DirTreeNode key={node.path} node={node} level={0} loadChildren={loadChildren} />
           ))}
         </div>
       )}
@@ -254,7 +292,12 @@ function WorkspaceDirectoryPanel() {
                   </h3>
                 )}
                 {tree.map((node) => (
-                  <DirTreeNode key={node.path} node={node} level={0} />
+                  <DirTreeNode
+                    key={node.path}
+                    node={node}
+                    level={0}
+                    loadChildren={(p) => workspaces.browse(wsId!, '', p).then((r) => r.files)}
+                  />
                 ))}
               </div>
             )}
@@ -264,6 +307,7 @@ function WorkspaceDirectoryPanel() {
                 dir={dir}
                 onRemove={() => removeDirectory(dir.id)}
                 removing={removingId === dir.id}
+                loadChildren={(p) => workspaces.browse(wsId!, dir.id, p).then((r) => r.files)}
               />
             ))}
           </div>

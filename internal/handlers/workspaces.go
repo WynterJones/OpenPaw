@@ -442,7 +442,7 @@ func (h *WorkspacesHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tree, err := buildFileTree(root, "")
+	tree, err := listDirLevel(root, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read workspace files")
 		return
@@ -481,9 +481,11 @@ func (h *WorkspacesHandler) RevealFiles(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"path": root})
 }
 
-// buildFileTree walks dir recursively, returning nodes with paths relative to
-// the workspace files root. Symlinks are reported but not followed.
-func buildFileTree(dir, relBase string) ([]fileNode, error) {
+// listDirLevel returns ONLY the immediate children of dir (one level, no
+// recursion) with paths relative to the tree root. Recursing eagerly is fatal
+// for real repos (node_modules/.git); subfolders are loaded on demand via
+// Browse when the user expands them. Symlinks are reported but not followed.
+func listDirLevel(dir, relBase string) ([]fileNode, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -493,13 +495,10 @@ func buildFileTree(dir, relBase string) ([]fileNode, error) {
 	for _, e := range entries {
 		rel := filepath.ToSlash(filepath.Join(relBase, e.Name()))
 		node := fileNode{Name: e.Name(), Path: rel, IsDir: e.IsDir()}
-		if e.IsDir() {
-			children, err := buildFileTree(filepath.Join(dir, e.Name()), rel)
-			if err == nil {
-				node.Children = children
+		if !e.IsDir() {
+			if info, err := e.Info(); err == nil {
+				node.Size = info.Size()
 			}
-		} else if info, err := e.Info(); err == nil {
-			node.Size = info.Size()
 		}
 		nodes = append(nodes, node)
 	}
@@ -512,6 +511,60 @@ func buildFileTree(dir, relBase string) ([]fileNode, error) {
 		return nodes[i].Name < nodes[j].Name
 	})
 	return nodes, nil
+}
+
+// safeJoin joins a caller-supplied relative path under base, defeating any
+// "../" traversal. Returns the absolute target and false if it escapes base.
+func safeJoin(base, rel string) (string, bool) {
+	if rel == "" {
+		return base, true
+	}
+	// A leading slash makes Clean collapse any leading ".." to root, so the
+	// subsequent Rel check reliably catches escapes.
+	clean := filepath.Clean("/" + filepath.FromSlash(rel))
+	target := filepath.Join(base, clean)
+	r, err := filepath.Rel(base, target)
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return target, true
+}
+
+// Browse returns one level of a directory on demand: the workspace's own files
+// dir (dir="") or an attached directory (dir=<directory id>), under an optional
+// relative path. This backs lazy expansion in the Directory tab.
+func (h *WorkspacesHandler) Browse(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	dirID := r.URL.Query().Get("dir")
+	rel := r.URL.Query().Get("path")
+
+	var base string
+	if dirID == "" {
+		base = h.filesDir(id)
+	} else {
+		if err := h.db.QueryRow(
+			"SELECT path FROM workspace_directories WHERE id = ? AND workspace_id = ?", dirID, id,
+		).Scan(&base); err != nil {
+			writeError(w, http.StatusNotFound, "directory not found")
+			return
+		}
+	}
+
+	target, ok := safeJoin(base, rel)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	nodes, err := listDirLevel(target, rel)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read directory")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"path": rel, "files": nodes})
 }
 
 // workspaceDirectory is one external directory attached to a workspace, beyond
@@ -578,7 +631,7 @@ func (h *WorkspacesHandler) AddDirectory(w http.ResponseWriter, r *http.Request)
 		var label string
 		h.db.QueryRow("SELECT path, label FROM workspace_directories WHERE id = ?", existingID).Scan(&path, &label)
 		dir = workspaceDirectory{ID: existingID, Path: path, Label: label, Files: []fileNode{}}
-		if tree, err := buildFileTree(path, ""); err == nil {
+		if tree, err := listDirLevel(path, ""); err == nil {
 			dir.Files = tree
 		} else {
 			dir.Missing = true
@@ -601,7 +654,7 @@ func (h *WorkspacesHandler) AddDirectory(w http.ResponseWriter, r *http.Request)
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "workspace_directory_added", "workspace", "workspace_directory", dirID, path)
 
-	tree, err := buildFileTree(path, "")
+	tree, err := listDirLevel(path, "")
 	if err != nil {
 		tree = []fileNode{}
 	}
@@ -642,7 +695,7 @@ func (h *WorkspacesHandler) ListDirectories(w http.ResponseWriter, r *http.Reque
 		if info, err := os.Stat(d.Path); err != nil || !info.IsDir() {
 			d.Missing = true
 			d.Files = []fileNode{}
-		} else if tree, err := buildFileTree(d.Path, ""); err == nil {
+		} else if tree, err := listDirLevel(d.Path, ""); err == nil {
 			d.Files = tree
 		} else {
 			d.Missing = true
