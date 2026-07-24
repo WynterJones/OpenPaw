@@ -12,12 +12,12 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/openpaw/openpaw/internal/agents"
-	"github.com/openpaw/openpaw/internal/backup"
-	"github.com/openpaw/openpaw/internal/heartbeat"
-	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/auth"
+	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/handlers"
+	"github.com/openpaw/openpaw/internal/heartbeat"
+	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/memory"
 	mw "github.com/openpaw/openpaw/internal/middleware"
@@ -462,6 +462,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/reveal", workspacesHandler.RevealFiles)
 				r.Post("/{id}/generate-image", workspacesHandler.GenerateImage)
 				r.Post("/upload-image", workspacesHandler.UploadImage)
+				r.Get("/{id}/directories", workspacesHandler.ListDirectories)
+				r.Post("/{id}/directories", workspacesHandler.AddDirectory)
+				r.Delete("/{id}/directories/{dirId}", workspacesHandler.RemoveDirectory)
 			})
 
 			// Media Library

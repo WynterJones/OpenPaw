@@ -17,6 +17,7 @@ import {
   FileText,
   Palette,
   Shield,
+  Boxes,
 } from 'lucide-react';
 
 interface DocsContext {
@@ -24,6 +25,12 @@ interface DocsContext {
 }
 
 const features = [
+  {
+    icon: Boxes,
+    name: 'Workspaces',
+    id: 'workspaces',
+    description: 'Organize your work into isolated workspaces, each scoping its own chats, dashboards, context, tasks, and a real on-disk files directory shown in the Directory tab. Switch the active workspace from the sidebar, attach existing folders (like cloned repos) for agents to work in, and set a workspace image. Agents, tools, and skills can each be shared across all workspaces or bound to a single one.',
+  },
   {
     icon: Bot,
     name: 'AI Agents',

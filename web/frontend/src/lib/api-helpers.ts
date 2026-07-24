@@ -32,6 +32,7 @@ import type {
   MediaListResponse,
   Workspace,
   WorkspaceFilesResponse,
+  WorkspaceDirectory,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -379,6 +380,11 @@ export const workspaces = {
   setActive: (id: string) => api.put<Workspace>('/workspaces/active', { workspace_id: id }),
   listFiles: (id: string) => api.get<WorkspaceFilesResponse>(`/workspaces/${id}/files`),
   reveal: (id: string) => api.post<{ path: string }>(`/workspaces/${id}/reveal`, {}),
+  listDirectories: (id: string) => api.get<WorkspaceDirectory[]>(`/workspaces/${id}/directories`),
+  addDirectory: (id: string, path: string) =>
+    api.post<WorkspaceDirectory>(`/workspaces/${id}/directories`, { path }),
+  removeDirectory: (id: string, dirId: string) =>
+    api.delete(`/workspaces/${id}/directories/${dirId}`),
   generateImage: (id: string, prompt: string) =>
     api.post<{ image_url: string }>(`/workspaces/${id}/generate-image`, { prompt }),
   uploadImage: async (file: File): Promise<{ image_url: string }> => {

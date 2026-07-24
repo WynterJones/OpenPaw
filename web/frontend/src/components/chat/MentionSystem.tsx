@@ -1,4 +1,5 @@
 import { Children, isValidElement, type ReactNode } from 'react';
+import { Download } from 'lucide-react';
 import type { Components } from 'react-markdown';
 import type { AgentRole } from '../../lib/api';
 import { MentionBadge } from './MentionBadge';
@@ -102,12 +103,12 @@ function renderInlineImage(src: string, label: string): ReactNode {
         <a
           href={src}
           download
-          target="_blank"
           rel="noreferrer"
-          className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-          title="Open / download image"
+          className="no-underline absolute top-2 right-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm !text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 ring-1 ring-white/10"
+          title="Download image"
         >
-          Open
+          <Download className="w-3.5 h-3.5" aria-hidden="true" />
+          Download
         </a>
       </span>
     </span>

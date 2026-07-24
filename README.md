@@ -97,7 +97,15 @@ On first launch, OpenPaw shows an onboarding wizard:
 - **Step 2** — Create your admin account (username + password)
 - **Step 3** — Configure server basics (app name, bind address, port)
 
-After setup, you're redirected to log in. On your first conversation, the gateway agent ("Pounce") will introduce itself and ask about your preferences to personalize its personality.
+After setup, you're redirected to log in. On your first conversation, the gateway agent ("Gateway") will introduce itself and ask about your preferences to personalize its personality.
+
+The **Workspaces** switcher (above Dashboards in the sidebar) keeps separate projects fully isolated:
+
+- Each workspace scopes its own **chats, dashboards, context, and tasks**
+- Every workspace has a **real on-disk files directory**, browsable from the **Directory tab** on the Context page
+- **Attach existing folders** (e.g. cloned repos) to a workspace so agents — especially Claude Code — can read and work in them
+- Give each workspace an **image** (upload or AI-generate via OpenRouter) shown in the switcher
+- Only one workspace is active at a time. **Agents, tools, and skills** can each be shared across all workspaces or bound to a single one, and the **scheduler and heartbeat** can target a specific workspace
 
 <p>
   <img src="assets/headlines/chat-with-agents.webp" alt="Chat with Agents" width="333" />

@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Shield,
   Zap,
+  Boxes,
 } from 'lucide-react';
 import type { TocItem } from '../../components/docs/DocsTableOfContents';
 
@@ -33,6 +34,7 @@ const quickLinks = [
 ];
 
 const keyFeatures = [
+  { icon: Boxes, label: 'Workspaces', description: 'Isolate chats, dashboards, context, tasks, and files per project' },
   { icon: Bot, label: 'AI Agents', description: 'Multi-agent system with customizable roles and prompts' },
   { icon: Wrench, label: 'Tool Library', description: 'Install and manage tools from the built-in catalog' },
   { icon: Sparkles, label: 'Skills', description: 'Reusable prompt templates for common tasks' },

@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
-import { BookOpen, ImageIcon, UserPen, FolderTree, Folder, FolderOpen, File, ChevronRight, ChevronDown } from 'lucide-react';
+import { BookOpen, ImageIcon, UserPen, FolderTree, Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderPlus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { ContextPanel } from './Context';
 import { MediaLibraryPanel } from './MediaLibrary';
+import { api } from '../lib/api';
 import { workspaces } from '../lib/api-helpers';
-import type { WorkspaceFileNode } from '../lib/types';
+import type { WorkspaceFileNode, WorkspaceDirectory } from '../lib/types';
 
 type KnowledgeTab = 'context' | 'directory' | 'media' | 'about';
 
@@ -78,22 +79,78 @@ function DirTreeNode({ node, level }: { node: WorkspaceFileNode; level: number }
   );
 }
 
+function AttachedDirectorySection({
+  dir,
+  onRemove,
+  removing,
+}: {
+  dir: WorkspaceDirectory;
+  onRemove: () => void;
+  removing: boolean;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between gap-2 px-1 mb-1.5">
+        <div className="min-w-0 flex items-baseline gap-2">
+          <span className="text-xs font-semibold text-text-1 truncate">{dir.label}</span>
+          <span className="text-[11px] text-text-3 truncate">{dir.path}</span>
+        </div>
+        <button
+          onClick={onRemove}
+          disabled={removing}
+          className="inline-flex items-center justify-center rounded-lg p-1.5 text-text-3 hover:text-red-500 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0"
+          title="Remove this directory from the workspace"
+          aria-label={`Remove ${dir.label}`}
+        >
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </div>
+      {dir.missing ? (
+        <p className="px-1 text-xs text-text-3 italic">Folder not found — it may have been moved or deleted.</p>
+      ) : dir.files.length === 0 ? (
+        <p className="px-1 text-xs text-text-3 italic">Empty folder.</p>
+      ) : (
+        <div>
+          {dir.files.map((node) => (
+            <DirTreeNode key={node.path} node={node} level={0} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceDirectoryPanel() {
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
+  const [dirs, setDirs] = useState<WorkspaceDirectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsId, setWsId] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const refresh = useCallback(async (id: string) => {
+    const [filesRes, dirsRes] = await Promise.all([
+      workspaces.listFiles(id).catch(() => ({ files: [] as WorkspaceFileNode[] })),
+      workspaces.listDirectories(id).catch(() => [] as WorkspaceDirectory[]),
+    ]);
+    setTree(Array.isArray(filesRes?.files) ? filesRes.files : []);
+    setDirs(Array.isArray(dirsRes) ? dirsRes : []);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const active = await workspaces.getActive();
-        if (!cancelled) setWsId(active.id);
-        const res = await workspaces.listFiles(active.id);
-        if (!cancelled) setTree(Array.isArray(res?.files) ? res.files : []);
+        if (cancelled) return;
+        setWsId(active.id);
+        await refresh(active.id);
       } catch {
-        if (!cancelled) setTree([]);
+        if (!cancelled) {
+          setTree([]);
+          setDirs([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -101,7 +158,7 @@ function WorkspaceDirectoryPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refresh]);
 
   const reveal = async () => {
     if (!wsId) return;
@@ -115,15 +172,53 @@ function WorkspaceDirectoryPanel() {
     }
   };
 
+  const addDirectory = async () => {
+    if (!wsId) return;
+    setAdding(true);
+    try {
+      const result = await api.post<{ path: string }>('/system/pick-folder', {});
+      if (result.path) {
+        await workspaces.addDirectory(wsId, result.path);
+        await refresh(wsId);
+      }
+    } catch {
+      // dialog cancelled or failed — ignore
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const removeDirectory = async (dirId: string) => {
+    if (!wsId) return;
+    setRemovingId(dirId);
+    try {
+      await workspaces.removeDirectory(wsId, dirId);
+      await refresh(wsId);
+    } catch {
+      /* ignore */
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
   const toolbar = (
-    <div className="flex items-center justify-end px-2 md:px-4 py-2 border-b border-border-0 flex-shrink-0">
+    <div className="flex items-center justify-end gap-2 px-2 md:px-4 py-2 border-b border-border-0 flex-shrink-0">
+      <button
+        onClick={addDirectory}
+        disabled={!wsId || adding}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 hover:bg-surface-3 text-text-1 px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+        title="Attach an external directory to this workspace"
+      >
+        <FolderPlus className="w-4 h-4" aria-hidden="true" />
+        Add directory
+      </button>
       <button
         onClick={reveal}
         disabled={!wsId || revealing}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 hover:bg-surface-3 text-text-1 px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
         title="Open this workspace's files folder in your file manager"
       >
-        <FolderOpen className="w-4 h-4" />
+        <FolderOpen className="w-4 h-4" aria-hidden="true" />
         Open in Finder
       </button>
     </div>
@@ -140,19 +235,36 @@ function WorkspaceDirectoryPanel() {
   return (
     <div className="h-full flex flex-col">
       {toolbar}
-      {tree.length === 0 ? (
+      {tree.length === 0 && dirs.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={<FolderTree className="w-8 h-8" />}
             title="No files yet"
-            description="No files yet in this workspace."
+            description="No files yet in this workspace. Add an external directory to give agents access to more of your filesystem."
           />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-2 md:px-4 py-3">
           <div className="max-w-2xl mx-auto">
-            {tree.map((node) => (
-              <DirTreeNode key={node.path} node={node} level={0} />
+            {tree.length > 0 && (
+              <div className="mb-5">
+                {dirs.length > 0 && (
+                  <h3 className="px-1 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                    Workspace files
+                  </h3>
+                )}
+                {tree.map((node) => (
+                  <DirTreeNode key={node.path} node={node} level={0} />
+                ))}
+              </div>
+            )}
+            {dirs.map((dir) => (
+              <AttachedDirectorySection
+                key={dir.id}
+                dir={dir}
+                onRemove={() => removeDirectory(dir.id)}
+                removing={removingId === dir.id}
+              />
             ))}
           </div>
         </div>

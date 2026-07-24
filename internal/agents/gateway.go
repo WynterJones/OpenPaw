@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -226,6 +227,30 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 // whose shelled-out process cwd is set to that workspace dir.
 var RoleChatTools = []string{"Read", "Write", "Edit"}
 
+// workspaceExtraDirs returns the absolute paths of every external directory
+// attached to a workspace that still exists on disk. Queried directly here
+// (rather than via internal/handlers) to avoid an import cycle — handlers
+// already imports agents.
+func (m *Manager) workspaceExtraDirs(workspaceID string) []string {
+	rows, err := m.db.Query("SELECT path FROM workspace_directories WHERE workspace_id = ? ORDER BY created_at ASC", workspaceID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var dirs []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			dirs = append(dirs, path)
+		}
+	}
+	return dirs
+}
+
 // buildWorkspacePromptSection tells the agent which workspace it's operating in.
 // Resolved per run (from the active workspace) so switching workspaces changes
 // what the agent is told. The working-directory guidance is only included for
@@ -243,6 +268,14 @@ func (m *Manager) buildWorkspacePromptSection(providerName string) string {
 	if providerName != llm.ProviderOpenRouter {
 		dir := filepath.Join(m.DataDir, "workspaces", id, "files")
 		section += fmt.Sprintf(" Its working directory is `%s` — this is your current working directory, so clone repos, create files, and run commands here. Files you create appear in this workspace's Directory.", dir)
+
+		if extraDirs := m.workspaceExtraDirs(id); len(extraDirs) > 0 {
+			section += "\n\nAdditional directories you can access in this workspace:\n"
+			for _, d := range extraDirs {
+				section += fmt.Sprintf("- %s\n", d)
+			}
+			section += "You may read and edit files in these directories as needed."
+		}
 	}
 	return section
 }
@@ -347,6 +380,9 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.WorkDir = agentDir
 		cfg.SandboxPaths = []string{agentDir}
 		cfg.MaxTurns = m.MaxTurns
+		if provider.Name() != llm.ProviderOpenRouter {
+			cfg.ExtraDirs = m.workspaceExtraDirs(m.db.ActiveWorkspaceID())
+		}
 	} else {
 		cfg.MaxTurns = 1
 	}

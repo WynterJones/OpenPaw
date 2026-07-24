@@ -189,6 +189,11 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 		args = append(args, "--allowedTools", strings.Join(allowed, ","))
 	}
 
+	// Grant access to any workspace-attached external directories beyond cwd.
+	for _, dir := range cfg.ExtraDirs {
+		args = append(args, "--add-dir", dir)
+	}
+
 	cmd := exec.CommandContext(ctx, p.binName, args...)
 	if dir := p.resolveWorkDir(cfg.WorkDir); dir != "" {
 		cmd.Dir = dir

@@ -644,3 +644,11 @@ export interface WorkspaceFilesResponse {
   workspace_id: string;
   files: WorkspaceFileNode[];
 }
+
+export interface WorkspaceDirectory {
+  id: string;
+  path: string;
+  label: string;
+  missing?: boolean;
+  files: WorkspaceFileNode[];
+}

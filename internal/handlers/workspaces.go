@@ -513,3 +513,194 @@ func buildFileTree(dir, relBase string) ([]fileNode, error) {
 	})
 	return nodes, nil
 }
+
+// workspaceDirectory is one external directory attached to a workspace, beyond
+// its own on-disk files dir.
+type workspaceDirectory struct {
+	ID      string     `json:"id"`
+	Path    string     `json:"path"`
+	Label   string     `json:"label"`
+	Missing bool       `json:"missing,omitempty"`
+	Files   []fileNode `json:"files"`
+}
+
+// validWorkspace validates id is a uuid and that the workspace exists,
+// writing an error response and returning false if not.
+func (h *WorkspacesHandler) validWorkspace(w http.ResponseWriter, id string) bool {
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid workspace id")
+		return false
+	}
+	var exists int
+	if err := h.db.QueryRow("SELECT 1 FROM workspaces WHERE id = ?", id).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "workspace not found")
+		return false
+	}
+	return true
+}
+
+// AddDirectory attaches an external, on-disk directory to a workspace so it
+// shows up in the Directory tab and agents can access it alongside the
+// workspace's own files dir. Duplicate paths for the same workspace are
+// ignored (the existing row is returned).
+func (h *WorkspacesHandler) AddDirectory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		writeError(w, http.StatusBadRequest, "path does not exist or is not a directory")
+		return
+	}
+
+	// Prevent duplicates for the same workspace.
+	var existingID string
+	err = h.db.QueryRow(
+		"SELECT id FROM workspace_directories WHERE workspace_id = ? AND path = ?", id, path,
+	).Scan(&existingID)
+	if err == nil && existingID != "" {
+		var dir workspaceDirectory
+		var label string
+		h.db.QueryRow("SELECT path, label FROM workspace_directories WHERE id = ?", existingID).Scan(&path, &label)
+		dir = workspaceDirectory{ID: existingID, Path: path, Label: label, Files: []fileNode{}}
+		if tree, err := buildFileTree(path, ""); err == nil {
+			dir.Files = tree
+		} else {
+			dir.Missing = true
+		}
+		writeJSON(w, http.StatusOK, dir)
+		return
+	}
+
+	dirID := uuid.New().String()
+	label := filepath.Base(path)
+	now := time.Now().UTC()
+	if _, err := h.db.Exec(
+		"INSERT INTO workspace_directories (id, workspace_id, path, label, created_at) VALUES (?, ?, ?, ?, ?)",
+		dirID, id, path, label, now,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to attach directory")
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "workspace_directory_added", "workspace", "workspace_directory", dirID, path)
+
+	tree, err := buildFileTree(path, "")
+	if err != nil {
+		tree = []fileNode{}
+	}
+	writeJSON(w, http.StatusCreated, workspaceDirectory{
+		ID:    dirID,
+		Path:  path,
+		Label: label,
+		Files: tree,
+	})
+}
+
+// ListDirectories returns every external directory attached to a workspace,
+// each with its own file tree. Directories that no longer exist on disk are
+// still returned (so the user can remove the stale attachment) but marked
+// missing with an empty tree.
+func (h *WorkspacesHandler) ListDirectories(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	rows, err := h.db.Query(
+		"SELECT id, path, label FROM workspace_directories WHERE workspace_id = ? ORDER BY created_at ASC", id,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list directories")
+		return
+	}
+	defer rows.Close()
+
+	dirs := []workspaceDirectory{}
+	for rows.Next() {
+		var d workspaceDirectory
+		if err := rows.Scan(&d.ID, &d.Path, &d.Label); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to scan directory")
+			return
+		}
+		if info, err := os.Stat(d.Path); err != nil || !info.IsDir() {
+			d.Missing = true
+			d.Files = []fileNode{}
+		} else if tree, err := buildFileTree(d.Path, ""); err == nil {
+			d.Files = tree
+		} else {
+			d.Missing = true
+			d.Files = []fileNode{}
+		}
+		dirs = append(dirs, d)
+	}
+
+	writeJSON(w, http.StatusOK, dirs)
+}
+
+// RemoveDirectory detaches an external directory from a workspace. It only
+// removes the attachment row — the real directory on disk is never touched.
+func (h *WorkspacesHandler) RemoveDirectory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+	dirID := chi.URLParam(r, "dirId")
+
+	var path string
+	if err := h.db.QueryRow(
+		"SELECT path FROM workspace_directories WHERE id = ? AND workspace_id = ?", dirID, id,
+	).Scan(&path); err != nil {
+		writeError(w, http.StatusNotFound, "directory not found")
+		return
+	}
+
+	if _, err := h.db.Exec("DELETE FROM workspace_directories WHERE id = ? AND workspace_id = ?", dirID, id); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to remove directory")
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "workspace_directory_removed", "workspace", "workspace_directory", dirID, path)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// WorkspaceExtraDirs returns the absolute paths of every external directory
+// attached to a workspace that still exists on disk. Used by the agent
+// gateway to grant CLI providers access beyond the workspace's own files dir.
+func WorkspaceExtraDirs(db *database.DB, workspaceID string) []string {
+	rows, err := db.Query("SELECT path FROM workspace_directories WHERE workspace_id = ? ORDER BY created_at ASC", workspaceID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var dirs []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			dirs = append(dirs, path)
+		}
+	}
+	return dirs
+}

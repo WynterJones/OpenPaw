@@ -15,13 +15,17 @@ type HistoryMessage struct {
 }
 
 type AgentConfig struct {
-	Model         string
-	System        string
-	MaxTokens     int64
-	MaxTurns      int
-	Tools         []string
-	WorkDir       string
-	SandboxPaths  []string
+	Model        string
+	System       string
+	MaxTokens    int64
+	MaxTurns     int
+	Tools        []string
+	WorkDir      string
+	SandboxPaths []string
+	// ExtraDirs are additional absolute paths (beyond WorkDir) a CLI provider
+	// should grant the agent access to — e.g. Claude Code's --add-dir. Ignored
+	// by the OpenRouter loop, which stays sandboxed to SandboxPaths.
+	ExtraDirs     []string
 	OnEvent       func(StreamEvent)
 	History       []HistoryMessage
 	ExtraTools    []ToolDef
