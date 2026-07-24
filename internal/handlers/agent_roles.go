@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"io/fs"
@@ -37,13 +38,20 @@ var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
 
-	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles"
+	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles"
+	var args []interface{}
+	var conditions []string
 	if enabledOnly {
-		query += " WHERE enabled = 1"
+		conditions = append(conditions, "enabled = 1")
+	}
+	conditions = append(conditions, "(workspace_id IS NULL OR workspace_id = ?)")
+	args = append(args, h.db.ActiveWorkspaceID())
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 	query += " ORDER BY sort_order ASC"
 
-	rows, err := h.db.Query(query)
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list agent roles")
 		return
@@ -53,9 +61,14 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	roles := []models.AgentRole{}
 	for rows.Next() {
 		var role models.AgentRole
-		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt); err != nil {
+		var workspaceID sql.NullString
+		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan agent role")
 			return
+		}
+		if workspaceID.Valid && workspaceID.String != "" {
+			ws := workspaceID.String
+			role.WorkspaceID = &ws
 		}
 		roles = append(roles, role)
 	}
@@ -66,26 +79,32 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
 	var role models.AgentRole
+	var workspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &role.CreatedAt, &role.UpdatedAt)
+	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
+	}
+	if workspaceID.Valid && workspaceID.String != "" {
+		ws := workspaceID.String
+		role.WorkspaceID = &ws
 	}
 	writeJSON(w, http.StatusOK, role)
 }
 
 func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name              string `json:"name"`
-		Slug              string `json:"slug"`
-		Description       string `json:"description"`
-		SystemPrompt      string `json:"system_prompt"`
-		Model             string `json:"model"`
-		AvatarPath        string `json:"avatar_path"`
-		AvatarDescription string `json:"avatar_description"`
+		Name              string  `json:"name"`
+		Slug              string  `json:"slug"`
+		Description       string  `json:"description"`
+		SystemPrompt      string  `json:"system_prompt"`
+		Model             string  `json:"model"`
+		AvatarPath        string  `json:"avatar_path"`
+		AvatarDescription string  `json:"avatar_description"`
+		WorkspaceID       *string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -106,6 +125,9 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Model == "" {
 		req.Model = "anthropic/claude-haiku-4-5"
 	}
+	if req.WorkspaceID != nil && *req.WorkspaceID == "" {
+		req.WorkspaceID = nil
+	}
 
 	// Check for duplicate slug
 	var exists string
@@ -123,10 +145,10 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err = h.db.Exec(
-		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?)`,
+		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, workspace_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?, ?)`,
 		id, req.Slug, req.Name, req.Description, req.SystemPrompt, req.Model,
-		req.AvatarPath, req.AvatarDescription, maxSort+1, now, now,
+		req.AvatarPath, req.AvatarDescription, maxSort+1, req.WorkspaceID, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create agent role")
@@ -151,6 +173,7 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SortOrder:           maxSort + 1,
 		IsPreset:            false,
 		IdentityInitialized: true,
+		WorkspaceID:         req.WorkspaceID,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -162,13 +185,18 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
 	var existing models.AgentRole
+	var existingWorkspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existing.CreatedAt, &existing.UpdatedAt)
+	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existingWorkspaceID, &existing.CreatedAt, &existing.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
+	}
+	if existingWorkspaceID.Valid && existingWorkspaceID.String != "" {
+		ws := existingWorkspaceID.String
+		existing.WorkspaceID = &ws
 	}
 
 	var req struct {
@@ -180,6 +208,7 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		AvatarDescription *string `json:"avatar_description"`
 		HeartbeatEnabled  *bool   `json:"heartbeat_enabled"`
 		Folder            *string `json:"folder"`
+		WorkspaceID       *string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -210,6 +239,15 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Folder != nil {
 		existing.Folder = *req.Folder
 	}
+	if req.WorkspaceID != nil {
+		// Empty string clears the target (nullable = all workspaces).
+		if *req.WorkspaceID == "" {
+			existing.WorkspaceID = nil
+		} else {
+			ws := *req.WorkspaceID
+			existing.WorkspaceID = &ws
+		}
+	}
 
 	if existing.Name == "" {
 		writeError(w, http.StatusBadRequest, "name cannot be empty")
@@ -218,8 +256,8 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	_, err = h.db.Exec(
-		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, folder = ?, updated_at = ? WHERE slug = ?`,
-		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.Folder, now, slug,
+		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, folder = ?, workspace_id = ?, updated_at = ? WHERE slug = ?`,
+		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.Folder, existing.WorkspaceID, now, slug,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent role")

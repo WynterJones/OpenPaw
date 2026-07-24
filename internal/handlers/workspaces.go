@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/openpaw/openpaw/internal/llm"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -33,10 +36,11 @@ func activeWorkspaceID(db *database.DB) string {
 type WorkspacesHandler struct {
 	db      *database.DB
 	dataDir string
+	llm     *llm.Client
 }
 
-func NewWorkspacesHandler(db *database.DB, dataDir string) *WorkspacesHandler {
-	return &WorkspacesHandler{db: db, dataDir: dataDir}
+func NewWorkspacesHandler(db *database.DB, dataDir string, llmClient *llm.Client) *WorkspacesHandler {
+	return &WorkspacesHandler{db: db, dataDir: dataDir, llm: llmClient}
 }
 
 // workspacesRoot is the on-disk parent for every workspace's real files dir.
@@ -268,6 +272,84 @@ func (h *WorkspacesHandler) UploadImage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"image_url": "/api/v1/uploads/avatars/" + filename})
+}
+
+// GenerateImage creates a workspace image from a text prompt via OpenRouter
+// (when configured), saves it alongside avatars, sets it as the workspace's
+// image_url, and returns the URL. Requires an OpenRouter API key — CLI-only
+// setups get a clear error.
+func (h *WorkspacesHandler) GenerateImage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid workspace id")
+		return
+	}
+	var exists int
+	if err := h.db.QueryRow("SELECT 1 FROM workspaces WHERE id = ?", id).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	req.Prompt = strings.TrimSpace(req.Prompt)
+	if req.Prompt == "" {
+		writeError(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	if h.llm == nil || !h.llm.IsConfigured() {
+		writeError(w, http.StatusBadRequest, "image generation requires an OpenRouter API key — add one in Settings → Models")
+		return
+	}
+
+	// Try the fallback image models in order until one returns image data.
+	var b64 string
+	var lastErr string
+	for _, model := range llm.ImageGenModels {
+		res, err := h.llm.GenerateImage(r.Context(), model, req.Prompt, "1024x1024", nil)
+		if err != nil {
+			lastErr = err.Error()
+			continue
+		}
+		if res.Base64 != "" {
+			b64 = res.Base64
+			break
+		}
+	}
+	if b64 == "" {
+		if lastErr == "" {
+			lastErr = "no image data returned"
+		}
+		writeError(w, http.StatusBadGateway, "image generation failed: "+lastErr)
+		return
+	}
+
+	imgData, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to decode generated image")
+		return
+	}
+
+	uploadsDir := filepath.Join(h.dataDir, "avatars")
+	os.MkdirAll(uploadsDir, 0755)
+	filename := "ws-" + uuid.New().String() + ".png"
+	if err := os.WriteFile(filepath.Join(uploadsDir, filename), imgData, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save generated image")
+		return
+	}
+
+	imageURL := "/api/v1/uploads/avatars/" + filename
+	h.db.Exec("UPDATE workspaces SET image_url = ?, updated_at = ? WHERE id = ?", imageURL, time.Now().UTC(), id)
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "workspace_image_generated", "workspace", "workspace", id, req.Prompt)
+
+	writeJSON(w, http.StatusOK, map[string]string{"image_url": imageURL})
 }
 
 func (h *WorkspacesHandler) GetActive(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ import { ViewToggle, type ViewMode } from '../components/ViewToggle';
 import { FolderFilter } from '../components/FolderFilter';
 import { FolderSection } from '../components/FolderSection';
 import { FolderAssign } from '../components/FolderAssign';
+import { AvailabilitySelect } from '../components/AvailabilitySelect';
 import { useFolderGrouping } from '../hooks/useFolderGrouping';
 import { useToast } from '../components/Toast';
 import { skills as skillsApi, type Skill } from '../lib/api';
@@ -148,6 +149,18 @@ export function Skills() {
     }
   };
 
+  const handleWorkspaceChange = async (skill: Skill, workspaceId: string | null) => {
+    const workspace_id = workspaceId || '';
+    try {
+      await skillsApi.update(skill.name, { workspace_id });
+      setSkillList(prev => prev.map(s => s.name === skill.name ? { ...s, workspace_id } : s));
+      setEditing(prev => prev && prev.name === skill.name ? { ...prev, workspace_id } : prev);
+      toast('success', 'Availability updated');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to update availability');
+    }
+  };
+
   const handleSearch = (val: string) => { setSearch(val); setPage(0); };
 
   const getFolder = useCallback((s: Skill) => s.folder || '', []);
@@ -206,6 +219,12 @@ export function Skills() {
                   value={editing.folder || ''}
                   folders={folderGrouping.folders}
                   onChange={(f) => handleFolderChange(editing, f)}
+                />
+              </div>
+              <div className="w-[200px]">
+                <AvailabilitySelect
+                  value={editing.workspace_id}
+                  onChange={(v) => handleWorkspaceChange(editing, v)}
                 />
               </div>
               <div className="flex-1" />

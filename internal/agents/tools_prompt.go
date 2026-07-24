@@ -38,7 +38,8 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 	}
 
 	rows, err := m.db.Query(
-		"SELECT id, name, description, status, port FROM tools WHERE enabled = 1 AND deleted_at IS NULL",
+		"SELECT id, name, description, status, port FROM tools WHERE enabled = 1 AND deleted_at IS NULL AND (workspace_id IS NULL OR workspace_id = ?)",
+		m.db.ActiveWorkspaceID(),
 	)
 	if err != nil {
 		return ""

@@ -36,8 +36,10 @@ import { ViewToggle, type ViewMode } from "../components/ViewToggle";
 import { FolderFilter } from "../components/FolderFilter";
 import { FolderSection } from "../components/FolderSection";
 import { FolderAssign } from "../components/FolderAssign";
+import { AvailabilitySelect } from "../components/AvailabilitySelect";
 import { useFolderGrouping } from "../hooks/useFolderGrouping";
 import { api, toolExtra, toolLibrary, secretsApi, type Tool, type LibraryTool, type ToolEndpoint, type ToolIntegrityInfo, type SecretCheckResult } from "../lib/api";
+import { workspaces } from "../lib/api-helpers";
 import { useToast } from "../components/Toast";
 import { useWebSocket } from "../lib/useWebSocket";
 
@@ -58,12 +60,22 @@ function statusDot(status: string) {
   );
 }
 
-function ToolCard({ tool, onClick, needsSecrets }: { tool: Tool; onClick: () => void; needsSecrets?: boolean }) {
+function AvailabilityBadge({ workspaceId, workspaceNames }: { workspaceId?: string | null; workspaceNames: Record<string, string> }) {
+  if (!workspaceId) return null;
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-surface-3 text-text-3 border border-border-0" title="Only available in this workspace">
+      {workspaceNames[workspaceId] || "Workspace-only"}
+    </span>
+  );
+}
+
+function ToolCard({ tool, onClick, needsSecrets, workspaceNames }: { tool: Tool; onClick: () => void; needsSecrets?: boolean; workspaceNames: Record<string, string> }) {
   return (
     <Card hover onClick={onClick}>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         {statusDot(tool.status)}
         <StatusBadge status={tool.status} />
+        <AvailabilityBadge workspaceId={tool.workspace_id} workspaceNames={workspaceNames} />
         {needsSecrets && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center gap-1">
             <AlertTriangle className="w-2.5 h-2.5" />
@@ -90,7 +102,7 @@ function ToolCard({ tool, onClick, needsSecrets }: { tool: Tool; onClick: () => 
   );
 }
 
-function ToolRow({ tool, onClick }: { tool: Tool; onClick: () => void }) {
+function ToolRow({ tool, onClick, workspaceNames }: { tool: Tool; onClick: () => void; workspaceNames: Record<string, string> }) {
   return (
     <tr
       onClick={onClick}
@@ -100,8 +112,9 @@ function ToolRow({ tool, onClick }: { tool: Tool; onClick: () => void }) {
     >
       <td className="px-3 md:px-4 py-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-medium text-text-0 truncate">{tool.name}</p>
+            <AvailabilityBadge workspaceId={tool.workspace_id} workspaceNames={workspaceNames} />
           </div>
           <p className="text-xs text-text-3 truncate max-w-xs">
             {tool.description}
@@ -574,6 +587,12 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
               onChange={(f) => updateField("folder", f)}
             />
           </div>
+          <div className="mt-3 max-w-xs">
+            <AvailabilitySelect
+              value={tool.workspace_id}
+              onChange={(v) => updateField("workspace_id", v || '')}
+            />
+          </div>
         </div>
       </div>
 
@@ -687,6 +706,7 @@ export function Tools() {
   const importRef = useRef<HTMLInputElement>(null);
   const [toolsMissingSecrets, setToolsMissingSecrets] = useState<Set<string>>(new Set());
   const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [workspaceNames, setWorkspaceNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     selectedToolRef.current = selectedTool;
@@ -694,6 +714,9 @@ export function Tools() {
 
   useEffect(() => {
     loadTools();
+    workspaces.list().then(list => {
+      setWorkspaceNames(Object.fromEntries(list.map(w => [w.id, w.name])));
+    }).catch((e) => { console.warn('load workspaces failed:', e); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkToolSecrets = useCallback(async (toolList: Tool[], catalogTools: LibraryTool[]) => {
@@ -812,6 +835,7 @@ export function Tools() {
           tool={tool}
           onClick={() => selectTool(tool)}
           needsSecrets={toolsMissingSecrets.has(tool.id)}
+          workspaceNames={workspaceNames}
         />
       ))}
     </div>
@@ -844,6 +868,7 @@ export function Tools() {
               key={tool.id}
               tool={tool}
               onClick={() => selectTool(tool)}
+              workspaceNames={workspaceNames}
             />
           ))}
         </tbody>

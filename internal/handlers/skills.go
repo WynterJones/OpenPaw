@@ -5,14 +5,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/openpaw/openpaw/internal/agents"
+	"github.com/openpaw/openpaw/internal/database"
 )
 
 type SkillsHandler struct {
 	dataDir string
+	db      *database.DB
 }
 
-func NewSkillsHandler(dataDir string) *SkillsHandler {
-	return &SkillsHandler{dataDir: dataDir}
+func NewSkillsHandler(dataDir string, db *database.DB) *SkillsHandler {
+	return &SkillsHandler{dataDir: dataDir, db: db}
 }
 
 func (h *SkillsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -21,6 +23,15 @@ func (h *SkillsHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list skills")
 		return
 	}
+	// Filter to skills available in the active workspace (empty = all workspaces).
+	activeWorkspace := h.db.ActiveWorkspaceID()
+	filtered := skills[:0]
+	for _, s := range skills {
+		if s.WorkspaceID == "" || s.WorkspaceID == activeWorkspace {
+			filtered = append(filtered, s)
+		}
+	}
+	skills = filtered
 	// Strip full content from list response — return metadata only
 	for i := range skills {
 		skills[i].Content = ""
@@ -34,6 +45,7 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Content     string `json:"content"`
 		Description string `json:"description"`
 		Folder      string `json:"folder"`
+		WorkspaceID string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -55,7 +67,10 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Folder != "" {
 		meta.Folder = req.Folder
 	}
-	if meta.Description != "" || meta.Folder != "" {
+	if req.WorkspaceID != "" {
+		meta.WorkspaceID = req.WorkspaceID
+	}
+	if meta.Description != "" || meta.Folder != "" || meta.WorkspaceID != "" {
 		content = agents.BuildFrontmatterFromMeta(meta, body)
 	}
 
@@ -80,8 +95,9 @@ func (h *SkillsHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var req struct {
-		Content string  `json:"content"`
-		Folder  *string `json:"folder"`
+		Content     string  `json:"content"`
+		Folder      *string `json:"folder"`
+		WorkspaceID *string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -90,8 +106,8 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	content := req.Content
 
-	// If folder is being updated, parse existing content and rebuild frontmatter
-	if req.Folder != nil {
+	// If folder or workspace_id is being updated, parse existing content and rebuild frontmatter
+	if req.Folder != nil || req.WorkspaceID != nil {
 		// If no content provided, read existing
 		if content == "" {
 			existing, err := agents.GetGlobalSkill(h.dataDir, name)
@@ -102,7 +118,12 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			content = existing
 		}
 		meta, body := agents.ParseFrontmatter(content)
-		meta.Folder = *req.Folder
+		if req.Folder != nil {
+			meta.Folder = *req.Folder
+		}
+		if req.WorkspaceID != nil {
+			meta.WorkspaceID = *req.WorkspaceID
+		}
 		if meta.Name == "" {
 			meta.Name = name
 		}

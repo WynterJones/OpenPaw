@@ -16,6 +16,7 @@ type SkillMeta struct {
 	Description  string `json:"description,omitempty"`
 	AllowedTools string `json:"allowed_tools,omitempty"`
 	Folder       string `json:"folder,omitempty"`
+	WorkspaceID  string `json:"workspace_id,omitempty"`
 }
 
 // Skill represents a skill definition.
@@ -26,6 +27,7 @@ type Skill struct {
 	Description  string `json:"description,omitempty"`
 	AllowedTools string `json:"allowed_tools,omitempty"`
 	Folder       string `json:"folder,omitempty"`
+	WorkspaceID  string `json:"workspace_id"`
 }
 
 // globalSkillsDir returns the path to the global skills directory.
@@ -227,6 +229,8 @@ func ParseFrontmatter(content string) (SkillMeta, string) {
 			meta.AllowedTools = val
 		case "folder":
 			meta.Folder = val
+		case "workspace_id":
+			meta.WorkspaceID = val
 		}
 	}
 
@@ -248,6 +252,7 @@ func BuildSkillFromFile(name, content string) Skill {
 		Description:  desc,
 		AllowedTools: meta.AllowedTools,
 		Folder:       meta.Folder,
+		WorkspaceID:  meta.WorkspaceID,
 	}
 }
 
@@ -271,6 +276,9 @@ func BuildFrontmatterFromMeta(meta SkillMeta, body string) string {
 	}
 	if meta.Folder != "" {
 		sb.WriteString(fmt.Sprintf("folder: %s\n", meta.Folder))
+	}
+	if meta.WorkspaceID != "" {
+		sb.WriteString(fmt.Sprintf("workspace_id: %s\n", meta.WorkspaceID))
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(body)

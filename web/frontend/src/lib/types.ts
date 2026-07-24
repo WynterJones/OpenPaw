@@ -51,6 +51,7 @@ export interface Tool {
   source_hash: string;
   binary_hash: string;
   folder: string;
+  workspace_id?: string | null;
   created_at: string;
   updated_at: string;
   manifest?: ToolManifest;
@@ -155,6 +156,7 @@ export interface AgentRole {
   library_slug: string;
   library_version: string;
   folder: string;
+  workspace_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -180,6 +182,7 @@ export interface Skill {
   description?: string;
   allowed_tools?: string;
   folder?: string;
+  workspace_id?: string;
 }
 
 export interface LibrarySkill {

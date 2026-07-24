@@ -68,6 +68,10 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genPrompt, setGenPrompt] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -133,6 +137,22 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       /* ignore */
     } finally {
       setUploading(false);
+    }
+  };
+
+  const generateImage = async () => {
+    if (!active || !genPrompt.trim()) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      await workspaces.generateImage(active.id, genPrompt.trim());
+      await load();
+      setGenOpen(false);
+      setGenPrompt("");
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : "Generation failed");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -215,17 +235,57 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                   e.target.value = "";
                 }}
               />
-              <button
-                role="menuitem"
-                disabled={uploading}
-                onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-2 hover:bg-surface-2 hover:text-text-1 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <ImagePlus className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
-                <span className="flex-1 text-left">
-                  {uploading ? "Uploading…" : active.image_url ? "Change image" : "Add image"}
-                </span>
-              </button>
+              <div className="flex items-center px-1">
+                <button
+                  role="menuitem"
+                  disabled={uploading || generating}
+                  onClick={() => fileRef.current?.click()}
+                  className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-text-2 hover:bg-surface-2 hover:text-text-1 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <ImagePlus className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                  <span className="flex-1 text-left">
+                    {uploading ? "Uploading…" : active.image_url ? "Change image" : "Add image"}
+                  </span>
+                </button>
+                <button
+                  role="menuitem"
+                  title="Generate an image with AI"
+                  aria-label="Generate image with AI"
+                  disabled={uploading || generating}
+                  onClick={() => { setGenOpen((o) => !o); setGenError(null); }}
+                  className={`p-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50 ${genOpen ? "bg-accent-primary/15 text-accent-text" : "text-text-3 hover:bg-surface-2 hover:text-accent-text"}`}
+                >
+                  <Sparkles className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+              {genOpen && (
+                <div className="px-2 pt-1 pb-1.5 space-y-1.5">
+                  <textarea
+                    autoFocus
+                    value={genPrompt}
+                    onChange={(e) => setGenPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generateImage();
+                      if (e.key === "Escape") setGenOpen(false);
+                    }}
+                    placeholder="Describe the workspace image…"
+                    rows={2}
+                    className="w-full resize-none rounded-md border border-border-1 bg-surface-0 text-text-1 px-2.5 py-1.5 text-sm placeholder:text-text-3/60 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none"
+                  />
+                  {genError && (
+                    <p className="text-[11px] text-danger leading-snug">{genError}</p>
+                  )}
+                  <Button
+                    onClick={generateImage}
+                    disabled={!genPrompt.trim() || generating}
+                    icon={<Sparkles className="w-4 h-4" />}
+                    size="sm"
+                    className="w-full"
+                  >
+                    {generating ? "Generating…" : "Generate"}
+                  </Button>
+                </div>
+              )}
             </>
           )}
           <div className="my-1 border-t border-border-0" />
@@ -477,13 +537,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           alt="OpenPaw"
           className={`object-contain pointer-events-none select-none ${collapsed ? "h-4 w-auto" : "w-full h-auto"}`}
         />
-        {!collapsed && (
-          <img
-            src="/wynter-logo.png"
-            alt="by Wynter"
-            className="mt-2 ml-0.5 w-[40%] h-auto object-contain opacity-50 pointer-events-none select-none"
-          />
-        )}
       </div>
       <WorkspaceSwitcher collapsed={collapsed} />
       <nav data-tauri-drag-region className="op-sidebar-nav flex-1 px-2 pb-3 overflow-y-auto">
@@ -548,9 +601,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <p className="text-[11px] font-medium text-text-3 mb-1">
               Currently using {providerName(balance)}
             </p>
-            <p className="text-[10px] text-text-3" aria-hidden="true">
+            <p className="text-[10px] text-text-3 mb-2" aria-hidden="true">
               &copy; OpenPaw &middot; Agentic Factory
             </p>
+            <a
+              href="https://wynter.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Made by Wynter — visit wynter.ai"
+              className="block w-[40%] opacity-50 hover:opacity-90 transition-opacity"
+            >
+              <img
+                src="/wynter-logo.png"
+                alt="Wynter"
+                className="w-full h-auto object-contain select-none"
+              />
+            </a>
           </div>
         )}
       </div>

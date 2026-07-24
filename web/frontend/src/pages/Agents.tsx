@@ -17,6 +17,7 @@ import { useFolderGrouping } from "../hooks/useFolderGrouping";
 import { useToast } from "../components/Toast";
 import { Toggle } from "../components/Toggle";
 import { api, agentTasks, type AgentRole } from "../lib/api";
+import { workspaces } from "../lib/api-helpers";
 
 const PRESET_AVATARS = [
   "/avatars/avatar-1.webp",
@@ -251,6 +252,7 @@ export function Agents() {
   const [page, setPage] = useState(0);
   const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({});
+  const [workspaceNames, setWorkspaceNames] = useState<Record<string, string>>({});
 
   const loadRoles = useCallback(() => {
     api
@@ -263,6 +265,9 @@ export function Agents() {
   useEffect(() => {
     loadRoles();
     agentTasks.allCounts().then(setTaskCounts).catch(() => {});
+    workspaces.list().then(list => {
+      setWorkspaceNames(Object.fromEntries(list.map(w => [w.id, w.name])));
+    }).catch((e) => { console.warn('load workspaces failed:', e); });
   }, [loadRoles]);
 
   const handleSearch = (val: string) => {
@@ -311,7 +316,7 @@ export function Agents() {
             <p className="text-xs text-text-3 truncate">Routes conversations, builds tools, dashboards, and agents</p>
           </div>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
-            <Cpu className="w-2.5 h-2.5" />Haiku 4.5
+            <Cpu className="w-2.5 h-2.5" />{builderRole?.model ? formatModelName(builderRole.model) : "—"}
           </span>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary text-[10px] font-medium flex-shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />Always active
@@ -335,11 +340,16 @@ export function Agents() {
             <h3 className="text-xl font-bold text-text-0 pr-14 flex-1 min-w-0 truncate">{role.name}</h3>
           </div>
           <p className="text-sm text-text-2 line-clamp-1 mb-3 leading-snug">{role.description}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1 text-[10px] text-text-3 font-medium">
               <Cpu className="w-3 h-3" />
               {formatModelName(role.model)}
             </span>
+            {role.workspace_id && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2 text-text-3" title="Only available in this workspace">
+                {workspaceNames[role.workspace_id] || "Workspace-only"}
+              </span>
+            )}
             {(taskCounts[role.slug] || 0) > 0 && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px] font-medium">
                 <ClipboardList className="w-2.5 h-2.5" />
@@ -359,6 +369,11 @@ export function Agents() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-base font-bold pt-2 text-text-0 truncate">{role.name}</p>
+                {role.workspace_id && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2 text-text-3 flex-shrink-0" title="Only available in this workspace">
+                    {workspaceNames[role.workspace_id] || "Workspace-only"}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-text-3 truncate">{role.description}</p>
             </div>

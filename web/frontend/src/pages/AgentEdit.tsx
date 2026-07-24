@@ -9,6 +9,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { Toggle } from '../components/Toggle';
 import { FolderAssign } from '../components/FolderAssign';
+import { AvailabilitySelect } from '../components/AvailabilitySelect';
 import { api, agentFiles, agentMemories, agentSkills, agentTasks, skills as skillsApi, type AgentRole, type Skill, type MemoryItem, type Tool, type AgentTask, type AgentTaskStatus } from '../lib/api';
 
 interface AgentTool extends Tool {
@@ -72,6 +73,7 @@ export function AgentEdit() {
   const [model, setModel] = useState('anthropic/claude-sonnet-4-6');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [folder, setFolder] = useState('');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [allFolders, setAllFolders] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [modelSearch, setModelSearch] = useState('');
@@ -188,6 +190,7 @@ export function AgentEdit() {
         setAvatarPath(data.avatar_path);
         setAvatarDescription(data.avatar_description || '');
         setFolder(data.folder || '');
+        setWorkspaceId(data.workspace_id ?? null);
 
         if (data.identity_initialized) {
           loadFiles(slug);
@@ -281,6 +284,7 @@ export function AgentEdit() {
         avatar_path: avatarPath,
         avatar_description: avatarDescription.trim(),
         folder,
+        workspace_id: workspaceId || '',
       });
       setRole(updated);
       toast('success', 'Agent saved');
@@ -522,7 +526,8 @@ export function AgentEdit() {
     systemPrompt !== role.system_prompt ||
     avatarPath !== role.avatar_path ||
     avatarDescription !== (role.avatar_description || '') ||
-    folder !== (role.folder || '')
+    folder !== (role.folder || '') ||
+    workspaceId !== (role.workspace_id ?? null)
   );
 
   if (loading) {
@@ -782,6 +787,7 @@ export function AgentEdit() {
                     )}
                   </div>
                 </div>
+                <AvailabilitySelect value={workspaceId} onChange={setWorkspaceId} />
               </div>
             </Card>
 

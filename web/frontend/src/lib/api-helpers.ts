@@ -152,8 +152,10 @@ export const agentMemories = {
 export const skills = {
   list: () => api.get<Skill[]>('/skills'),
   get: (name: string) => api.get<Skill>(`/skills/${name}`),
-  create: (name: string, content: string, folder?: string) => api.post<Skill>('/skills', { name, content, folder }),
-  update: (name: string, data: { content?: string; folder?: string }) => api.put<Skill>(`/skills/${name}`, data),
+  create: (name: string, content: string, folder?: string, workspace_id?: string) =>
+    api.post<Skill>('/skills', { name, content, folder, workspace_id: workspace_id || '' }),
+  update: (name: string, data: { content?: string; folder?: string; workspace_id?: string }) =>
+    api.put<Skill>(`/skills/${name}`, data),
   delete: (name: string) => api.delete(`/skills/${name}`),
 };
 
@@ -377,6 +379,8 @@ export const workspaces = {
   setActive: (id: string) => api.put<Workspace>('/workspaces/active', { workspace_id: id }),
   listFiles: (id: string) => api.get<WorkspaceFilesResponse>(`/workspaces/${id}/files`),
   reveal: (id: string) => api.post<{ path: string }>(`/workspaces/${id}/reveal`, {}),
+  generateImage: (id: string, prompt: string) =>
+    api.post<{ image_url: string }>(`/workspaces/${id}/generate-image`, { prompt }),
   uploadImage: async (file: File): Promise<{ image_url: string }> => {
     const formData = new FormData();
     formData.append('image', file);

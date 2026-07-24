@@ -104,7 +104,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
-	skillsHandler := handlers.NewSkillsHandler(dataDir)
+	skillsHandler := handlers.NewSkillsHandler(dataDir, s.DB)
 	logsHandler := handlers.NewLogsHandler(s.DB)
 	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, providers, dataDir, port)
 	agentsHandler := handlers.NewAgentsHandler(s.DB, s.AgentManager)
@@ -121,7 +121,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
-	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir)
+	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
 	updateBroadcast := func(msgType string, payload interface{}) {
 		data, _ := json.Marshal(payload)
@@ -460,6 +460,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/{id}", workspacesHandler.Delete)
 				r.Get("/{id}/files", workspacesHandler.ListFiles)
 				r.Post("/{id}/reveal", workspacesHandler.RevealFiles)
+				r.Post("/{id}/generate-image", workspacesHandler.GenerateImage)
 				r.Post("/upload-image", workspacesHandler.UploadImage)
 			})
 

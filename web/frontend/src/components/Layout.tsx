@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router';
+import { Outlet, useLocation } from 'react-router';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { BackgroundImage } from './BackgroundImage';
@@ -7,6 +7,9 @@ import { ChatCompanions } from './companion/ChatCompanions';
 
 export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const location = useLocation();
+  // Companions live only on the chat screen so they aren't a distraction elsewhere.
+  const onChat = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
   return (
     <div className="flex h-screen bg-surface-0 overflow-hidden relative">
@@ -19,7 +22,7 @@ export function Layout() {
         <Outlet />
       </main>
       <BottomNav />
-      <ChatCompanions />
+      {onChat && <ChatCompanions />}
     </div>
   );
 }
