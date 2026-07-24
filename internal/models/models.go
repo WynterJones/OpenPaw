@@ -279,6 +279,7 @@ type ContextFile struct {
 type Workspace struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
+	ImageURL  string    `json:"image_url"`
 	SortOrder int       `json:"sort_order"`
 	IsDefault bool      `json:"is_default"`
 	CreatedAt time.Time `json:"created_at"`

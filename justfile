@@ -6,6 +6,10 @@ project_root := justfile_directory()
 frontend_dir := project_root / "web" / "frontend"
 binary_name := "openpaw"
 go_tags := "-tags fts5"
+# Version baked into the binary via ldflags so it's correct regardless of the
+# process cwd (the desktop sidecar can't find the repo-root VERSION file).
+app_version := trim(`cat VERSION 2>/dev/null || echo dev`)
+go_ldflags := "-ldflags=-X main.version=" + app_version
 
 # ============================================
 # DEVELOPMENT
@@ -46,7 +50,7 @@ frontend-build:
 
 # Build Go binary (embeds frontend dist via go:embed)
 go-build:
-    CGO_ENABLED=1 go build {{go_tags}} -o {{binary_name}} ./cmd/openpaw
+    CGO_ENABLED=1 go build {{go_tags}} "{{go_ldflags}}" -o {{binary_name}} ./cmd/openpaw
 
 # Full build: frontend → Go binary (production single-binary)
 build: frontend-build go-build
@@ -221,7 +225,7 @@ info:
 # Build Go sidecar with target-triple name for Tauri
 desktop-sidecar: frontend-build
     @mkdir -p desktop/src-tauri/binaries
-    CGO_ENABLED=1 go build {{go_tags}} -o desktop/src-tauri/binaries/openpaw-$(rustc --print host-tuple) ./cmd/openpaw
+    CGO_ENABLED=1 go build {{go_tags}} "{{go_ldflags}}" -o desktop/src-tauri/binaries/openpaw-$(rustc --print host-tuple) ./cmd/openpaw
 
 # Run Tauri dev mode (rebuilds sidecar first)
 desktop-dev: desktop-sidecar

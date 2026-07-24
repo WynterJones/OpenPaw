@@ -303,14 +303,22 @@ body {
 }
 
 /* Tables */
-.prose-chat table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+.prose-table-wrap {
+  overflow-x: auto;
   margin: 0.6em 0;
-  font-size: 0.9em;
   border: 1px solid var(--op-border-1);
   border-radius: 8px;
+  max-width: 100%;
+}
+
+.prose-chat table {
+  width: 100%;
+  min-width: 30rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0;
+  font-size: 0.8em;
+  line-height: 1.45;
   overflow: hidden;
 }
 
@@ -322,6 +330,7 @@ body {
   border-bottom: 1px solid var(--op-border-1);
   border-right: 1px solid var(--op-border-1);
   background: var(--op-surface-3);
+  white-space: nowrap;
 }
 
 .prose-chat th:last-child {
@@ -333,6 +342,10 @@ body {
   border-bottom: 1px solid var(--op-border-0);
   border-right: 1px solid var(--op-border-0);
   color: var(--op-text-1);
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  min-width: 8ch;
 }
 
 .prose-chat td:last-child {

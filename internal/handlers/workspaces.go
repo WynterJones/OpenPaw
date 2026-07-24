@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +16,7 @@ import (
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/models"
+	"github.com/openpaw/openpaw/internal/platform"
 )
 
 // DefaultWorkspaceID is the fixed, well-known uuid of the seeded "Default"
@@ -56,7 +60,7 @@ func EnsureDefaultWorkspaceDir(dataDir string) {
 
 func (h *WorkspacesHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
-		"SELECT id, name, sort_order, is_default, created_at, updated_at FROM workspaces ORDER BY sort_order ASC, created_at ASC",
+		"SELECT id, name, image_url, sort_order, is_default, created_at, updated_at FROM workspaces ORDER BY sort_order ASC, created_at ASC",
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list workspaces")
@@ -67,7 +71,7 @@ func (h *WorkspacesHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaces := []models.Workspace{}
 	for rows.Next() {
 		var ws models.Workspace
-		if err := rows.Scan(&ws.ID, &ws.Name, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+		if err := rows.Scan(&ws.ID, &ws.Name, &ws.ImageURL, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan workspace")
 			return
 		}
@@ -127,6 +131,7 @@ func (h *WorkspacesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name      *string `json:"name,omitempty"`
+		ImageURL  *string `json:"image_url,omitempty"`
 		SortOrder *int    `json:"sort_order,omitempty"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
@@ -142,14 +147,17 @@ func (h *WorkspacesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		h.db.Exec("UPDATE workspaces SET name = ?, updated_at = ? WHERE id = ?", *req.Name, now, id)
 	}
+	if req.ImageURL != nil {
+		h.db.Exec("UPDATE workspaces SET image_url = ?, updated_at = ? WHERE id = ?", *req.ImageURL, now, id)
+	}
 	if req.SortOrder != nil {
 		h.db.Exec("UPDATE workspaces SET sort_order = ?, updated_at = ? WHERE id = ?", *req.SortOrder, now, id)
 	}
 
 	var ws models.Workspace
 	err := h.db.QueryRow(
-		"SELECT id, name, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", id,
-	).Scan(&ws.ID, &ws.Name, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
+		"SELECT id, name, image_url, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", id,
+	).Scan(&ws.ID, &ws.Name, &ws.ImageURL, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "workspace not found")
 		return
@@ -208,19 +216,73 @@ func (h *WorkspacesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UploadImage accepts a multipart image and stores it alongside avatars,
+// returning a served URL the caller can persist as a workspace's image_url.
+func (h *WorkspacesHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
+	r.ParseMultipartForm(5 << 20) // 5MB max
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "image file required")
+		return
+	}
+	defer file.Close()
+
+	ct := header.Header.Get("Content-Type")
+	var ext string
+	switch {
+	case strings.HasPrefix(ct, "image/png"):
+		ext = ".png"
+	case strings.HasPrefix(ct, "image/jpeg"):
+		ext = ".jpg"
+	case strings.HasPrefix(ct, "image/webp"):
+		ext = ".webp"
+	default:
+		writeError(w, http.StatusBadRequest, "image must be PNG, JPEG, or WebP")
+		return
+	}
+
+	if !validateImageMagicBytes(file, ext) {
+		writeError(w, http.StatusBadRequest, "file content does not match declared type")
+		return
+	}
+
+	// Reuse the avatars uploads dir so the existing /uploads/avatars serve route
+	// handles it too — no new static route needed.
+	uploadsDir := filepath.Join(h.dataDir, "avatars")
+	os.MkdirAll(uploadsDir, 0755)
+
+	filename := fmt.Sprintf("ws-%s%s", uuid.New().String(), ext)
+	destPath := filepath.Join(uploadsDir, filename)
+
+	dest, err := os.Create(destPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save image")
+		return
+	}
+	defer dest.Close()
+
+	if _, err := io.Copy(dest, file); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to write image")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"image_url": "/api/v1/uploads/avatars/" + filename})
+}
+
 func (h *WorkspacesHandler) GetActive(w http.ResponseWriter, r *http.Request) {
 	id := activeWorkspaceID(h.db)
 
 	var ws models.Workspace
 	err := h.db.QueryRow(
-		"SELECT id, name, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", id,
-	).Scan(&ws.ID, &ws.Name, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
+		"SELECT id, name, image_url, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", id,
+	).Scan(&ws.ID, &ws.Name, &ws.ImageURL, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		// Active id points at a missing workspace — repair to Default.
 		h.setActiveWorkspace(DefaultWorkspaceID)
 		err = h.db.QueryRow(
-			"SELECT id, name, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", DefaultWorkspaceID,
-		).Scan(&ws.ID, &ws.Name, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
+			"SELECT id, name, image_url, sort_order, is_default, created_at, updated_at FROM workspaces WHERE id = ?", DefaultWorkspaceID,
+		).Scan(&ws.ID, &ws.Name, &ws.ImageURL, &ws.SortOrder, &ws.IsDefault, &ws.CreatedAt, &ws.UpdatedAt)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to resolve active workspace")
 			return
@@ -308,6 +370,33 @@ func (h *WorkspacesHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		"workspace_id": id,
 		"files":        tree,
 	})
+}
+
+// RevealFiles opens the workspace's on-disk files directory in the OS-native
+// file manager (Finder/Explorer). Only meaningful when the server runs on the
+// same machine as the client — which is always the case for OpenPaw.
+func (h *WorkspacesHandler) RevealFiles(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid workspace id")
+		return
+	}
+	var exists int
+	if err := h.db.QueryRow("SELECT 1 FROM workspaces WHERE id = ?", id).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+
+	root := h.filesDir(id)
+	if err := os.MkdirAll(root, 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create workspace files dir")
+		return
+	}
+	if err := platform.OpenPath(root); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to open files directory")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": root})
 }
 
 // buildFileTree walks dir recursively, returning nodes with paths relative to

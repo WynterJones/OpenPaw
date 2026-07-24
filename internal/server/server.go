@@ -459,6 +459,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Patch("/{id}", workspacesHandler.Update)
 				r.Delete("/{id}", workspacesHandler.Delete)
 				r.Get("/{id}/files", workspacesHandler.ListFiles)
+				r.Post("/{id}/reveal", workspacesHandler.RevealFiles)
+				r.Post("/upload-image", workspacesHandler.UploadImage)
 			})
 
 			// Media Library

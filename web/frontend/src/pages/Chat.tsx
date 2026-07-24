@@ -918,15 +918,48 @@ export function Chat() {
   }, [activeThread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = async () => {
-    if (!input.trim() || !activeThread || sending) return;
-    let content = input.trim();
+    // Block a new turn until the current one fully finishes: `sending` only
+    // covers the POST, but the AI keeps streaming after that (thinking /
+    // streamActive) until the 'done' event.
+    if (!input.trim() || !activeThread || sending || thinking || streamActive) return;
+    const typed = input.trim();
     const threadId = activeThread;
     const isFirstMessage = messages.length === 0;
 
-    // Append context file content for [[filename]] references
-    if (attachedContextFiles.length > 0) {
+    // Snapshot attachments before clearing the composer state below.
+    const ctxFiles = attachedContextFiles;
+    const attachFiles = pendingAttachments;
+    const dirs = attachedDirectories;
+    const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0;
+
+    // Reset streaming state
+    resetStreaming();
+    setStreamActive(false);
+    setSubAgentTasks([]);
+    setRoutingIndicator(null);
+    hadToolSinceLastTextRef.current = false;
+    toolInputMapRef.current.clear();
+
+    // Clear the composer and surface the pending state IMMEDIATELY — reading a
+    // large attached context file can take a while and must not look frozen.
+    setInput('');
+    setAttachedContextFiles([]);
+    setPendingAttachments([]);
+    setAttachedDirectories([]);
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
+    setSending(true); setThinking(true);
+    setWorkStatus(hasAttachments ? 'Reading attached files…' : 'Preparing response...');
+
+    // Optimistic user bubble (typed text; replaced by the saved message below).
+    const tempId = `temp-${Date.now()}`;
+    setMessages(prev => [...prev, { id: tempId, thread_id: threadId, role: 'user', content: typed, agent_role_slug: agent, cost_usd: 0, input_tokens: 0, output_tokens: 0, created_at: new Date().toISOString() }]);
+
+    // Assemble the full message: typed text + attached context/files/directories.
+    let content = typed;
+
+    if (ctxFiles.length > 0) {
       const contextParts: string[] = [];
-      for (const cf of attachedContextFiles) {
+      for (const cf of ctxFiles) {
         try {
           const result = await contextApi.getFile(cf.id);
           if (result.content) {
@@ -934,15 +967,12 @@ export function Chat() {
           }
         } catch (e) { console.warn('fetchContextFile failed:', e); }
       }
-      if (contextParts.length > 0) {
-        content += contextParts.join('');
-      }
+      if (contextParts.length > 0) content += contextParts.join('');
     }
 
-    // Append pending file attachments inline
-    if (pendingAttachments.length > 0) {
+    if (attachFiles.length > 0) {
       const attachParts: string[] = [];
-      for (const file of pendingAttachments) {
+      for (const file of attachFiles) {
         if (file.type.startsWith('text/') || file.type === 'application/json') {
           try {
             const text = await file.text();
@@ -954,36 +984,22 @@ export function Chat() {
           attachParts.push(`\n\n[Attached file: ${file.name} (${file.type})]`);
         }
       }
-      if (attachParts.length > 0) {
-        content += attachParts.join('');
-      }
+      if (attachParts.length > 0) content += attachParts.join('');
     }
 
-    // Append attached directory paths
-    if (attachedDirectories.length > 0) {
-      const dirParts = attachedDirectories.map(d => `\n\n---\n**Directory: ${d}**`);
-      content += dirParts.join('');
+    if (dirs.length > 0) {
+      content += dirs.map(d => `\n\n---\n**Directory: ${d}**`).join('');
     }
 
-    // Reset streaming state
-    resetStreaming();
-    setStreamActive(false);
-    setSubAgentTasks([]);
-    setRoutingIndicator(null);
-    hadToolSinceLastTextRef.current = false;
-    toolInputMapRef.current.clear();
+    // Reflect the assembled content in the optimistic bubble now that reads are done.
+    if (content !== typed) {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, content } : m));
+    }
+    setWorkStatus('Preparing response...');
 
-    setInput('');
-    setAttachedContextFiles([]);
-    setPendingAttachments([]);
-    setAttachedDirectories([]);
-    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
-    setSending(true); setThinking(true); setWorkStatus('Preparing response...');
-    const userMsg: ChatMessage = { id: `temp-${Date.now()}`, thread_id: threadId, role: 'user', content, agent_role_slug: agent, cost_usd: 0, input_tokens: 0, output_tokens: 0, created_at: new Date().toISOString() };
-    setMessages(prev => [...prev, userMsg]);
     try {
       const saved = await api.post<ChatMessage>(`/chat/threads/${threadId}/messages`, { content, agent_role_slug: agent });
-      setMessages(prev => prev.map(m => m.id === userMsg.id ? saved : m));
+      setMessages(prev => prev.map(m => m.id === tempId ? saved : m));
       setSending(false);
       startPolling(threadId, saved.id);
       if (isFirstMessage) {

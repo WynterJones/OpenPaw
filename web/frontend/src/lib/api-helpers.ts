@@ -371,8 +371,30 @@ export const workspaces = {
   list: () => api.get<Workspace[]>('/workspaces'),
   create: (name: string) => api.post<Workspace>('/workspaces', { name }),
   rename: (id: string, name: string) => api.put<Workspace>(`/workspaces/${id}`, { name }),
+  setImage: (id: string, image_url: string) => api.put<Workspace>(`/workspaces/${id}`, { image_url }),
   remove: (id: string) => api.delete(`/workspaces/${id}`),
   getActive: () => api.get<Workspace>('/workspaces/active'),
   setActive: (id: string) => api.put<Workspace>('/workspaces/active', { workspace_id: id }),
   listFiles: (id: string) => api.get<WorkspaceFilesResponse>(`/workspaces/${id}/files`),
+  reveal: (id: string) => api.post<{ path: string }>(`/workspaces/${id}/reveal`, {}),
+  uploadImage: async (file: File): Promise<{ image_url: string }> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const headers: Record<string, string> = {};
+    const csrf = getCSRFToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const res = await fetch(`${BASE_URL}/workspaces/upload-image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      let message = `Upload failed: ${res.status}`;
+      try { const json = JSON.parse(body); message = json.error || message; } catch (e) { void e; }
+      throw new ApiError(res.status, message);
+    }
+    return res.json();
+  },
 };

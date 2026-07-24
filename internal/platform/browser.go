@@ -23,6 +23,20 @@ func OpenBrowser(url string) {
 	}
 }
 
+// OpenPath reveals a local file or directory in the OS-native file manager
+// (Finder on macOS, Explorer on Windows, the default handler on Linux).
+func OpenPath(path string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", path).Start()
+	case "linux":
+		return exec.Command("xdg-open", path).Start()
+	case "windows":
+		return exec.Command("explorer", path).Start()
+	}
+	return fmt.Errorf("unsupported platform")
+}
+
 // activateExistingTab uses AppleScript to find and activate an existing browser
 // tab matching the URL in Chrome or Safari. Returns true if a tab was found.
 func activateExistingTab(url string) bool {

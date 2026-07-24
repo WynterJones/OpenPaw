@@ -81,12 +81,15 @@ function DirTreeNode({ node, level }: { node: WorkspaceFileNode; level: number }
 function WorkspaceDirectoryPanel() {
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wsId, setWsId] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const active = await workspaces.getActive();
+        if (!cancelled) setWsId(active.id);
         const res = await workspaces.listFiles(active.id);
         if (!cancelled) setTree(Array.isArray(res?.files) ? res.files : []);
       } catch {
@@ -100,6 +103,32 @@ function WorkspaceDirectoryPanel() {
     };
   }, []);
 
+  const reveal = async () => {
+    if (!wsId) return;
+    setRevealing(true);
+    try {
+      await workspaces.reveal(wsId);
+    } catch {
+      /* ignore */
+    } finally {
+      setRevealing(false);
+    }
+  };
+
+  const toolbar = (
+    <div className="flex items-center justify-end px-2 md:px-4 py-2 border-b border-border-0 flex-shrink-0">
+      <button
+        onClick={reveal}
+        disabled={!wsId || revealing}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 hover:bg-surface-3 text-text-1 px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+        title="Open this workspace's files folder in your file manager"
+      >
+        <FolderOpen className="w-4 h-4" />
+        Open in Finder
+      </button>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -108,25 +137,26 @@ function WorkspaceDirectoryPanel() {
     );
   }
 
-  if (tree.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <EmptyState
-          icon={<FolderTree className="w-8 h-8" />}
-          title="No files yet"
-          description="No files yet in this workspace."
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full overflow-y-auto px-2 md:px-4 py-3">
-      <div className="max-w-2xl mx-auto">
-        {tree.map((node) => (
-          <DirTreeNode key={node.path} node={node} level={0} />
-        ))}
-      </div>
+    <div className="h-full flex flex-col">
+      {toolbar}
+      {tree.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <EmptyState
+            icon={<FolderTree className="w-8 h-8" />}
+            title="No files yet"
+            description="No files yet in this workspace."
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-2 md:px-4 py-3">
+          <div className="max-w-2xl mx-auto">
+            {tree.map((node) => (
+              <DirTreeNode key={node.path} node={node} level={0} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -132,6 +132,9 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
     p: ({ children, ...props }) => <p {...props}>{processChildren(children, roles)}</p>,
     li: ({ children, ...props }) => <li {...props}>{processChildren(children, roles)}</li>,
     td: ({ children, ...props }) => <td {...props}>{processChildren(children, roles)}</td>,
+    table: ({ children, ...props }) => (
+      <div className="prose-table-wrap"><table {...props}>{children}</table></div>
+    ),
     pre: ({ children }) => {
       if (Children.count(children) === 1) {
         const child = Children.toArray(children)[0];
