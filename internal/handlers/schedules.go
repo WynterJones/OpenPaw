@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -18,12 +19,17 @@ type SchedulesHandler struct {
 }
 
 func scheduleToConfig(id string, s models.Schedule) scheduler.ScheduleConfig {
+	workspaceID := ""
+	if s.WorkspaceID != nil {
+		workspaceID = *s.WorkspaceID
+	}
 	return scheduler.ScheduleConfig{
 		ID:            id,
 		CronExpr:      s.CronExpr,
 		AgentRoleSlug: s.AgentRoleSlug,
 		PromptContent: s.PromptContent,
 		ThreadID:      s.ThreadID,
+		WorkspaceID:   workspaceID,
 	}
 }
 
@@ -35,8 +41,7 @@ func (h *SchedulesHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
 		`SELECT id, name, description, cron_expr, tool_id, action, payload, enabled,
 		        type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id,
-		        browser_session_id, browser_instructions,
-		        last_run_at, next_run_at, created_at, updated_at
+		        workspace_id, last_run_at, next_run_at, created_at, updated_at
 		 FROM schedules ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -48,12 +53,16 @@ func (h *SchedulesHandler) List(w http.ResponseWriter, r *http.Request) {
 	schedules := []models.Schedule{}
 	for rows.Next() {
 		var s models.Schedule
+		var workspaceID sql.NullString
 		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Enabled,
 			&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &s.DashboardID, &s.WidgetID,
-			&s.BrowserSessionID, &s.BrowserInstructions,
-			&s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&workspaceID, &s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan schedule")
 			return
+		}
+		if workspaceID.Valid && workspaceID.String != "" {
+			ws := workspaceID.String
+			s.WorkspaceID = &ws
 		}
 		schedules = append(schedules, s)
 	}
@@ -68,6 +77,7 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		AgentRoleSlug string `json:"agent_role_slug"`
 		PromptContent string `json:"prompt_content"`
 		ThreadID      string `json:"thread_id"`
+		WorkspaceID   string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -100,12 +110,18 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	id := generateID()
 	now := time.Now().UTC()
 
+	// nil = global (nullable column); a set value scopes the schedule's runs.
+	var workspacePtr *string
+	if req.WorkspaceID != "" {
+		workspacePtr = &req.WorkspaceID
+	}
+
 	_, err := h.db.Exec(
 		`INSERT INTO schedules (id, name, description, cron_expr, tool_id, action, payload, enabled,
-		                        type, agent_role_slug, prompt_content, thread_id, browser_session_id, browser_instructions, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, '', '', '{}', ?, 'prompt', ?, ?, ?, '', '', ?, ?)`,
+		                        type, agent_role_slug, prompt_content, thread_id, workspace_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, '', '', '{}', ?, 'prompt', ?, ?, ?, ?, ?, ?)`,
 		id, req.Name, req.Description, req.CronExpr, true,
-		req.AgentRoleSlug, req.PromptContent, req.ThreadID, now, now,
+		req.AgentRoleSlug, req.PromptContent, req.ThreadID, workspacePtr, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create schedule")
@@ -118,6 +134,7 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		AgentRoleSlug: req.AgentRoleSlug,
 		PromptContent: req.PromptContent,
 		ThreadID:      req.ThreadID,
+		WorkspaceID:   req.WorkspaceID,
 	})
 
 	userID := middleware.GetUserID(r.Context())
@@ -132,6 +149,7 @@ func (h *SchedulesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		AgentRoleSlug: req.AgentRoleSlug,
 		PromptContent: req.PromptContent,
 		ThreadID:      req.ThreadID,
+		WorkspaceID:   workspacePtr,
 		Enabled:       true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -155,6 +173,7 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		PromptContent *string `json:"prompt_content"`
 		AgentRoleSlug *string `json:"agent_role_slug"`
 		ThreadID      *string `json:"thread_id"`
+		WorkspaceID   *string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -189,6 +208,15 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		setClauses = append(setClauses, "thread_id = ?")
 		args = append(args, *req.ThreadID)
 	}
+	if req.WorkspaceID != nil {
+		// Empty string clears the target (nullable = global).
+		if *req.WorkspaceID == "" {
+			setClauses = append(setClauses, "workspace_id = NULL")
+		} else {
+			setClauses = append(setClauses, "workspace_id = ?")
+			args = append(args, *req.WorkspaceID)
+		}
+	}
 
 	args = append(args, id)
 	query := "UPDATE schedules SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
@@ -197,12 +225,18 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reload schedule in cron if expression changed
-	if req.CronExpr != nil {
+	// Reload schedule in cron if the expression or workspace target changed so
+	// the live cron entry carries the new values.
+	if req.CronExpr != nil || req.WorkspaceID != nil {
 		var s models.Schedule
+		var workspaceID sql.NullString
 		h.db.QueryRow(
-			"SELECT cron_expr, enabled, agent_role_slug, prompt_content, thread_id FROM schedules WHERE id = ?", id,
-		).Scan(&s.CronExpr, &s.Enabled, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
+			"SELECT cron_expr, enabled, agent_role_slug, prompt_content, thread_id, workspace_id FROM schedules WHERE id = ?", id,
+		).Scan(&s.CronExpr, &s.Enabled, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &workspaceID)
+		if workspaceID.Valid && workspaceID.String != "" {
+			ws := workspaceID.String
+			s.WorkspaceID = &ws
+		}
 		if s.Enabled {
 			h.scheduler.RemoveSchedule(id)
 			h.scheduler.AddSchedule(scheduleToConfig(id, s))
@@ -213,16 +247,19 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(userID, "schedule_updated", "schedule", "schedule", id, "")
 
 	var s models.Schedule
+	var workspaceID sql.NullString
 	h.db.QueryRow(
 		`SELECT id, name, description, cron_expr, tool_id, action, payload, enabled,
 		        type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id,
-		        browser_session_id, browser_instructions,
-		        last_run_at, next_run_at, created_at, updated_at
+		        workspace_id, last_run_at, next_run_at, created_at, updated_at
 		 FROM schedules WHERE id = ?`, id,
 	).Scan(&s.ID, &s.Name, &s.Description, &s.CronExpr, &s.ToolID, &s.Action, &s.Payload, &s.Enabled,
 		&s.Type, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &s.DashboardID, &s.WidgetID,
-		&s.BrowserSessionID, &s.BrowserInstructions,
-		&s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt)
+		&workspaceID, &s.LastRunAt, &s.NextRunAt, &s.CreatedAt, &s.UpdatedAt)
+	if workspaceID.Valid && workspaceID.String != "" {
+		ws := workspaceID.String
+		s.WorkspaceID = &ws
+	}
 
 	writeJSON(w, http.StatusOK, s)
 }
@@ -252,13 +289,18 @@ func (h *SchedulesHandler) RunNow(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var s models.Schedule
+	var workspaceID sql.NullString
 	err := h.db.QueryRow(
-		`SELECT id, agent_role_slug, prompt_content, thread_id
+		`SELECT id, agent_role_slug, prompt_content, thread_id, workspace_id
 		 FROM schedules WHERE id = ?`, id,
-	).Scan(&s.ID, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
+	).Scan(&s.ID, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &workspaceID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "schedule not found")
 		return
+	}
+	if workspaceID.Valid && workspaceID.String != "" {
+		ws := workspaceID.String
+		s.WorkspaceID = &ws
 	}
 
 	h.scheduler.RunNow(scheduleToConfig(id, s))
@@ -291,9 +333,14 @@ func (h *SchedulesHandler) Toggle(w http.ResponseWriter, r *http.Request) {
 
 	if newEnabled {
 		var s models.Schedule
+		var workspaceID sql.NullString
 		h.db.QueryRow(
-			"SELECT cron_expr, agent_role_slug, prompt_content, thread_id FROM schedules WHERE id = ?", id,
-		).Scan(&s.CronExpr, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID)
+			"SELECT cron_expr, agent_role_slug, prompt_content, thread_id, workspace_id FROM schedules WHERE id = ?", id,
+		).Scan(&s.CronExpr, &s.AgentRoleSlug, &s.PromptContent, &s.ThreadID, &workspaceID)
+		if workspaceID.Valid && workspaceID.String != "" {
+			ws := workspaceID.String
+			s.WorkspaceID = &ws
+		}
 		h.scheduler.AddSchedule(scheduleToConfig(id, s))
 	} else {
 		h.scheduler.RemoveSchedule(id)

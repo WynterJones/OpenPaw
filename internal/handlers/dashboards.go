@@ -78,7 +78,8 @@ const dashboardCols = "id, name, description, layout, widgets, dashboard_type, o
 
 func (h *DashboardsHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
-		"SELECT "+dashboardCols+" FROM dashboards ORDER BY created_at DESC",
+		"SELECT "+dashboardCols+" FROM dashboards WHERE workspace_id = ? ORDER BY created_at DESC",
+		activeWorkspaceID(h.db),
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list dashboards")
@@ -125,8 +126,8 @@ func (h *DashboardsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err := h.db.Exec(
-		"INSERT INTO dashboards (id, name, description, layout, widgets, owner_agent_slug, bg_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		id, req.Name, req.Description, req.Layout, req.Widgets, "", req.BgImage, now, now,
+		"INSERT INTO dashboards (id, name, description, layout, widgets, owner_agent_slug, bg_image, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, req.Name, req.Description, req.Layout, req.Widgets, "", req.BgImage, activeWorkspaceID(h.db), now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create dashboard")

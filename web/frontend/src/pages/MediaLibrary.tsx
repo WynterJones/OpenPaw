@@ -3,17 +3,20 @@ import { ImageIcon, Search, Download, Trash2, ExternalLink, ChevronLeft, Chevron
 import { mediaApi } from '../lib/api-helpers';
 import type { MediaItem, MediaListResponse } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
-import { Header } from '../components/Header';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 
 const typeFilters = ['all', 'image', 'audio', 'video'] as const;
-const sourceFilters = ['all', 'fal', 'dalle', 'upload'] as const;
+const sourceFilters = ['all', 'openrouter', 'claude-code', 'codex', 'openclaw', 'fal', 'dalle', 'upload'] as const;
 
 const sourceLabels: Record<string, string> = {
   all: 'All',
+  openrouter: 'OpenRouter',
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  openclaw: 'OpenClaw',
   fal: 'FAL',
   dalle: 'DALL-E',
   upload: 'Upload',
@@ -21,6 +24,10 @@ const sourceLabels: Record<string, string> = {
 };
 
 const sourceBadgeColors: Record<string, string> = {
+  openrouter: 'bg-accent-primary/20 text-accent-primary',
+  'claude-code': 'bg-orange-500/20 text-orange-300',
+  codex: 'bg-teal-500/20 text-teal-300',
+  openclaw: 'bg-pink-500/20 text-pink-300',
   fal: 'bg-purple-500/20 text-purple-300',
   dalle: 'bg-green-500/20 text-green-300',
   upload: 'bg-blue-500/20 text-blue-300',
@@ -45,7 +52,7 @@ function formatDate(dateStr: string): string {
 
 const PER_PAGE = 24;
 
-export function MediaLibrary() {
+export function MediaLibraryPanel() {
   const { toast } = useToast();
 
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -117,7 +124,6 @@ export function MediaLibrary() {
   if (loading && items.length === 0) {
     return (
       <div className="flex flex-col h-full">
-        <Header title="Media Library" />
         <div className="flex-1 flex items-center justify-center">
           <LoadingSpinner message="Loading media..." />
         </div>
@@ -128,7 +134,6 @@ export function MediaLibrary() {
   if (!loading && items.length === 0 && !searchQuery && typeFilter === 'all' && sourceFilter === 'all') {
     return (
       <div className="flex flex-col h-full">
-        <Header title="Media Library" />
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={<ImageIcon className="w-8 h-8" />}
@@ -142,8 +147,6 @@ export function MediaLibrary() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Media Library" count={total} />
-
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3 px-4 md:px-6 py-3 border-b border-border-0 bg-surface-0">
         {/* Type pills */}
@@ -220,11 +223,15 @@ export function MediaLibrary() {
             <LoadingSpinner message="Loading..." />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-text-3">No media matches your filters.</p>
+          <div className="h-full flex items-center justify-center">
+            <EmptyState
+              icon={<ImageIcon className="w-8 h-8" />}
+              title="No media found"
+              description="Try a different search or filter."
+            />
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {items.map((item) => (
               <button
                 key={item.id}

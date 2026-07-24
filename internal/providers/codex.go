@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -31,6 +32,9 @@ type CodexProvider struct {
 	mcpBaseURL string
 	sem        chan struct{}
 	probe      probeState
+	// workspaceDir resolves the active workspace's real files dir at exec time
+	// so the shelled-out CLI runs with its cwd there. Nil = fall back to cfg.WorkDir.
+	workspaceDir func() string
 }
 
 func NewCodexProvider(store llm.SessionStore, registry *mcp.Registry) *CodexProvider {
@@ -43,6 +47,23 @@ func NewCodexProvider(store llm.SessionStore, registry *mcp.Registry) *CodexProv
 }
 
 func (p *CodexProvider) SetMCPBaseURL(url string) { p.mcpBaseURL = url }
+
+// SetWorkspaceDirFunc injects a resolver for the active workspace's files dir.
+func (p *CodexProvider) SetWorkspaceDirFunc(fn func() string) { p.workspaceDir = fn }
+
+// resolveWorkDir picks the cwd for the shelled-out CLI: the active workspace's
+// files dir (created if missing) when a resolver is wired, otherwise cfg.WorkDir.
+func (p *CodexProvider) resolveWorkDir(fallback string) string {
+	if p.workspaceDir != nil {
+		if dir := p.workspaceDir(); dir != "" {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				logger.Warn("codex: failed to create workspace dir %s: %v", dir, err)
+			}
+			return dir
+		}
+	}
+	return fallback
+}
 
 func (p *CodexProvider) Name() string { return llm.ProviderCodex }
 
@@ -164,8 +185,8 @@ func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMe
 	args = append(args, "-")
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
-	if cfg.WorkDir != "" {
-		cmd.Dir = cfg.WorkDir
+	if dir := p.resolveWorkDir(cfg.WorkDir); dir != "" {
+		cmd.Dir = dir
 	}
 
 	emit := func(ev llm.StreamEvent) {

@@ -10,31 +10,19 @@ import {
 } from "../hooks/useOpenRouterBalance";
 import { useDesign } from "../contexts/DesignContext";
 import { NotificationBell } from "./NotificationBell";
+import { startWindowDrag } from "../lib/tauri";
 
 function fmt(n: number): string {
   if (n < 0.01 && n > 0) return `$${n.toFixed(4)}`;
   return `$${n.toFixed(2)}`;
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-};
-
 function BalanceBadge({ balance }: { balance: BalanceData }) {
   const [hover, setHover] = useState(false);
 
-  if (balance.subscription) {
-    const label = PROVIDER_LABELS[balance.provider ?? ""] ?? balance.provider;
-    return (
-      <span
-        className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-accent-primary/10 text-accent-primary cursor-default"
-        title="Running on your local CLI subscription — no per-token billing"
-      >
-        {label}
-      </span>
-    );
-  }
+  // Cost/credit UI is OpenRouter-only. CLI subscription providers (Claude Code /
+  // Codex) have no per-token billing, so render nothing here.
+  if (balance.subscription) return null;
 
   const hasCredits = balance.totalCredits !== null;
   const creditBalance = hasCredits
@@ -213,7 +201,7 @@ export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps
   const profilePic = user?.avatar_path;
 
   return (
-    <header data-tauri-drag-region className="relative z-30 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
+    <header data-tauri-drag-region onMouseDown={startWindowDrag} className="relative z-30 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
       <div data-tauri-drag-region className="relative min-w-0 flex-1 mr-2 flex items-center gap-2.5">
         <h1
           data-tauri-drag-region
@@ -232,30 +220,24 @@ export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps
         )}
       </div>
 
-      <div className="relative flex items-center gap-[20px] self-stretch flex-shrink-0">
+      <div className="relative ml-auto flex items-center gap-2 self-stretch flex-shrink-0">
         {showMascot && (
           <img
             src="/cat-toolbar.webp"
             alt=""
-            className="h-full w-auto object-contain pointer-events-none select-none hidden md:block"
+            className="h-full w-auto max-w-[120px] object-contain object-right pointer-events-none select-none hidden md:block"
             style={{ position: "relative", bottom: "-3px" }}
           />
         )}
         <div className="flex items-center gap-1.5 md:gap-2">
           {actions}
 
-          <span
-            className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
-              connected
-                ? "bg-accent-primary/10 text-accent-primary"
-                : "bg-red-500/10 text-red-400"
-            }`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-accent-primary" : "bg-red-400 animate-pulse"}`}
-            />
-            {connected ? "Connected" : "Disconnected"}
-          </span>
+          {!connected && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-red-500/10 text-red-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+              Disconnected
+            </span>
+          )}
 
           <BalanceBadge balance={balance} />
 

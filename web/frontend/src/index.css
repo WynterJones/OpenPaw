@@ -7,11 +7,22 @@
    drag. Push the sidebar nav below the buttons, and let the toolbar/sidebar act
    as window-drag regions. Interactive children stay clickable because Tauri
    only starts a drag when the drag-region element itself is the event target. */
+/* Traffic-light clearance is now handled by the sidebar logo header, so the
+   nav no longer needs extra top padding on desktop. */
 html[data-desktop] .op-sidebar-nav {
-  padding-top: 2.25rem;
+  padding-top: 0;
 }
 [data-tauri-drag-region] {
   cursor: default;
+}
+/* Belt-and-suspenders window dragging for the desktop build. These are no-ops
+   in a normal browser, so they never affect click targets in the web build.
+   Drag regions move the window; interactive children stay clickable. */
+html[data-desktop] [data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+html[data-desktop] [data-tauri-drag-region] :is(button, a, input, select, textarea, [role="menu"], [role="button"], [role="menuitem"]) {
+  -webkit-app-region: no-drag;
 }
 
 @theme {
@@ -147,6 +158,17 @@ body {
 .btn-danger:active:not(:disabled) {
   background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%) !important;
   box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.3), 0 0 8px -2px rgba(220,38,38,0.2) !important;
+}
+
+/* ─── Unified glass chat bubble (user + assistant) ─── */
+.chat-bubble {
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 6px 20px -14px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 /* ─── Chat markdown prose ─── */

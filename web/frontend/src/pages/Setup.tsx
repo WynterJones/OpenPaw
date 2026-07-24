@@ -24,7 +24,7 @@ export function Setup() {
   const [apiKey, setApiKey] = useState('');
   const enabledRoles = ['builder'];
 
-  const [agentName, setAgentName] = useState('Pounce');
+  const [agentName, setAgentName] = useState('Gateway');
   const [agentAvatar, setAgentAvatar] = useState('/avatars/avatar-4.webp');
   const [agentGoal, setAgentGoal] = useState('');
   const [setupComplete, setSetupComplete] = useState(false);
@@ -110,7 +110,7 @@ export function Setup() {
     setLoading(true);
     try {
       await api.post('/setup/personalize', {
-        name: agentName.trim() || 'Pounce',
+        name: agentName.trim() || 'Gateway',
         avatar_path: agentAvatar,
         goal: agentGoal.trim() || undefined,
       });
@@ -265,7 +265,7 @@ export function Setup() {
             label="Agent Name"
             value={agentName}
             onChange={e => setAgentName(e.target.value)}
-            placeholder="Pounce"
+            placeholder="Gateway"
             autoFocus
           />
 

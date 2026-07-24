@@ -2,8 +2,17 @@
   "identifier": "default",
   "description": "Default permissions for OpenPaw desktop",
   "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://localhost:41295",
+      "http://127.0.0.1:41295",
+      "http://localhost:*",
+      "http://127.0.0.1:*"
+    ]
+  },
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "shell:allow-spawn",
     "shell:allow-kill"
   ]

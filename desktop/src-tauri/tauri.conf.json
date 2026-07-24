@@ -1,14 +1,15 @@
 {
   "productName": "OpenPaw",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "identifier": "com.openpaw.desktop",
   "build": {
     "frontendDist": "../src"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
-        "title": "OpenPaw",
+        "title": "",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

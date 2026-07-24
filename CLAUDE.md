@@ -30,7 +30,7 @@ OpenPaw is a **single-binary Go application** with an embedded React frontend.
 | Backend | Go 1.25 + chi router + SQLite | `cmd/openpaw/`, `internal/` |
 | Frontend | React 19 + TypeScript 5.9 + Tailwind v4 | `web/frontend/src/` |
 | Embedding | `go:embed all:frontend/dist` | `web/embed.go` |
-| AI Engine | Claude Code CLI (shells out to `claude`) | `internal/agents/` |
+| AI Engine | OpenRouter API (default); Claude Code / Codex CLI opt-in | `internal/agents/` |
 | Database | SQLite (WAL mode, embedded migrations) | `internal/database/` |
 
 ### Build Order (IMPORTANT)

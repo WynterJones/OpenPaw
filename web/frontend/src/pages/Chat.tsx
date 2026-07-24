@@ -12,6 +12,8 @@ import { SearchBar } from '../components/SearchBar';
 import { Modal } from '../components/Modal';
 import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, threadMembers } from '../lib/api';
 import { todoApi, mediaApi } from '../lib/api-helpers';
+import { useOpenRouterBalance } from '../hooks/useOpenRouterBalance';
+import { CLI_CONTEXT_LIMIT } from '../lib/provider';
 import type { TodoItem, MediaItem } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
@@ -93,6 +95,7 @@ export function Chat() {
   const [input, setInput] = useState('');
   const [agent] = useState('');
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
+  const [threadsCollapsed, setThreadsCollapsed] = useState(() => localStorage.getItem('openpaw_threads_collapsed') === '1');
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [streamActive, setStreamActive] = useState(false);
@@ -363,6 +366,7 @@ export function Chat() {
   const [activeThreadIds, setActiveThreadIds] = useState<Set<string>>(new Set());
   const [unreadThreadIds, setUnreadThreadIds] = useState<Set<string>>(new Set());
   const [threadStats, setThreadStats] = useState<ThreadStats | null>(null);
+  const balance = useOpenRouterBalance();
   const [compacting, setCompacting] = useState(false);
   const [showCompactConfirm, setShowCompactConfirm] = useState(false);
   const [members, setMembers] = useState<ThreadMember[]>([]);
@@ -756,6 +760,10 @@ export function Chat() {
     }
   }, [activeThread, resetStreaming, setStreamingText, setStreamingTools]);
 
+  useEffect(() => {
+    localStorage.setItem('openpaw_threads_collapsed', threadsCollapsed ? '1' : '0');
+  }, [threadsCollapsed]);
+
   const scrollTimeoutRef = useRef<number>(0);
   useEffect(() => {
     if (!scrollTimeoutRef.current) {
@@ -1046,12 +1054,21 @@ export function Chat() {
   const activeRole = roles.find(r => r.slug === agent);
   const thinkingRole = activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : activeRole;
   const isStreaming = streamActive || streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
+  // Provider-aware usage bar: CLI subscription providers (Claude Code / Codex) have
+  // no per-token cost and a 1M context window; OpenRouter uses the model's window.
+  const isSubscription = balance.subscription;
+  const ctxLimit = isSubscription ? CLI_CONTEXT_LIMIT : (threadStats?.context_limit_tokens ?? 0);
+  const ctxUsed = threadStats?.context_used_tokens ?? 0;
+  const ctxPct = ctxLimit > 0 ? ctxUsed / ctxLimit : 0;
 
   return (
     <div className="flex flex-col h-full">
       <Header title="Chat"
         actions={
           <>
+            <button onClick={() => setThreadsCollapsed(c => !c)} className="hidden md:inline-flex p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={threadsCollapsed ? 'Show chat threads' : 'Hide chat threads'} aria-pressed={!threadsCollapsed} title={threadsCollapsed ? 'Show chats' : 'Hide chats'}>
+              {threadsCollapsed ? <PanelLeftOpen className="w-5 h-5" aria-hidden="true" /> : <PanelLeftClose className="w-5 h-5" aria-hidden="true" />}
+            </button>
             <button onClick={() => setShowThreads(!showThreads)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showThreads ? 'Hide chat threads' : 'Show chat threads'}>
               {showThreads ? <PanelLeftClose className="w-5 h-5" aria-hidden="true" /> : <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />}
             </button>
@@ -1064,7 +1081,7 @@ export function Chat() {
         }
       />
       <div className="flex flex-1 overflow-hidden relative">
-        <div className={`${showThreads ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} absolute md:relative z-30 w-[85vw] max-w-72 md:w-72 h-full flex flex-col border-r border-border-0 bg-surface-1 transition-transform duration-200`}>
+        <div className={`${showThreads ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${threadsCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-72 md:border-r'} absolute md:relative z-30 w-[85vw] max-w-72 h-full flex flex-col overflow-hidden border-r border-border-0 bg-surface-1 transition-all duration-200`}>
           <div className="p-3 space-y-2">
             <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
@@ -1162,30 +1179,34 @@ export function Chat() {
             <>
               {threadStats && threadStats.message_count > 0 && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 md:px-4 py-1.5 border-b border-border-0 bg-surface-1/80 text-[11px] text-text-3">
-                  <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
+                  {!isSubscription && (
+                    <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
+                  )}
                   <span className="flex items-center gap-1"><Zap className="w-3 h-3" aria-hidden="true" />{((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0)).toLocaleString()}</span>
+                  {ctxLimit > 0 && (
                   <div className="flex items-center gap-1.5">
                     <div
                       className="w-16 md:w-28 h-1.5 rounded-full bg-surface-3 overflow-hidden"
                       role="progressbar"
-                      aria-valuenow={Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}
+                      aria-valuenow={Math.round(ctxPct * 100)}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       aria-label="Context window usage"
                     >
                       <div
                         className={`h-full rounded-full transition-all ${
-                          (threadStats.context_used_tokens / threadStats.context_limit_tokens) > 0.8
+                          ctxPct > 0.8
                             ? 'bg-red-400'
-                            : (threadStats.context_used_tokens / threadStats.context_limit_tokens) > 0.5
+                            : ctxPct > 0.5
                               ? 'bg-amber-400'
                               : 'bg-emerald-400'
                         }`}
-                        style={{ width: `${Math.min(100, (threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}%` }}
+                        style={{ width: `${Math.min(100, ctxPct * 100)}%` }}
                       />
                     </div>
-                    <span className="whitespace-nowrap">{Math.round((threadStats.context_used_tokens / threadStats.context_limit_tokens) * 100)}%<span className="hidden sm:inline"> of {threadStats.context_limit_tokens >= 1000000 ? `${(threadStats.context_limit_tokens / 1000000).toFixed(1)}M` : `${Math.round(threadStats.context_limit_tokens / 1000)}k`}</span></span>
+                    <span className="whitespace-nowrap">{Math.round(ctxPct * 100)}%<span className="hidden sm:inline"> of {ctxLimit >= 1000000 ? `${(ctxLimit / 1000000).toFixed(ctxLimit % 1000000 === 0 ? 0 : 1)}M` : `${Math.round(ctxLimit / 1000)}k`}</span></span>
                   </div>
+                  )}
                   <div className="flex items-center gap-1 ml-auto">
                     <button
                       onClick={() => setShowCompactConfirm(true)}
@@ -1209,15 +1230,15 @@ export function Chat() {
                   </div>
                 </div>
               )}
-              {threadStats && threadStats.context_limit_tokens > 0 && (threadStats.context_used_tokens / threadStats.context_limit_tokens) >= 0.8 && (
+              {threadStats && ctxLimit > 0 && ctxPct >= 0.8 && (
                 <div className={`flex items-center gap-2 px-3 md:px-4 py-2 border-b text-xs ${
-                  (threadStats.context_used_tokens / threadStats.context_limit_tokens) >= 1
+                  ctxPct >= 1
                     ? 'bg-red-500/10 border-red-500/30 text-red-400'
                     : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                 }`}>
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    {(threadStats.context_used_tokens / threadStats.context_limit_tokens) >= 1
+                    {ctxPct >= 1
                       ? 'Context window is full. The AI may stop responding. Compact this chat to continue.'
                       : 'Context window is nearly full. Consider compacting this chat to free up space.'}
                   </span>
@@ -1301,13 +1322,6 @@ export function Chat() {
                 )}
                 {thinking && !isStreaming && (
                   <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
-                      {thinkingRole ? (
-                        <img src={thinkingRole.avatar_path} alt={thinkingRole.name} className="w-8 h-8 rounded-md object-cover" />
-                      ) : (
-                        <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-8 h-8 rounded-md object-cover" />
-                      )}
-                    </div>
                     <div className="max-w-[85%] md:max-w-[75%]">
                       <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-surface-2">
                         <button
@@ -1697,13 +1711,13 @@ export function Chat() {
                       >
                         {sectionTodos ? <ChevronDown className="w-3 h-3 text-text-3" /> : <ChevronRight className="w-3 h-3 text-text-3" />}
                         <ListTodo className="w-3.5 h-3.5 text-text-3" />
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-2 flex-1">Todo Lists</span>
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-2 flex-1">Tasks</span>
                         {todoLists.length > 0 && <span className="text-[10px] text-text-3">{todoLists.length}</span>}
                       </button>
                       {sectionTodos && (
                         <div className="px-2 pb-2 space-y-0.5">
                           {todoLists.length === 0 ? (
-                            <p className="text-[11px] text-text-3 px-2 py-1">No todo lists</p>
+                            <p className="text-[11px] text-text-3 px-2 py-1">No tasks</p>
                           ) : todoLists.map(list => (
                             <div key={list.id}>
                               <button

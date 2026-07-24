@@ -577,7 +577,7 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-2">Status</h4>
           <div className="flex items-center gap-2">
@@ -805,7 +805,7 @@ export function Tools() {
   const paginated = showFolderSections ? searchFiltered : searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const renderToolGrid = (items: Tool[]) => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {items.map((tool) => (
         <ToolCard
           key={tool.id}
@@ -915,7 +915,7 @@ export function Tools() {
                 description={
                   search
                     ? "Try a different search term"
-                    : "Install from the Library page or chat with Pounce to build a custom tool."
+                    : "Install from Templates or chat with Gateway to build a custom tool."
                 }
               />
             ) : showFolderSections ? (

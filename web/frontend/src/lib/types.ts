@@ -449,53 +449,6 @@ export interface ChatAttachment {
   created_at: string;
 }
 
-// Browser automation types
-export interface BrowserSession {
-  id: string;
-  name: string;
-  status: 'idle' | 'active' | 'busy' | 'human' | 'stopped' | 'error';
-  headless: boolean;
-  current_url: string;
-  current_title: string;
-  owner_agent_slug: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BrowserActionRequest {
-  action: string;
-  selector?: string;
-  value?: string;
-  x?: number;
-  y?: number;
-  timeout?: number;
-}
-
-export interface BrowserActionResult {
-  success: boolean;
-  data?: string;
-  url?: string;
-  title?: string;
-  screenshot?: string;
-  error?: string;
-}
-
-export interface BrowserTask {
-  id: string;
-  session_id: string;
-  thread_id: string;
-  agent_role_slug: string;
-  title: string;
-  status: string;
-  instructions: string;
-  result: string;
-  extracted_data: string;
-  error: string;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
-
 // Notification types
 export interface AppNotification {
   id: string;
@@ -555,25 +508,6 @@ export interface HeartbeatConfig {
 export interface HeartbeatExecutionPage {
   items: HeartbeatExecution[];
   total: number;
-}
-
-export interface TerminalSession {
-  id: string;
-  title: string;
-  shell: string;
-  cols: number;
-  rows: number;
-  color: string;
-  workbench_id: string;
-  created_at: string;
-}
-
-export interface Workbench {
-  id: string;
-  name: string;
-  color: string;
-  sort_order: number;
-  created_at: string;
 }
 
 export interface Project {
@@ -683,4 +617,26 @@ export interface UpdateCheckResponse {
   update_available: boolean;
   install_method: string;
   can_self_update: boolean;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkspaceFileNode {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  children?: WorkspaceFileNode[];
+}
+
+export interface WorkspaceFilesResponse {
+  workspace_id: string;
+  files: WorkspaceFileNode[];
 }

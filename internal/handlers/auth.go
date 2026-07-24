@@ -215,12 +215,11 @@ func (h *AuthHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	// Delete all data including user account. Order: standalone/child tables
 	// first, then parent tables. CASCADE FKs auto-delete: tool_integrity,
 	// schedule_executions, thread_members, chat_attachments,
-	// dashboard_data_points, browser_tasks, browser_action_log.
+	// dashboard_data_points.
 	tablesToDelete := []string{
 		"agent_tool_access",
 		"context_files",
 		"context_folders",
-		"browser_sessions",
 		"notifications",
 		"heartbeat_executions",
 		"chat_messages",
@@ -242,7 +241,7 @@ func (h *AuthHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear all filesystem data
-	for _, dir := range []string{"skills", "agents", "gateway", "context", "browser_sessions", "avatars"} {
+	for _, dir := range []string{"skills", "agents", "gateway", "context", "avatars"} {
 		dirPath := filepath.Join(h.dataDir, dir)
 		os.RemoveAll(dirPath)
 	}
@@ -501,7 +500,7 @@ func (h *SetupHandler) Personalize(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		name = "Pounce"
+		name = "Gateway"
 	}
 
 	avatarPath := strings.TrimSpace(req.AvatarPath)

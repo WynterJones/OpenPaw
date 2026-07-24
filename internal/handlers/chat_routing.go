@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -580,6 +581,9 @@ func (h *ChatHandler) handleRemoteAgentChat(ctx context.Context, threadID, conte
 	}
 
 	h.saveAssistantMessage(threadID, agentRoleSlug, response, 0, 0, 0)
+	if n := h.saveInlineImagesToMedia(threadID, "openclaw", response); n > 0 {
+		logger.Info("Saved %d OpenClaw inline image(s) to media library", n)
+	}
 	h.broadcastStatus(threadID, "message_saved", "")
 
 	if _, multi := h.multiAgentActive.Load(threadID); !multi {
@@ -588,6 +592,57 @@ func (h *ChatHandler) handleRemoteAgentChat(ctx context.Context, threadID, conte
 			AgentRoleSlug: agentRoleSlug,
 		})
 	}
+}
+
+// dataURIImageRe matches self-contained base64 data-URI images embedded in
+// agent reply text (e.g. data:image/png;base64,iVBORw0...).
+var dataURIImageRe = regexp.MustCompile(`data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)`)
+
+// saveInlineImagesToMedia scans agent reply text for inlined base64 data-URI
+// images and persists each to the media library under the given source. This is
+// how images from remote providers (OpenClaw), whose tool calls OpenPaw never
+// sees, still land in the Media tab. Best-effort: it only decodes inlined bytes
+// (never fetches remote URLs, avoiding SSRF) and logs rather than failing the
+// turn. Returns the number of images saved.
+func (h *ChatHandler) saveInlineImagesToMedia(threadID, source, text string) int {
+	matches := dataURIImageRe.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	mediaDir := filepath.Join(h.dataDir, "..", "media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		logger.Warn("saveInlineImagesToMedia: mkdir failed: %v", err)
+		return 0
+	}
+	saved := 0
+	for _, mset := range matches {
+		subtype := mset[1]
+		ext := subtype
+		if ext == "jpeg" {
+			ext = "jpg"
+		}
+		b64 := strings.NewReplacer("\n", "", "\r", "", " ", "", "\t", "").Replace(mset[2])
+		data, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		mediaID := uuid.New().String()
+		filename := mediaID + "." + ext
+		if err := os.WriteFile(filepath.Join(mediaDir, filename), data, 0644); err != nil {
+			continue
+		}
+		now := time.Now().UTC()
+		if _, err := h.db.Exec(
+			`INSERT INTO media (id, thread_id, source, source_model, media_type, url, filename, mime_type, size_bytes, prompt, created_at)
+			 VALUES (?, ?, ?, '', 'image', '', ?, ?, ?, '', ?)`,
+			mediaID, threadID, source, filename, "image/"+subtype, len(data), now,
+		); err != nil {
+			logger.Warn("saveInlineImagesToMedia: insert failed: %v", err)
+			continue
+		}
+		saved++
+	}
+	return saved
 }
 
 func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {

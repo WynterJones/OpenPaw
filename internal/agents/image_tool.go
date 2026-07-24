@@ -34,7 +34,11 @@ func BuildGenerateImageDef() llm.ToolDef {
 	}
 }
 
-func (m *Manager) makeGenerateImageHandler() llm.ToolHandler {
+// makeGenerateImageHandler builds the generate_image handler. source attributes
+// the saved media to the calling agent's provider (e.g. "openrouter",
+// "claude-code", "codex"); threadID links the image to the conversation so it
+// surfaces in the Media tab tied to that chat.
+func (m *Manager) makeGenerateImageHandler(source, threadID string) llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var req struct {
 			Prompt string   `json:"prompt"`
@@ -50,11 +54,11 @@ func (m *Manager) makeGenerateImageHandler() llm.ToolHandler {
 			return llm.ToolResult{Output: "ERROR: prompt is required", IsError: true}
 		}
 
-		return m.generateImage(ctx, req.Prompt, req.Model, req.Size, req.Images)
+		return m.generateImage(ctx, req.Prompt, req.Model, req.Size, req.Images, source, threadID)
 	}
 }
 
-func (m *Manager) generateImage(ctx context.Context, prompt, model, size string, images []string) llm.ToolResult {
+func (m *Manager) generateImage(ctx context.Context, prompt, model, size string, images []string, source, threadID string) llm.ToolResult {
 	if m.client == nil || !m.client.IsConfigured() {
 		return llm.ToolResult{Output: "ERROR: Image generation requires an OpenRouter API key (it works alongside CLI providers). Add one in Settings → Models.", IsError: true}
 	}
@@ -73,16 +77,20 @@ func (m *Manager) generateImage(ctx context.Context, prompt, model, size string,
 		resolvedImages = append(resolvedImages, resolved)
 	}
 
+	if source == "" {
+		source = "openrouter"
+	}
+
 	// If a specific model was requested, try only that model
 	if model != "" {
-		return m.tryGenerateImage(ctx, prompt, model, size, resolvedImages)
+		return m.tryGenerateImage(ctx, prompt, model, size, resolvedImages, source, threadID)
 	}
 
 	// Try models in fallback order
 	models := llm.ImageGenModels
 	var lastErr string
 	for _, mdl := range models {
-		result := m.tryGenerateImage(ctx, prompt, mdl, size, resolvedImages)
+		result := m.tryGenerateImage(ctx, prompt, mdl, size, resolvedImages, source, threadID)
 		if !result.IsError {
 			return result
 		}
@@ -95,7 +103,7 @@ func (m *Manager) generateImage(ctx context.Context, prompt, model, size string,
 	}
 }
 
-func (m *Manager) tryGenerateImage(ctx context.Context, prompt, model, size string, resolvedImages []string) llm.ToolResult {
+func (m *Manager) tryGenerateImage(ctx context.Context, prompt, model, size string, resolvedImages []string, source, threadID string) llm.ToolResult {
 	result, err := m.client.GenerateImage(ctx, model, prompt, size, resolvedImages)
 	if err != nil {
 		return llm.ToolResult{Output: fmt.Sprintf("ERROR [model=%s]: %s", model, err.Error()), IsError: true}
@@ -126,9 +134,9 @@ func (m *Manager) tryGenerateImage(ctx context.Context, prompt, model, size stri
 
 	now := time.Now().UTC()
 	m.db.Exec(
-		`INSERT INTO media (id, source, source_model, media_type, url, filename, mime_type, width, height, size_bytes, prompt, created_at)
-		 VALUES (?, 'openrouter', ?, 'image', '', ?, 'image/png', ?, ?, ?, ?, ?)`,
-		mediaID, model, filename, width, height, len(imgData), prompt, now,
+		`INSERT INTO media (id, source, source_model, media_type, url, filename, mime_type, width, height, size_bytes, prompt, created_at, thread_id)
+		 VALUES (?, ?, ?, 'image', '', ?, 'image/png', ?, ?, ?, ?, ?, ?)`,
+		mediaID, source, model, filename, width, height, len(imgData), prompt, now, threadID,
 	)
 
 	localURL := fmt.Sprintf("/api/v1/media/%s/file", mediaID)

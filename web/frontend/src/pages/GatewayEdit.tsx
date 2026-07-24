@@ -199,7 +199,7 @@ export function GatewayEdit() {
     );
   }
 
-  const gatewayName = name || gatewayRole?.name || 'Pounce';
+  const gatewayName = name || gatewayRole?.name || 'Gateway';
   const hasChanges = gatewayRole && (
     name !== gatewayRole.name ||
     model !== gatewayRole.model ||

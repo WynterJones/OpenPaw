@@ -21,10 +21,11 @@ func NewTodoListsHandler(db *database.DB) *TodoListsHandler {
 // ListLists returns all todo lists with item counts.
 func (h *TodoListsHandler) ListLists(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
-		SELECT tl.*,
+		SELECT tl.id, tl.name, tl.description, tl.color, tl.sort_order, tl.created_at, tl.updated_at,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id) as total_items,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as completed_items
-		FROM todo_lists tl ORDER BY tl.sort_order ASC, tl.created_at ASC`)
+		FROM todo_lists tl WHERE tl.workspace_id = ? ORDER BY tl.sort_order ASC, tl.created_at ASC`,
+		activeWorkspaceID(h.db))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list todo lists")
 		return
@@ -63,7 +64,8 @@ func (h *TodoListsHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		SELECT tl.id, tl.name, tl.color,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id) as total_items,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as completed_items
-		FROM todo_lists tl ORDER BY tl.sort_order ASC, tl.created_at ASC`)
+		FROM todo_lists tl WHERE tl.workspace_id = ? ORDER BY tl.sort_order ASC, tl.created_at ASC`,
+		activeWorkspaceID(h.db))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get todo list summary")
 		return
@@ -112,8 +114,8 @@ func (h *TodoListsHandler) CreateList(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow("SELECT COALESCE(MAX(sort_order), -1) FROM todo_lists").Scan(&maxOrder)
 
 	_, err := h.db.Exec(
-		"INSERT INTO todo_lists (id, name, description, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		id, req.Name, req.Description, req.Color, maxOrder+1, now, now,
+		"INSERT INTO todo_lists (id, name, description, color, sort_order, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		id, req.Name, req.Description, req.Color, maxOrder+1, activeWorkspaceID(h.db), now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create todo list")

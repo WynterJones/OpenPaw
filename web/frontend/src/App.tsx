@@ -19,13 +19,10 @@ const AgentEdit = lazy(() => import('./pages/AgentEdit').then(m => ({ default: m
 const GatewayEdit = lazy(() => import('./pages/GatewayEdit').then(m => ({ default: m.GatewayEdit })));
 const Skills = lazy(() => import('./pages/Skills').then(m => ({ default: m.Skills })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Context = lazy(() => import('./pages/Context').then(m => ({ default: m.Context })));
-const Browser = lazy(() => import('./pages/Browser').then(m => ({ default: m.Browser })));
-const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
 const HeartbeatMonitor = lazy(() => import('./pages/HeartbeatMonitor').then(m => ({ default: m.HeartbeatMonitor })));
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
 const TodoLists = lazy(() => import('./pages/TodoLists').then(m => ({ default: m.TodoLists })));
-const MediaLibrary = lazy(() => import('./pages/MediaLibrary').then(m => ({ default: m.MediaLibrary })));
 
 const DocsLayout = lazy(() => import('./components/docs/DocsLayout').then(m => ({ default: m.DocsLayout })));
 const DocsHome = lazy(() => import('./pages/docs/DocsHome').then(m => ({ default: m.DocsHome })));
@@ -43,16 +40,13 @@ const pageTitles: Record<string, string> = {
   '/agents/gateway': 'Gateway',
   '/skills': 'Skills',
   '/secrets': 'Secrets',
-  '/dashboards': 'Dashboard',
+  '/dashboards': 'Dashboards',
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
-  '/context': 'Context',
-  '/browser': 'Browser',
-  '/workbench': 'Workbench',
+  '/knowledge-base': 'Context',
   '/heartbeat': 'Heartbeat',
-  '/library': 'Library',
-  '/todo-lists': 'Todo Lists',
-  '/media': 'Media',
+  '/library': 'Templates',
+  '/todo-lists': 'Tasks',
   '/settings': 'Settings',
   '/login': 'Login',
   '/setup': 'Setup',
@@ -125,13 +119,12 @@ function AppRoutes() {
         <Route path="/dashboards" element={<Dashboards />} />
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />
-        <Route path="/context" element={<Context />} />
-        <Route path="/browser" element={<Browser />} />
-        <Route path="/workbench" element={<Workbench />} />
+        <Route path="/knowledge-base" element={<KnowledgeBase />} />
+        <Route path="/context" element={<Navigate to="/knowledge-base" replace />} />
+        <Route path="/media" element={<Navigate to="/knowledge-base?tab=media" replace />} />
         <Route path="/heartbeat" element={<HeartbeatMonitor />} />
         <Route path="/library" element={<Library />} />
         <Route path="/todo-lists" element={<TodoLists />} />
-        <Route path="/media" element={<MediaLibrary />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/chat" replace />} />

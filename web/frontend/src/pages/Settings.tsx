@@ -71,6 +71,14 @@ import {
   getNotificationVolume,
   setNotificationVolume,
 } from "../lib/pushNotifications";
+import { isTauri } from "../lib/tauri";
+
+// Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
+// app has its own TBD mobile-connection story, so hide Tailscale there.
+const IS_DESKTOP_APP =
+  isTauri() ||
+  (typeof document !== "undefined" &&
+    document.documentElement.hasAttribute("data-desktop"));
 
 const TABS = [
   { id: "profile", label: "Profile", icon: User },
@@ -678,6 +686,7 @@ function NetworkTab() {
         )}
       </Card>
 
+      {!IS_DESKTOP_APP && (
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -770,6 +779,7 @@ function NetworkTab() {
           </p>
         )}
       </Card>
+      )}
     </div>
   );
 }

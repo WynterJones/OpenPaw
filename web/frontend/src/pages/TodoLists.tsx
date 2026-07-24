@@ -152,7 +152,7 @@ export function TodoLists() {
       const data = await todoApi.list();
       setLists(data);
     } catch {
-      toast('error', 'Failed to load todo lists');
+      toast('error', 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
@@ -392,7 +392,7 @@ export function TodoLists() {
   if (loading) {
     return (
       <div className="flex flex-col h-full">
-        <Header title="Todo Lists" />
+        <Header title="Tasks" />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-text-3 text-sm">Loading...</div>
         </div>
@@ -404,14 +404,14 @@ export function TodoLists() {
   if (lists.length === 0) {
     return (
       <div className="flex flex-col h-full">
-        <Header title="Todo Lists" />
+        <Header title="Tasks" />
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={<ListTodo className="w-8 h-8" />}
-            title="No Todo Lists"
-            description="Create your first todo list to start tracking tasks."
+            title="No Tasks Yet"
+            description="Create a shared task list for you and your agents to work through."
             action={
-              <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => setListModalOpen(true)}>
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setListModalOpen(true)}>
                 New List
               </Button>
             }
@@ -429,7 +429,7 @@ export function TodoLists() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Todo Lists" />
+      <Header title="Tasks" />
 
       <div className="flex flex-1 min-h-0">
         {/* Left panel: list of lists */}
@@ -738,10 +738,11 @@ export function TodoLists() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-text-3">
-                <ListTodo className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">Select a list to view its items</p>
-              </div>
+              <EmptyState
+                icon={<ListTodo className="w-8 h-8" />}
+                title="No list selected"
+                description="Select a list to view its tasks."
+              />
             </div>
           )}
         </div>

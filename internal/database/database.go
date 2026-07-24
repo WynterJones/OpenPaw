@@ -92,6 +92,20 @@ func (db *DB) runMigrations() error {
 	return nil
 }
 
+// DefaultWorkspaceID is the fixed, well-known uuid of the seeded "Default"
+// workspace (see migration 049). Scoped rows fall back to this workspace.
+const DefaultWorkspaceID = "00000000-0000-0000-0000-000000000001"
+
+// ActiveWorkspaceID returns the currently active workspace id from the settings
+// key/value table, falling back to the Default workspace when unset.
+func (db *DB) ActiveWorkspaceID() string {
+	var id string
+	if err := db.QueryRow("SELECT value FROM settings WHERE key = 'active_workspace_id'").Scan(&id); err != nil || id == "" {
+		return DefaultWorkspaceID
+	}
+	return id
+}
+
 func (db *DB) HasAdminUser() (bool, error) {
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)

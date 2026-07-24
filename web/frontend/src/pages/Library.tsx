@@ -358,7 +358,7 @@ function ToolsPanel() {
       ) : catalog.length === 0 ? (
         <EmptyState icon={<Package className="w-8 h-8" />} title="No tools found" description="Try a different search or category filter." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {catalog.map(tool => <ToolCard key={tool.slug} tool={tool} onClick={() => handleSelect(tool)} needsSecrets={toolsMissingSecrets.has(tool.slug)} />)}
         </div>
       )}
@@ -413,7 +413,7 @@ function AgentsPanel() {
       ) : catalog.length === 0 ? (
         <EmptyState icon={<Package className="w-8 h-8" />} title="No agents found" description="Try a different search or category filter." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {catalog.map(agent => <AgentCard key={agent.slug} agent={agent} onClick={() => setSelected(agent)} />)}
         </div>
       )}
@@ -468,7 +468,7 @@ function SkillsCatalogPanel() {
       ) : catalog.length === 0 ? (
         <EmptyState icon={<Package className="w-8 h-8" />} title="No skills found" description="Try a different search or category filter." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {catalog.map(skill => <SkillCard key={skill.slug} skill={skill} onClick={() => setSelected(skill)} />)}
         </div>
       )}
@@ -621,7 +621,7 @@ function SkillsShPanel() {
       ) : results.length === 0 ? (
         <EmptyState icon={<Package className="w-8 h-8" />} title="No skills found" description="Try a different search term." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {results.map(skill => (
             <SkillsShCard key={skill.id || skill.skill_id} skill={skill} onClick={() => handleCardClick(skill)} />
           ))}
@@ -698,7 +698,7 @@ export function Library() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Library" />
+      <Header title="Templates" />
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
         <div className="flex items-center gap-2 mb-3 border-b border-border-0 overflow-x-auto">
           {tabsWithCounts.map(t => (

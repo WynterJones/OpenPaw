@@ -1252,7 +1252,7 @@ export function AgentEdit() {
               );
             })()}
             {agentTools.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-sm text-text-3">No tools assigned. Grant access to tools from the library.</div>
+              <div className="flex items-center justify-center py-16 text-xs text-text-3">No tools assigned. Grant access to tools from Templates.</div>
             ) : (
               <div className="space-y-2">
                 {agentTools.map(tool => (

@@ -46,8 +46,9 @@ type TreeNode struct {
 }
 
 func (h *ContextHandler) GetTree(w http.ResponseWriter, r *http.Request) {
+	wsID := activeWorkspaceID(h.db)
 	folders := []models.ContextFolder{}
-	rows, err := h.db.Query("SELECT id, parent_id, name, sort_order, created_at, updated_at FROM context_folders ORDER BY sort_order, name")
+	rows, err := h.db.Query("SELECT id, parent_id, name, sort_order, created_at, updated_at FROM context_folders WHERE workspace_id = ? ORDER BY sort_order, name", wsID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list folders")
 		return
@@ -63,7 +64,7 @@ func (h *ContextHandler) GetTree(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files := []models.ContextFile{}
-	frows, err := h.db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files ORDER BY name")
+	frows, err := h.db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files WHERE workspace_id = ? ORDER BY name", wsID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list files")
 		return
@@ -149,8 +150,8 @@ func (h *ContextHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow("SELECT COALESCE(MAX(sort_order), 0) FROM context_folders WHERE parent_id IS ?", req.ParentID).Scan(&maxSort)
 
 	_, err := h.db.Exec(
-		"INSERT INTO context_folders (id, parent_id, name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		id, req.ParentID, req.Name, maxSort+1, now, now,
+		"INSERT INTO context_folders (id, parent_id, name, sort_order, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		id, req.ParentID, req.Name, maxSort+1, activeWorkspaceID(h.db), now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create folder")
@@ -250,7 +251,7 @@ func (h *ContextHandler) deleteFilesInFolder(folderID string) {
 // --- Files ---
 
 func (h *ContextHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files ORDER BY name")
+	rows, err := h.db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files WHERE workspace_id = ? ORDER BY name", activeWorkspaceID(h.db))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list files")
 		return
@@ -386,8 +387,8 @@ func (h *ContextHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err = h.db.Exec(
-		"INSERT INTO context_files (id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
-		id, folderPtr, displayName, diskFilename, mimeType, written, now, now,
+		"INSERT INTO context_files (id, folder_id, name, filename, mime_type, size_bytes, is_about_you, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+		id, folderPtr, displayName, diskFilename, mimeType, written, activeWorkspaceID(h.db), now, now,
 	)
 	if err != nil {
 		os.Remove(diskPath)

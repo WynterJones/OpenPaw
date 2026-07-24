@@ -13,7 +13,6 @@ import (
 
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/backup"
-	"github.com/openpaw/openpaw/internal/browser"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/auth"
@@ -24,7 +23,6 @@ import (
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
-	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	ws "github.com/openpaw/openpaw/internal/websocket"
 )
@@ -38,11 +36,9 @@ type Server struct {
 	WSHub        *ws.Hub
 	AgentManager *agents.Manager
 	ToolMgr      *toolmgr.Manager
-	BrowserMgr   *browser.Manager
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
-	TerminalMgr  *terminal.Manager
 	FrontendFS   fs.FS
 }
 
@@ -53,11 +49,9 @@ type Config struct {
 	Scheduler    *scheduler.Scheduler
 	AgentMgr     *agents.Manager
 	ToolMgr      *toolmgr.Manager
-	BrowserMgr   *browser.Manager
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
-	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
 	Providers    *llm.ProviderRouter
 	MCPRegistry  *mcp.Registry
@@ -77,11 +71,9 @@ func New(cfg Config) *Server {
 		WSHub:        ws.NewHub(cfg.Auth, cfg.Port),
 		AgentManager: cfg.AgentMgr,
 		ToolMgr:      cfg.ToolMgr,
-		BrowserMgr:   cfg.BrowserMgr,
 		HeartbeatMgr: cfg.HeartbeatMgr,
 		BackupMgr:    cfg.BackupMgr,
 		MemoryMgr:    cfg.MemoryMgr,
-		TerminalMgr:  cfg.TerminalMgr,
 		FrontendFS:   cfg.FrontendFS,
 	}
 
@@ -117,7 +109,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, providers, dataDir, port)
 	agentsHandler := handlers.NewAgentsHandler(s.DB, s.AgentManager)
 	systemHandler := handlers.NewSystemHandler(s.DB, dataDir, llmClient, providers, port)
-	browserHandler := handlers.NewBrowserHandler(s.DB, s.BrowserMgr)
 	notificationsHandler := handlers.NewNotificationsHandler(s.DB)
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
 	backupHandler := handlers.NewBackupHandler(s.DB, s.BackupMgr)
@@ -126,11 +117,12 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentLibraryHandler := handlers.NewAgentLibraryHandler(s.DB, dataDir)
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
 	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
-	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
+	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir)
+	handlers.EnsureDefaultWorkspaceDir(dataDir)
 	updateBroadcast := func(msgType string, payload interface{}) {
 		data, _ := json.Marshal(payload)
 		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})
@@ -193,9 +185,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
-
-		// Terminal WebSocket (auth handled internally)
-		r.Get("/terminal/ws/{sessionId}", terminalHandler.HandleWS)
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
@@ -408,25 +397,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/stop", agentsHandler.Stop)
 			})
 
-			// Browser
-			r.Route("/browser", func(r chi.Router) {
-				r.Get("/sessions", browserHandler.ListSessions)
-				r.Post("/sessions", browserHandler.CreateSession)
-				r.Get("/sessions/{id}", browserHandler.GetSession)
-				r.Put("/sessions/{id}", browserHandler.UpdateSession)
-				r.Delete("/sessions/{id}", browserHandler.DeleteSession)
-				r.Post("/sessions/{id}/start", browserHandler.StartSession)
-				r.Post("/sessions/{id}/stop", browserHandler.StopSession)
-				r.Post("/sessions/{id}/action", browserHandler.ExecuteAction)
-				r.Get("/sessions/{id}/screenshot", browserHandler.GetScreenshot)
-				r.Post("/sessions/{id}/control", browserHandler.TakeControl)
-				r.Post("/sessions/{id}/release", browserHandler.ReleaseControl)
-				r.Get("/sessions/{id}/tasks", browserHandler.ListTasks)
-				r.Get("/tasks", browserHandler.ListAllTasks)
-				r.Get("/tasks/{taskId}", browserHandler.GetTask)
-				r.Get("/tasks/{taskId}/actions", browserHandler.GetTaskActions)
-			})
-
 			// Notifications
 			r.Route("/notifications", func(r chi.Router) {
 				r.Get("/", notificationsHandler.List)
@@ -455,22 +425,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/detect-git", backupHandler.DetectGit)
 			})
 
-			// Terminal
-			r.Route("/terminal", func(r chi.Router) {
-				r.Get("/sessions", terminalHandler.ListSessions)
-				r.Post("/sessions", terminalHandler.CreateSession)
-				r.Get("/sessions/{id}", terminalHandler.GetSession)
-				r.Put("/sessions/{id}", terminalHandler.UpdateSession)
-				r.Delete("/sessions/{id}", terminalHandler.DeleteSession)
-				r.Post("/upload", terminalHandler.UploadFile)
-				r.Post("/resolve-path", terminalHandler.ResolvePath)
-				r.Get("/workbenches", terminalHandler.ListWorkbenches)
-				r.Post("/workbenches", terminalHandler.CreateWorkbench)
-				r.Put("/workbenches/{id}", terminalHandler.UpdateWorkbench)
-				r.Delete("/workbenches/{id}", terminalHandler.DeleteWorkbench)
-				r.Put("/workbenches-reorder", terminalHandler.ReorderWorkbenches)
-			})
-
 			// Projects
 			r.Route("/projects", func(r chi.Router) {
 				r.Get("/", projectsHandler.List)
@@ -493,6 +447,18 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/{id}/items/{itemId}", todoListsHandler.UpdateItem)
 				r.Put("/{id}/items/{itemId}/toggle", todoListsHandler.ToggleItem)
 				r.Delete("/{id}/items/{itemId}", todoListsHandler.DeleteItem)
+			})
+
+			// Workspaces
+			r.Route("/workspaces", func(r chi.Router) {
+				r.Get("/", workspacesHandler.List)
+				r.Post("/", workspacesHandler.Create)
+				r.Get("/active", workspacesHandler.GetActive)
+				r.Put("/active", workspacesHandler.SetActive)
+				r.Put("/{id}", workspacesHandler.Update)
+				r.Patch("/{id}", workspacesHandler.Update)
+				r.Delete("/{id}", workspacesHandler.Delete)
+				r.Get("/{id}/files", workspacesHandler.ListFiles)
 			})
 
 			// Media Library
@@ -552,6 +518,24 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 func (s *Server) setupFrontend(frontendFS fs.FS) {
 	fileServer := http.FileServer(http.FS(frontendFS))
 
+	// serveWithCache applies correct caching so updates are picked up reliably.
+	// The SPA shell (index.html) must never be cached — otherwise desktop
+	// WebViews (WKWebView) and browsers keep serving an old index.html that
+	// references stale hashed asset filenames, making every update look like
+	// "no changes". Content-hashed build assets, by contrast, are safe to cache
+	// forever since their filename changes whenever their content changes.
+	serveWithCache := func(w http.ResponseWriter, r *http.Request, isIndex bool) {
+		switch {
+		case isIndex:
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		case strings.HasPrefix(r.URL.Path, "/assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		fileServer.ServeHTTP(w, r)
+	}
+
 	s.Router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		// If the request is for an API route, return 404
 		if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -569,12 +553,12 @@ func (s *Server) setupFrontend(frontendFS fs.FS) {
 		f, err := frontendFS.Open(strings.TrimPrefix(path, "/"))
 		if err == nil {
 			f.Close()
-			fileServer.ServeHTTP(w, r)
+			serveWithCache(w, r, path == "/index.html")
 			return
 		}
 
 		// SPA fallback: serve index.html for all other routes
 		r.URL.Path = "/"
-		fileServer.ServeHTTP(w, r)
+		serveWithCache(w, r, true)
 	})
 }

@@ -39,15 +39,6 @@ type MemoryManager interface {
 	Close()
 }
 
-// BrowserManager is the interface for the browser session manager (avoids circular imports).
-// Used by RoleChat and GatewayAnalyze to inject browser_action tool into agent conversations.
-type BrowserManager interface {
-	BuildBrowserActionDef() llm.ToolDef
-	MakeBrowserActionHandler() llm.ToolHandler
-	BuildSessionsPromptSection(agentSlug string) string
-}
-
-
 // StreamState tracks the live streaming output of an active agent for a thread.
 type StreamState struct {
 	mu        sync.Mutex   `json:"-"`
@@ -83,7 +74,6 @@ type Manager struct {
 	ContextLimitOverride int  // 0 = use model default
 	ToolMgr              ToolManager
 	MemoryMgr            MemoryManager
-	BrowserMgr           BrowserManager
 	FrontendFS           fs.FS
 	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
 	manifestCache        sync.Map // map[toolID][]byte
@@ -144,13 +134,13 @@ func (m *Manager) Provider() llm.Provider {
 	return m.client
 }
 
-// GatewayName returns the configured gateway name from the builder role, falling back to "Pounce".
+// GatewayName returns the configured gateway name from the builder role, falling back to "Gateway".
 func (m *Manager) GatewayName() string {
 	var name string
 	if err := m.db.QueryRow("SELECT name FROM agent_roles WHERE slug = 'builder'").Scan(&name); err == nil && name != "" {
 		return name
 	}
-	return "Pounce"
+	return "Gateway"
 }
 
 func (m *Manager) buildAgentList() string {

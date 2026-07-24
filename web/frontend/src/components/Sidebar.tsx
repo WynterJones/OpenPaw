@@ -1,4 +1,5 @@
-import { NavLink } from "react-router";
+import { useState, useEffect, useRef } from "react";
+import { NavLink, Link, useLocation } from "react-router";
 import {
   MessageSquare,
   Wrench,
@@ -9,15 +10,25 @@ import {
   Clock,
   FileText,
   Settings,
-  BookOpen,
-  Monitor,
+  Store,
+  Database,
   Heart,
-  TerminalSquare,
   ListTodo,
-  ImageIcon,
   ChevronRight,
+  ChevronDown,
+  ChevronsUpDown,
+  Check,
+  Plus,
   PanelLeftClose,
+  MoreHorizontal,
 } from "lucide-react";
+import { api, type Dashboard } from "../lib/api";
+import { workspaces } from "../lib/api-helpers";
+import type { Workspace } from "../lib/types";
+import { startWindowDrag } from "../lib/tauri";
+import { Button } from "./Button";
+import { useOpenRouterBalance } from "../hooks/useOpenRouterBalance";
+import { providerName } from "../lib/provider";
 
 type NavItem = {
   to: string;
@@ -30,48 +41,362 @@ type NavGroup = { items: NavItem[] };
 const navGroups: NavGroup[] = [
   {
     items: [
-      {
-        to: "/dashboards",
-        icon: LayoutDashboard,
-        label: "Dashboard",
-        featured: true,
-      },
-    ],
-  },
-  {
-    items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
-      { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
-      { to: "/browser", icon: Monitor, label: "Browsers" },
-      { to: "/context", icon: BookOpen, label: "Context" },
-      { to: "/media", icon: ImageIcon, label: "Media" },
-      { to: "/todo-lists", icon: ListTodo, label: "Todo Lists" },
+      { to: "/knowledge-base", icon: Database, label: "Context" },
+      { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
     ],
-  },
-  {
-    items: [
-      { to: "/scheduler", icon: Clock, label: "Scheduler" },
-      { to: "/heartbeat", icon: Heart, label: "Heartbeat" },
-    ],
-  },
-  {
-    items: [
-      { to: "/agents", icon: Bot, label: "Agents" },
-      { to: "/tools", icon: Wrench, label: "Tools" },
-      { to: "/skills", icon: Sparkles, label: "Skills" },
-      { to: "/library", icon: BookOpen, label: "Library" },
-    ],
-  },
-  {
-    items: [
-      { to: "/secrets", icon: KeyRound, label: "Secrets" },
-      { to: "/logs", icon: FileText, label: "Logs" },
-    ],
-  },
-  {
-    items: [{ to: "/settings", icon: Settings, label: "Settings" }],
   },
 ];
+
+const moreItems: NavItem[] = [
+  { to: "/agents", icon: Bot, label: "Agents" },
+  { to: "/tools", icon: Wrench, label: "Tools" },
+  { to: "/skills", icon: Sparkles, label: "Skills" },
+  { to: "/library", icon: Store, label: "Templates" },
+  { to: "/scheduler", icon: Clock, label: "Scheduler" },
+  { to: "/heartbeat", icon: Heart, label: "Heartbeat" },
+  { to: "/secrets", icon: KeyRound, label: "Secrets" },
+  { to: "/logs", icon: FileText, label: "Logs" },
+  { to: "/settings", icon: Settings, label: "Settings" },
+];
+
+function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<Workspace[]>([]);
+  const [active, setActive] = useState<Workspace | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const load = async () => {
+    try {
+      const [all, act] = await Promise.all([
+        workspaces.list(),
+        workspaces.getActive(),
+      ]);
+      setList(Array.isArray(all) ? all : []);
+      setActive(act ?? null);
+    } catch {
+      /* ignore — leave the switcher in its default state */
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, []);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  // Switching the active workspace re-scopes everything server-side, so the
+  // simplest reliable refresh is a full reload after the setActive call.
+  const switchTo = async (id: string) => {
+    setOpen(false);
+    if (active && id === active.id) return;
+    try {
+      await workspaces.setActive(id);
+      window.location.reload();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const submitCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const ws = await workspaces.create(name);
+      await workspaces.setActive(ws.id);
+      window.location.reload();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const activeName = active?.name ?? "Workspace";
+  const initial = activeName.charAt(0).toUpperCase() || "W";
+
+  return (
+    <div ref={ref} className="relative px-2 pt-1 pb-1">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={collapsed ? activeName : "Switch workspace"}
+        className={`w-full flex items-center gap-2 rounded-lg border border-border-0 bg-surface-2 hover:bg-surface-3 transition-colors cursor-pointer ${collapsed ? "justify-center p-2" : "px-2.5 py-2"}`}
+      >
+        <span className="flex-shrink-0 w-6 h-6 rounded-md bg-accent-primary/15 text-accent-text text-xs font-bold flex items-center justify-center">
+          {initial}
+        </span>
+        {!collapsed && (
+          <>
+            <span className="flex-1 min-w-0 text-left text-sm font-medium text-text-1 truncate">
+              {activeName}
+            </span>
+            <ChevronsUpDown className="w-4 h-4 text-text-3 flex-shrink-0" aria-hidden="true" />
+          </>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className={`absolute z-50 rounded-lg border border-border-0 bg-surface-1 shadow-xl py-1 ${collapsed ? "left-full top-1 ml-2 w-52" : "left-2 right-2 top-full mt-1"}`}
+          role="menu"
+        >
+          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
+            Workspaces
+          </p>
+          <div className="max-h-64 overflow-y-auto">
+            {list.length === 0 ? (
+              <p className="px-3 py-1.5 text-xs text-text-3">No workspaces</p>
+            ) : (
+              list.map((ws) => (
+                <button
+                  key={ws.id}
+                  role="menuitem"
+                  onClick={() => switchTo(ws.id)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+                >
+                  <span className="flex-1 min-w-0 text-left truncate">{ws.name}</span>
+                  {active?.id === ws.id && (
+                    <Check className="w-3.5 h-3.5 text-accent-text flex-shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+          <div className="my-1 border-t border-border-0" />
+          <div className="px-2 py-1">
+            {creating ? (
+              <div className="space-y-1.5">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitCreate();
+                    if (e.key === "Escape") { setCreating(false); setNewName(""); }
+                  }}
+                  placeholder="Workspace name"
+                  className="w-full rounded-md border border-border-1 bg-surface-0 text-text-1 px-2.5 py-1.5 text-sm placeholder:text-text-3/60 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none"
+                />
+                <div className="flex gap-1.5">
+                  <Button
+                    onClick={submitCreate}
+                    disabled={!newName.trim()}
+                    icon={<Plus className="w-4 h-4" />}
+                    size="sm"
+                    className="flex-1"
+                  >
+                    Create
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => { setCreating(false); setNewName(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                onClick={() => setCreating(true)}
+                icon={<Plus className="w-4 h-4" />}
+                size="sm"
+                className="w-full"
+              >
+                New workspace
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardsNav({ collapsed }: { collapsed: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const location = useLocation();
+  const activeId = new URLSearchParams(location.search).get("id");
+
+  const loadDashboards = async () => {
+    try {
+      const data = await api.get<Dashboard[]>("/dashboards");
+      setDashboards(Array.isArray(data) ? data : []);
+    } catch {
+      setDashboards([]);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadDashboards();
+  }, []);
+
+  if (collapsed) {
+    return (
+      <NavLink
+        to="/dashboards"
+        title="Dashboards"
+        className={({ isActive }) =>
+          `flex items-center justify-center px-3 py-3 rounded-lg text-sm font-medium transition-all duration-150 ${
+            isActive
+              ? "bg-accent-primary/15 text-accent-text"
+              : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+          }`
+        }
+      >
+        <LayoutDashboard className="flex-shrink-0 w-5 h-5" />
+      </NavLink>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center">
+        <NavLink
+          to="/dashboards"
+          className={({ isActive }) =>
+            `flex flex-1 items-center gap-3 pl-3 pr-2 py-3 rounded-lg text-sm font-semibold transition-all duration-150 ${
+              isActive
+                ? "bg-accent-primary/15 text-accent-text"
+                : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+            }`
+          }
+        >
+          <LayoutDashboard className="flex-shrink-0 w-5 h-5" />
+          <span>Dashboards</span>
+        </NavLink>
+        <button
+          onClick={() => {
+            setOpen((o) => !o);
+            if (!open) loadDashboards();
+          }}
+          aria-expanded={open}
+          aria-label={open ? "Collapse dashboards list" : "Expand dashboards list"}
+          className="ml-1 p-2 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+        >
+          <ChevronDown
+            className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-0.5 ml-4 pl-2 border-l border-border-0 space-y-0.5">
+          {dashboards.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
+          ) : (
+            dashboards.map((d) => {
+              const isActive =
+                location.pathname === "/dashboards" && activeId === d.id;
+              return (
+                <Link
+                  key={d.id}
+                  to={`/dashboards?id=${d.id}`}
+                  title={d.name}
+                  className={`block px-3 py-2 rounded-lg text-sm truncate transition-colors ${
+                    isActive
+                      ? "bg-accent-muted text-accent-text"
+                      : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+                  }`}
+                >
+                  {d.name}
+                </Link>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MoreNav({ collapsed }: { collapsed: boolean }) {
+  const location = useLocation();
+  const hasActive = moreItems.some((i) => location.pathname === i.to);
+  const [open, setOpen] = useState(hasActive);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
+
+  if (collapsed) {
+    return (
+      <div className="space-y-0.5">
+        {moreItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            title={item.label}
+            className={({ isActive }) =>
+              `flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                isActive
+                  ? "bg-accent-muted text-accent-text"
+                  : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+              }`
+            }
+          >
+            <item.icon className="flex-shrink-0 w-5 h-5" />
+          </NavLink>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+          open
+            ? "text-text-1"
+            : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+        }`}
+      >
+        <MoreHorizontal className="flex-shrink-0 w-5 h-5" />
+        <span className="flex-1 text-left">More</span>
+        <ChevronDown
+          className={`w-4 h-4 text-text-3 transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {open && (
+        <div className="mt-0.5 ml-4 pl-2 border-l border-border-0 space-y-0.5">
+          {moreItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  isActive
+                    ? "bg-accent-muted text-accent-text"
+                    : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+                }`
+              }
+            >
+              <item.icon className="flex-shrink-0 w-4 h-4" />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface SidebarProps {
   collapsed: boolean;
@@ -79,15 +404,29 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const balance = useOpenRouterBalance();
   return (
     <aside
       data-tauri-drag-region
+      onMouseDown={startWindowDrag}
       className={`hidden md:flex flex-col bg-surface-1 border-r border-border-0 transition-all duration-200 relative z-[1] ${collapsed ? "w-16" : "w-56"}`}
     >
-      <nav data-tauri-drag-region className="op-sidebar-nav flex-1 py-3 px-2 overflow-y-auto">
+      <div
+        data-tauri-drag-region
+        className={`flex items-center flex-shrink-0 pt-9 pb-2.5 ${collapsed ? "justify-center px-2.5" : "px-4"}`}
+      >
+        <img
+          src="/logo-transparent.png"
+          alt="OpenPaw"
+          className={`object-contain pointer-events-none select-none ${collapsed ? "h-4 w-auto" : "w-full h-auto"}`}
+        />
+      </div>
+      <WorkspaceSwitcher collapsed={collapsed} />
+      <nav data-tauri-drag-region className="op-sidebar-nav flex-1 px-2 pb-3 overflow-y-auto">
+        <DashboardsNav collapsed={collapsed} />
         {navGroups.map((group, gi) => (
           <div key={gi}>
-            {gi > 0 && <div className="mx-3 my-2 border-b border-border-0" />}
+            <div className="mx-3 my-2 border-b border-border-0" />
             <div className="space-y-0.5">
               {group.items.map((item) => (
                 <NavLink
@@ -119,6 +458,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
           </div>
         ))}
+        <div className="mx-3 my-2 border-b border-border-0" />
+        <MoreNav collapsed={collapsed} />
       </nav>
 
       <div className="border-t border-border-0">
@@ -140,6 +481,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
         {!collapsed && (
           <div className="px-4 pb-3 pt-0">
+            <p className="text-[11px] font-medium text-text-3 mb-1">
+              Currently using {providerName(balance)}
+            </p>
             <p className="text-[10px] text-text-3" aria-hidden="true">
               &copy; OpenPaw &middot; Agentic Factory
             </p>

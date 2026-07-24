@@ -27,6 +27,9 @@ type Config struct {
 	Timezone    string `json:"timezone"`
 	ActiveStart string `json:"active_start"`
 	ActiveEnd   string `json:"active_end"`
+	// WorkspaceID is the heartbeat's target workspace ("" = global; falls back
+	// to the active workspace when the heartbeat creates a chat thread).
+	WorkspaceID string `json:"workspace_id"`
 }
 
 func DefaultConfig() Config {
@@ -74,7 +77,7 @@ func (m *Manager) LoadConfig() {
 	cfg := DefaultConfig()
 
 	rows, err := m.db.Query(
-		"SELECT key, value FROM settings WHERE key IN ('heartbeat_enabled', 'heartbeat_interval_sec', 'heartbeat_timezone', 'heartbeat_active_start', 'heartbeat_active_end')",
+		"SELECT key, value FROM settings WHERE key IN ('heartbeat_enabled', 'heartbeat_interval_sec', 'heartbeat_timezone', 'heartbeat_active_start', 'heartbeat_active_end', 'heartbeat_workspace_id')",
 	)
 	if err == nil {
 		defer rows.Close()
@@ -96,6 +99,8 @@ func (m *Manager) LoadConfig() {
 				cfg.ActiveStart = val
 			case "heartbeat_active_end":
 				cfg.ActiveEnd = val
+			case "heartbeat_workspace_id":
+				cfg.WorkspaceID = val
 			}
 		}
 	}
@@ -125,7 +130,21 @@ func (m *Manager) GetConfig() map[string]string {
 		"heartbeat_timezone":     m.config.Timezone,
 		"heartbeat_active_start": m.config.ActiveStart,
 		"heartbeat_active_end":   m.config.ActiveEnd,
+		"heartbeat_workspace_id": m.config.WorkspaceID,
 	}
+}
+
+// targetWorkspaceID resolves the workspace a heartbeat-created thread should
+// land in: the configured heartbeat workspace, or the active workspace when
+// unset (empty = global/active).
+func (m *Manager) targetWorkspaceID() string {
+	m.mu.RLock()
+	ws := m.config.WorkspaceID
+	m.mu.RUnlock()
+	if ws == "" {
+		return m.db.ActiveWorkspaceID()
+	}
+	return ws
 }
 
 // UpdateConfig saves new settings and hot-reloads.
@@ -901,10 +920,10 @@ func (m *Manager) createChatThread(title, message, agentSlug string) (string, er
 	msgID := uuid.New().String()
 	now := time.Now().UTC()
 
-	// Create thread
+	// Create thread in the heartbeat's target workspace (or the active one).
 	_, err := m.db.Exec(
-		"INSERT INTO chat_threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		threadID, title, now, now,
+		"INSERT INTO chat_threads (id, title, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		threadID, title, m.targetWorkspaceID(), now, now,
 	)
 	if err != nil {
 		return "", fmt.Errorf("create thread: %w", err)

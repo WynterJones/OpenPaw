@@ -17,7 +17,6 @@ import {
   GripVertical,
   PanelLeft,
 } from "lucide-react";
-import { Header } from "../components/Header";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { useToast } from "../components/Toast";
@@ -273,7 +272,7 @@ function FileItem({
 
 // ---- Main Page ----------------------------------------------------------------
 
-export function Context() {
+export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
   const { toast } = useToast();
 
   // Tree data
@@ -319,7 +318,7 @@ export function Context() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
 
   // About You mode
-  const [aboutYouMode, setAboutYouMode] = useState(false);
+  const [aboutYouMode, setAboutYouMode] = useState(view === "about");
   const [aboutYouContent, setAboutYouContent] = useState("");
   const [aboutYouSaved, setAboutYouSaved] = useState("");
   const [aboutYouDirty, setAboutYouDirty] = useState(false);
@@ -654,6 +653,14 @@ export function Context() {
     }
   };
 
+  // When mounted as the dedicated About You tab, open straight into the editor.
+  useEffect(() => {
+    if (view === "about") {
+      openAboutYou();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
   const saveAboutYou = async () => {
     setAboutYouSaving(true);
     try {
@@ -686,8 +693,6 @@ export function Context() {
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <Header title="Context" />
-
       {/* Drag overlay (upload from desktop) */}
       {isDragging && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -712,25 +717,11 @@ export function Context() {
         )}
 
         {/* ---- Left sidebar -------------------------------------------------- */}
+        {view !== "about" && (
         <aside
           className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
         >
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {/* About You button — always visible at top */}
-            <div className="mb-1">
-              <Button
-                variant={aboutYouMode ? "primary" : "secondary"}
-                size="sm"
-                onClick={openAboutYou}
-                icon={<UserPen className="w-4 h-4" />}
-                className="w-full"
-              >
-                About You
-              </Button>
-            </div>
-
-            <div className="mx-2 mb-1 border-b border-border-0" />
-
             {loading ? (
               <div className="flex items-center justify-center h-24 text-text-3 text-sm">
                 Loading...
@@ -841,6 +832,7 @@ export function Context() {
             />
           </div>
         </aside>
+        )}
 
         {/* ---- Right panel --------------------------------------------------- */}
         <main className="flex-1 flex flex-col min-w-0 bg-surface-0 overflow-hidden">
@@ -849,12 +841,14 @@ export function Context() {
               {/* About You header */}
               <div className="flex items-center justify-between px-3 md:px-5 py-3 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0 gap-2">
                 <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-                  <button
-                    onClick={() => setMobileSidebarOpen(true)}
-                    className="md:hidden p-1.5 -ml-1 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
-                  >
-                    <PanelLeft className="w-4 h-4" />
-                  </button>
+                  {view !== "about" && (
+                    <button
+                      onClick={() => setMobileSidebarOpen(true)}
+                      className="md:hidden p-1.5 -ml-1 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
+                    >
+                      <PanelLeft className="w-4 h-4" />
+                    </button>
+                  )}
                   <UserPen className="w-5 h-5 text-accent-primary flex-shrink-0" />
                   <span className="text-sm font-semibold text-text-0">
                     About You
@@ -909,14 +903,14 @@ export function Context() {
               >
                 <PanelLeft className="w-6 h-6" />
               </button>
-              <div className="hidden md:flex w-16 h-16 rounded-2xl bg-surface-2 items-center justify-center">
-                <File className="w-8 h-8 text-text-3" />
+              <div className="hidden md:flex w-16 h-16 rounded-2xl bg-surface-2 items-center justify-center text-text-2">
+                <File className="w-8 h-8" />
               </div>
               <div>
                 <p className="text-base font-semibold text-text-1 mb-1">
                   Select a file
                 </p>
-                <p className="text-sm text-text-3">
+                <p className="text-xs text-text-2 max-w-sm">
                   Choose a file from the sidebar to view or edit it.
                 </p>
               </div>

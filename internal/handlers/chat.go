@@ -73,8 +73,9 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.created_at, t.updated_at
 		 FROM chat_threads t
 		 LEFT JOIN (SELECT thread_id, SUM(cost_usd) AS cost FROM chat_messages GROUP BY thread_id) c ON c.thread_id = t.id
+		 WHERE t.workspace_id = ?
 		 ORDER BY t.updated_at DESC LIMIT ? OFFSET ?`,
-		limit, offset,
+		activeWorkspaceID(h.db), limit, offset,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list threads")
@@ -148,8 +149,8 @@ func (h *ChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err := h.db.Exec(
-		"INSERT INTO chat_threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		id, req.Title, now, now,
+		"INSERT INTO chat_threads (id, title, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		id, req.Title, activeWorkspaceID(h.db), now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create thread")

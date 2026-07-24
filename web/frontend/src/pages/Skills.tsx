@@ -164,7 +164,7 @@ export function Skills() {
   const paginatedSkills = showFolderSections ? searchFiltered : searchFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const renderSkillContent = (items: Skill[]) => view === 'grid' ? (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {items.map(skill => (
         <Card key={skill.name} hover onClick={() => handleEdit(skill)}>
           <div className="min-w-0">
@@ -254,7 +254,7 @@ export function Skills() {
                   <EmptyState
                     icon={<Wrench className="w-8 h-8" />}
                     title={search ? 'No skills found' : 'No skills yet'}
-                    description={search ? 'Try a different search term.' : 'Create a skill or install one from the Library page.'}
+                    description={search ? 'Try a different search term.' : 'Create a skill or install one from Templates.'}
                   />
                 ) : showFolderSections ? (
                   <div className="space-y-4">

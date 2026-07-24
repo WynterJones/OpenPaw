@@ -3,11 +3,12 @@ import { ChevronDown, Loader2, Check, AlertCircle, Activity } from 'lucide-react
 import type { ToolCallResult } from '../../lib/api';
 import { getToolDetail, groupBy, toolDisplayName, toolGroupKey, timeAgo, type StreamingTool } from '../../lib/chatUtils';
 
-export function ToolActivityPanel({ tools, isStreaming }: {
+export function ToolActivityPanel({ tools, isStreaming, defaultExpanded }: {
   tools: ToolCallResult[];
   isStreaming?: boolean;
+  defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   if (!tools.length) return null;
 
   const groups = groupBy(tools, t => toolGroupKey(t));
@@ -15,38 +16,26 @@ export function ToolActivityPanel({ tools, isStreaming }: {
   const total = tools.length;
 
   return (
-    <div className="rounded-lg border border-border-1 bg-surface-2/50 overflow-hidden my-2">
+    <div className={`rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left cursor-pointer hover:bg-surface-2 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"
       >
         {isStreaming ? (
           <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin flex-shrink-0" />
         ) : errorCount > 0 ? (
           <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
         ) : (
-          <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <Check className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
         )}
-        <span className="text-xs font-medium text-text-2">
+        <span className="text-xs font-medium text-text-2 whitespace-nowrap">
           {total} tool call{total !== 1 ? 's' : ''}
         </span>
-        <div className="flex items-center gap-1.5 flex-1 flex-wrap">
-          {groups.map(g => {
-            const sample = g.items[0];
-            const display = toolDisplayName(sample.tool_name, sample.endpoint);
-            return (
-              <span key={g.name} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-3 text-[11px] text-text-2">
-                {display}
-                {g.items.length > 1 && <span className="text-text-3">&times;{g.items.length}</span>}
-              </span>
-            );
-          })}
-          {errorCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/10 text-[11px] text-red-400">
-              {errorCount} error{errorCount !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+        {errorCount > 0 && (
+          <span className="text-[11px] text-red-400 flex-shrink-0 whitespace-nowrap">
+            {errorCount} error{errorCount !== 1 ? 's' : ''}
+          </span>
+        )}
         <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
@@ -67,10 +56,10 @@ export function ToolActivityPanel({ tools, isStreaming }: {
                         {call.status === 'error' ? (
                           <AlertCircle className="w-3 h-3 flex-shrink-0" />
                         ) : (
-                          <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                          <Check className="w-3 h-3 text-text-3 flex-shrink-0" />
                         )}
-                        <span className="flex-shrink-0 w-16 text-text-3">{toolDisplayName(call.tool_name, call.endpoint)}</span>
-                        {detail && <span className="truncate flex-1 font-mono">{detail}</span>}
+                        <span className="flex-shrink-0 max-w-[45%] truncate text-text-2">{toolDisplayName(call.tool_name, call.endpoint)}</span>
+                        {detail && <span className="truncate flex-1 min-w-0 font-mono text-text-3">{detail}</span>}
                         {call.timestamp && <span className="text-text-3 text-[10px] flex-shrink-0">{timeAgo(call.timestamp)}</span>}
                       </div>
                     );
@@ -95,37 +84,25 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
   const total = tools.length;
 
   return (
-    <div className="rounded-lg border border-border-1 bg-surface-2/50 overflow-hidden my-2">
+    <div className={`rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left cursor-pointer hover:bg-surface-2 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"
       >
         {allDone ? (
-          <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <Check className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
         ) : (
           <Activity className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
         )}
-        <span className="text-xs font-medium text-text-2">
+        <span className="text-xs font-medium text-text-2 whitespace-nowrap">
           {allDone ? `${total} tool call${total !== 1 ? 's' : ''}` : 'Activity'}
         </span>
-        <div className="flex items-center gap-1.5 flex-1 flex-wrap">
-          {groups.map(g => {
-            const sample = g.items[0];
-            const display = toolDisplayName(sample.name, sample.endpoint);
-            return (
-              <span key={g.name} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-3 text-[11px] text-text-2">
-                {display}
-                {g.items.length > 1 && <span className="text-text-3">&times;{g.items.length}</span>}
-              </span>
-            );
-          })}
-          {running > 0 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/10 text-[11px] text-accent-primary">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              {running} running
-            </span>
-          )}
-        </div>
+        {running > 0 && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-accent-primary flex-shrink-0 whitespace-nowrap">
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+            {running} running
+          </span>
+        )}
         <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
@@ -144,11 +121,11 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
                       {!tool.done ? (
                         <Loader2 className="w-3 h-3 text-accent-primary animate-spin flex-shrink-0" />
                       ) : (
-                        <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                        <Check className="w-3 h-3 text-text-3 flex-shrink-0" />
                       )}
-                      <span className="flex-shrink-0 w-16 text-text-3">{toolDisplayName(tool.name, tool.endpoint)}</span>
+                      <span className="flex-shrink-0 max-w-[45%] truncate text-text-2">{toolDisplayName(tool.name, tool.endpoint)}</span>
                       {tool.detail && (
-                        <span className="truncate flex-1 font-mono text-text-2">{tool.detail}</span>
+                        <span className="truncate flex-1 min-w-0 font-mono text-text-3">{tool.detail}</span>
                       )}
                     </div>
                   ))}

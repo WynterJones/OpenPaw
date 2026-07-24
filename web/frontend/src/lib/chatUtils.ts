@@ -43,9 +43,17 @@ export function getToolDetail(toolName: string, input: Record<string, unknown>):
 }
 
 export function toolDisplayName(toolName: string, endpoint?: string): string {
-  if (toolName !== 'call_tool' || !endpoint) return toolName;
-  const last = endpoint.split('/').filter(Boolean).pop();
-  return last || endpoint;
+  let name = toolName;
+  if (toolName === 'call_tool' && endpoint) {
+    name = endpoint.split('/').filter(Boolean).pop() || endpoint;
+  }
+  // Strip MCP-style prefixes, e.g. "mcp__openpaw__react_to_message" -> "react_to_message"
+  const parts = name.split('__').filter(Boolean);
+  if (parts.length) name = parts[parts.length - 1];
+  // Humanize: separators to spaces, sentence case
+  name = name.replace(/[_-]+/g, ' ').trim();
+  if (!name) return toolName;
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 export function toolGroupKey(t: { name: string; endpoint?: string } | { tool_name: string; endpoint?: string }): string {

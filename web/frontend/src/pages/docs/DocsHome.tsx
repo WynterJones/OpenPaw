@@ -15,7 +15,6 @@ import {
   Heart,
   MessageSquare,
   Shield,
-  Globe,
   Zap,
 } from 'lucide-react';
 import type { TocItem } from '../../components/docs/DocsTableOfContents';
@@ -42,7 +41,6 @@ const keyFeatures = [
   { icon: Heart, label: 'Heartbeat', description: 'Proactive agent check-ins on a schedule' },
   { icon: MessageSquare, label: 'Chat', description: 'Threaded conversations with multiple agents' },
   { icon: Shield, label: 'Secrets', description: 'Encrypted credential management for tools' },
-  { icon: Globe, label: 'Browser Automation', description: 'AI-driven web browsing and data extraction' },
   { icon: Zap, label: 'Real-time', description: 'WebSocket streaming for live agent output' },
 ];
 

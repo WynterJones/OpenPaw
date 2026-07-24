@@ -10,32 +10,29 @@ import {
   Clock,
   FileText,
   Settings,
-  BookOpen,
-  Monitor,
+  Store,
+  Database,
   Heart,
-  TerminalSquare,
   ListTodo,
   MoreHorizontal,
 } from 'lucide-react';
 
 const primaryItems = [
-  { to: '/dashboards', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboards', icon: LayoutDashboard, label: 'Dashboards' },
   { to: '/chat', icon: MessageSquare, label: 'Chats' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/scheduler', icon: Clock, label: 'Scheduler' },
 ];
 
 const moreItems = [
-  { to: '/workbench', icon: TerminalSquare, label: 'Workbench' },
-  { to: '/browser', icon: Monitor, label: 'Browser' },
-  { to: '/context', icon: BookOpen, label: 'Context' },
-  { to: '/todo-lists', icon: ListTodo, label: 'Todo Lists' },
-  { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
+  { to: '/knowledge-base', icon: Database, label: 'Context' },
+  { to: '/todo-lists', icon: ListTodo, label: 'Tasks' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },
-  { to: '/library', icon: BookOpen, label: 'Library' },
+  { to: '/library', icon: Store, label: 'Templates' },
   { to: '/secrets', icon: KeyRound, label: 'Secrets' },
   { to: '/logs', icon: FileText, label: 'Logs' },
+  { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

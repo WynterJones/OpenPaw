@@ -11,7 +11,6 @@ import {
   Clock,
   Heart,
   LayoutDashboard,
-  Monitor,
   Globe,
   Zap,
   Bell,
@@ -78,12 +77,6 @@ const features = [
     name: 'Dashboards',
     id: 'dashboards',
     description: 'Build custom dashboards with widgets that pull data from tools. Metric cards, charts, tables, and more — all configurable and real-time.',
-  },
-  {
-    icon: Monitor,
-    name: 'Browser Automation',
-    id: 'browser-automation',
-    description: 'AI-driven web browsing with Playwright. Agents can navigate pages, extract data, fill forms, and take screenshots — with a live viewer in the UI.',
   },
   {
     icon: Globe,

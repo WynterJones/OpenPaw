@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -23,6 +24,11 @@ type ClaudeProvider struct {
 	mcpBaseURL string // e.g. http://127.0.0.1:41295/api/v1/mcp/
 	sem        chan struct{}
 	probe      probeState
+	// workspaceDir resolves the active workspace's real files dir at exec time
+	// (data/workspaces/<activeWorkspaceID>/files). When set and non-empty, the
+	// shelled-out CLI runs with its cwd there so its native Read/Write/Edit/Bash/
+	// ls/tmux operate on that workspace's files. Nil = fall back to cfg.WorkDir.
+	workspaceDir func() string
 }
 
 func NewClaudeProvider(store llm.SessionStore, registry *mcp.Registry) *ClaudeProvider {
@@ -35,6 +41,47 @@ func NewClaudeProvider(store llm.SessionStore, registry *mcp.Registry) *ClaudePr
 }
 
 func (p *ClaudeProvider) SetMCPBaseURL(url string) { p.mcpBaseURL = url }
+
+// claudeNativeCodingTools are Claude Code CLI tool names added to --allowedTools
+// so agents can run shell commands (including tmux) and browse files in their
+// working directory. Read/Write/Edit already arrive via cfg.Tools; these add
+// command execution and directory/content navigation.
+var claudeNativeCodingTools = []string{"Bash", "Glob", "Grep", "LS"}
+
+// mergeUnique returns the concatenation of the slices with duplicates removed,
+// preserving first-seen order.
+func mergeUnique(lists ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range lists {
+		for _, v := range list {
+			if v == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// SetWorkspaceDirFunc injects a resolver for the active workspace's files dir.
+func (p *ClaudeProvider) SetWorkspaceDirFunc(fn func() string) { p.workspaceDir = fn }
+
+// resolveWorkDir picks the cwd for the shelled-out CLI: the active workspace's
+// files dir (created if missing) when a resolver is wired, otherwise the
+// caller-provided cfg.WorkDir. Returns "" only if neither is available.
+func (p *ClaudeProvider) resolveWorkDir(fallback string) string {
+	if p.workspaceDir != nil {
+		if dir := p.workspaceDir(); dir != "" {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				logger.Warn("claude-code: failed to create workspace dir %s: %v", dir, err)
+			}
+			return dir
+		}
+	}
+	return fallback
+}
 
 func (p *ClaudeProvider) Name() string { return llm.ProviderClaudeCode }
 
@@ -118,10 +165,13 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 		prompt = buildReplayPrompt(cfg.History, userMessage)
 	}
 
-	// Expose OpenPaw tools (memory, todos, delegation, image gen, browser...)
+	// Expose OpenPaw tools (memory, todos, delegation, image gen...)
 	// via the MCP bridge; native Read/Write/Edit/Bash come from the CLI itself.
+	// cfg.Tools carries the in-app FS tool names (Read/Write/Edit); add the CLI's
+	// native shell + file-navigation tools so the agent can run commands (incl.
+	// tmux) and browse the workspace files in its cwd (the active workspace dir).
 	var mcpSession *mcp.Session
-	allowed := append([]string{}, cfg.Tools...)
+	allowed := mergeUnique(cfg.Tools, claudeNativeCodingTools)
 	if len(cfg.ExtraHandlers) > 0 && p.registry != nil && p.mcpBaseURL != "" {
 		mcpSession = p.registry.Create(&mcp.Session{
 			AgentSlug: sessionAgentSlug(cfg),
@@ -140,8 +190,8 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 	}
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
-	if cfg.WorkDir != "" {
-		cmd.Dir = cfg.WorkDir
+	if dir := p.resolveWorkDir(cfg.WorkDir); dir != "" {
+		cmd.Dir = dir
 	}
 
 	emit := func(ev llm.StreamEvent) {

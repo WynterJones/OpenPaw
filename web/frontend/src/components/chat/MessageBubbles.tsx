@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { DollarSign, Zap, Users, Download } from 'lucide-react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { DollarSign, Zap, Download, Wrench } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
@@ -12,7 +12,7 @@ import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { SubAgentPanel } from './SubAgentPanel';
 import { EmojiPicker } from './EmojiPicker';
 
-function ReactionBar({ reactions, onReact }: { reactions?: Reaction[]; onReact: (emoji: string) => void }) {
+function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[]; onReact: (emoji: string) => void; trailing?: ReactNode }) {
   return (
     <div className="flex items-center gap-1 mt-1 px-1 flex-wrap">
       {reactions && reactions.length > 0 && reactions.map((r) => (
@@ -31,6 +31,24 @@ function ReactionBar({ reactions, onReact }: { reactions?: Reaction[]; onReact: 
         </button>
       ))}
       <EmojiPicker onSelect={onReact} />
+      {trailing}
+    </div>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="flex items-center gap-2 px-1 py-1.5" aria-live="polite">
+      <div className="flex items-center gap-1">
+        {[0, 150, 300].map((d) => (
+          <span
+            key={d}
+            className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-bounce"
+            style={{ animationDelay: `${d}ms` }}
+          />
+        ))}
+      </div>
+      <span className="text-sm text-text-2 font-medium">Thinking…</span>
     </div>
   );
 }
@@ -63,16 +81,14 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
           <p className="text-xs font-medium text-accent-primary mb-0.5 px-1 hidden md:block">{role.name}</p>
         )}
         {text ? (
-          <div className="text-base font-medium text-text-1 px-1">
+          <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
             <div className="prose-chat">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(text, tools.length > 0)}</ReactMarkdown>
               <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />
             </div>
           </div>
-        ) : tools.length === 0 && (!subAgentTasks || subAgentTasks.length === 0) && (
-          <div className="px-1 py-1">
-            <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse align-text-bottom" />
-          </div>
+        ) : (
+          <ThinkingIndicator />
         )}
         {subAgentTasks && subAgentTasks.length > 0 && (
           <SubAgentPanel tasks={subAgentTasks} roles={roles} />
@@ -97,7 +113,7 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   );
 }
 
-function UserMessageBubble({ message, roles, avatarPath, onReact }: { message: ChatMessage; roles: AgentRole[]; avatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
+function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -109,16 +125,9 @@ function UserMessageBubble({ message, roles, avatarPath, onReact }: { message: C
 
   return (
     <div className="flex flex-col items-end md:flex-row md:justify-end gap-1 md:gap-3">
-      <div className="w-7 h-7 md:w-8 md:h-8 rounded-md overflow-hidden flex items-center justify-center bg-accent-muted flex-shrink-0 ring-1 ring-border-1 md:order-2">
-        {avatarPath ? (
-          <img src={avatarPath} alt="You" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
-        ) : (
-          <Users className="w-4 h-4 text-accent-primary" />
-        )}
-      </div>
-      <div className="max-w-[90%] md:max-w-[75%] md:order-1">
+      <div className="max-w-[90%] md:max-w-[75%]">
         <div
-          className="rounded-2xl rounded-tr-md px-4 py-2.5 text-base font-medium bg-surface-1 text-text-1 cursor-pointer"
+          className="chat-bubble rounded-2xl rounded-tr-md px-4 py-2.5 text-base font-medium text-text-1 cursor-pointer"
           onClick={() => clamped && setExpanded(!expanded)}
         >
           <div
@@ -142,15 +151,19 @@ function UserMessageBubble({ message, roles, avatarPath, onReact }: { message: C
   );
 }
 
-export function MessageBubble({ message, roles, onRefresh, userAvatarPath, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
+export function MessageBubble({ message, roles, onRefresh, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
   const isUser = message.role === 'user';
   const role = message.agent_role_slug ? roles.find(r => r.slug === message.agent_role_slug) : null;
 
-  if (isUser) return <UserMessageBubble message={message} roles={roles} avatarPath={userAvatarPath} onReact={onReact} />;
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  if (isUser) return <UserMessageBubble message={message} roles={roles} onReact={onReact} />;
 
   const confirmation = parseConfirmation(message.content);
   const toolSummary = !confirmation ? parseToolSummary(message.content) : null;
   const widgets = parseWidgets(message.widget_data);
+  const toolCalls = message.tool_calls ?? [];
+  const hasTools = toolCalls.length > 0;
 
   return (
     <div className="flex flex-col md:flex-row gap-1 md:gap-3">
@@ -176,7 +189,7 @@ export function MessageBubble({ message, roles, onRefresh, userAvatarPath, onRea
           <ToolSummaryCardUI card={toolSummary} />
         ) : (
           <>
-            <div className="text-base font-medium text-text-1 px-1">
+            <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
               <div className="prose-chat">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(message.content, (message.tool_calls?.length ?? 0) > 0)}</ReactMarkdown>
               </div>
@@ -203,12 +216,32 @@ export function MessageBubble({ message, roles, onRefresh, userAvatarPath, onRea
             {widgets && widgets.map((w, i) => (
               <WidgetRenderer key={`w-${message.id}-${i}`} widget={w} />
             ))}
-            {message.tool_calls && message.tool_calls.length > 0 && (
-              <ToolActivityPanel tools={message.tool_calls} />
-            )}
           </>
         )}
-        <ReactionBar reactions={message.reactions} onReact={(emoji) => onReact?.(message.id, emoji)} />
+        {hasTools && toolsOpen && (
+          <ToolActivityPanel tools={toolCalls} defaultExpanded />
+        )}
+        <ReactionBar
+          reactions={message.reactions}
+          onReact={(emoji) => onReact?.(message.id, emoji)}
+          trailing={hasTools ? (
+            <button
+              type="button"
+              onClick={() => setToolsOpen((o) => !o)}
+              aria-expanded={toolsOpen}
+              aria-label={toolsOpen ? 'Hide tool calls' : 'Show tool calls'}
+              title={`${toolCalls.length} tool call${toolCalls.length !== 1 ? 's' : ''}`}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-sm border cursor-pointer transition-colors ${
+                toolsOpen
+                  ? 'bg-surface-2 border-border-1 text-text-1'
+                  : 'border-transparent text-text-3 hover:text-text-1 hover:bg-surface-2'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              {toolCalls.length > 1 && <span className="text-xs">{toolCalls.length}</span>}
+            </button>
+          ) : undefined}
+        />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {message.cost_usd > 0 && (

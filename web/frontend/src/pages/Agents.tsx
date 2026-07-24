@@ -19,12 +19,12 @@ import { Toggle } from "../components/Toggle";
 import { api, agentTasks, type AgentRole } from "../lib/api";
 
 const PRESET_AVATARS = [
-  "/avatars/engineer.webp",
-  "/avatars/marketer.webp",
-  "/avatars/social.webp",
-  "/avatars/developer.webp",
-  "/avatars/creative.webp",
-  "/avatars/analyst.webp",
+  "/avatars/avatar-1.webp",
+  "/avatars/avatar-2.webp",
+  "/avatars/avatar-3.webp",
+  "/avatars/avatar-4.webp",
+  "/avatars/avatar-5.webp",
+  "/avatars/avatar-6.webp",
 ];
 
 const MODEL_OPTIONS = [
@@ -271,7 +271,7 @@ export function Agents() {
   };
 
   const builderRole = roles.find((r) => r.slug === "builder");
-  const gatewayName = builderRole?.name || "Pounce";
+  const gatewayName = builderRole?.name || "Gateway";
 
   const nonBuilderRoles = roles.filter((r) => r.slug !== "builder");
   const getFolder = useCallback((r: AgentRole) => r.folder || '', []);
@@ -322,7 +322,7 @@ export function Agents() {
   );
 
   const renderAgentContent = (items: AgentRole[]) => view === "grid" ? (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
       {items.map((role) => (
         <Card key={role.slug} hover onClick={() => navigate(`/agents/${role.slug}`)}>
           <div className="relative">
@@ -332,7 +332,7 @@ export function Agents() {
           </div>
           <div className="flex items-center gap-4 mb-3">
             <img src={role.avatar_path} alt={role.name} className="w-14 h-14 rounded-2xl shadow-lg flex-shrink-0" />
-            <h3 className="text-xl font-bold text-text-0 pr-14">{role.name}</h3>
+            <h3 className="text-xl font-bold text-text-0 pr-14 flex-1 min-w-0 truncate">{role.name}</h3>
           </div>
           <p className="text-sm text-text-2 line-clamp-1 mb-3 leading-snug">{role.description}</p>
           <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ export function Agents() {
                 description={
                   search.trim()
                     ? "Try a different search term."
-                    : "Install from the Library page or create a custom agent."
+                    : "Install from Templates or create a custom agent."
                 }
               />
             ) : showFolderSections ? (

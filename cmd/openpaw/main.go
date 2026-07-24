@@ -17,7 +17,6 @@ import (
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/backup"
-	"github.com/openpaw/openpaw/internal/browser"
 	"github.com/openpaw/openpaw/internal/config"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/handlers"
@@ -31,7 +30,6 @@ import (
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
 	"github.com/openpaw/openpaw/internal/server"
-	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	"github.com/openpaw/openpaw/internal/updater"
 	ws "github.com/openpaw/openpaw/internal/websocket"
@@ -218,6 +216,15 @@ func main() {
 	codexProvider := providers.NewCodexProvider(db, mcpRegistry)
 	codexProvider.SetMCPBaseURL(mcpBaseURL)
 
+	// CLI providers (Claude Code / Codex) do their real coding work inside the
+	// ACTIVE workspace's files dir: data/workspaces/<activeWorkspaceID>/files.
+	// Resolved per-run so it always tracks the current active workspace.
+	activeWorkspaceFilesDir := func() string {
+		return filepath.Join(cfg.DataDir, "workspaces", db.ActiveWorkspaceID(), "files")
+	}
+	claudeProvider.SetWorkspaceDirFunc(activeWorkspaceFilesDir)
+	codexProvider.SetWorkspaceDirFunc(activeWorkspaceFilesDir)
+
 	providerRouter := llm.NewProviderRouter(llmClient)
 	providerRouter.Register(claudeProvider)
 	providerRouter.Register(codexProvider)
@@ -277,23 +284,6 @@ func main() {
 	agentMgr.ToolMgr = toolMgr
 	agentMgr.DashboardsDir = dashboardsDir
 
-	// Create browser manager
-	browserMgr := browser.NewManager(db, cfg.DataDir, broadcastFn)
-	browserMgr.SetTopicBroadcast(func(topic, msgType string, payload interface{}) {
-		if wsHub == nil {
-			return
-		}
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return
-		}
-		wsHub.BroadcastToTopic(topic, ws.Message{
-			Type:    msgType,
-			Payload: data,
-		})
-	})
-	agentMgr.BrowserMgr = browserMgr
-
 	// Create memory manager
 	memoryMgr := memory.NewManager(cfg.DataDir)
 	agentMgr.MemoryMgr = memoryMgr
@@ -301,10 +291,6 @@ func main() {
 	// Create heartbeat manager (broadcast will be wired after wsHub is available)
 	heartbeatMgr := heartbeat.New(db, agentMgr, broadcastFn, cfg.DataDir)
 	heartbeatMgr.LoadConfig()
-
-	// Create terminal manager
-	workDir, _ := os.Getwd()
-	terminalMgr := terminal.NewManager(db, workDir)
 
 	// Create backup manager
 	backupMgr := backup.New(db, secretsMgr, cfg.DataDir, broadcastFn)
@@ -366,11 +352,9 @@ func main() {
 		Scheduler:    sched,
 		AgentMgr:     agentMgr,
 		ToolMgr:      toolMgr,
-		BrowserMgr:   browserMgr,
 		HeartbeatMgr: heartbeatMgr,
 		BackupMgr:    backupMgr,
 		MemoryMgr:    memoryMgr,
-		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
 		Providers:    providerRouter,
 		MCPRegistry:  mcpRegistry,
@@ -443,12 +427,6 @@ func main() {
 
 	// Shut down backup manager
 	backupMgr.Stop()
-
-	// Shut down terminal sessions
-	terminalMgr.Shutdown()
-
-	// Shut down browser sessions
-	browserMgr.Shutdown()
 
 	// Shut down tool processes
 	toolMgr.Shutdown()

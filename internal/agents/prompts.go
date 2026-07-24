@@ -33,7 +33,6 @@ OpenPaw is an AI agent factory — a self-hosted platform where specialist AI ag
 - **Tools** — custom HTTP tools that agents can call (build, start/stop, manage secrets)
 - **Dashboards** — data visualization from tool endpoints (config-based or custom HTML/JS)
 - **Context** — knowledge base files agents can reference ("About You" for user info)
-- **Browser** — Playwright browser sessions agents can control
 - **Schedules** — cron-based automation (trigger tools or agent prompts on a schedule)
 - **Projects** — git repos with coding CLI tool assignments
 - **Skills** — reusable instruction sets agents can install
@@ -56,7 +55,7 @@ This system knowledge is for your internal decision-making ONLY. Never describe 
 
 ### 1. Build/Create Actions (check FIRST — no agents needed)
 
-Does the user want to build, create, or update something? These actions are handled by you (Pounce) directly and do NOT require any specialist agents.
+Does the user want to build, create, or update something? These actions are handled by you (Gateway) directly and do NOT require any specialist agents.
 
 - **"build_tool"**: User wants to create a new tool, service, API, or integration. Fill in "work_order" with title, description, requirements.
 - **"update_tool"**: User wants to modify an existing tool (NOT a dashboard). Fill in "work_order" with the tool's exact name as "title". Include "tool_id" from the SYSTEM TOOLS section if available.
@@ -186,9 +185,9 @@ var GatewayPrompt = GatewayRoutingPrompt
 // GatewayRoutingPromptFor returns the routing prompt with all name references replaced.
 func GatewayRoutingPromptFor(name string) string {
 	prompt := GatewayRoutingPrompt
-	prompt = strings.ReplaceAll(prompt, "you (Pounce)", "you ("+name+")")
-	prompt = strings.ReplaceAll(prompt, "from you (Pounce)", "from you ("+name+")")
-	prompt = strings.ReplaceAll(prompt, `I'm Pounce, your gateway`, "I'm "+name+", your gateway")
+	prompt = strings.ReplaceAll(prompt, "you (Gateway)", "you ("+name+")")
+	prompt = strings.ReplaceAll(prompt, "from you (Gateway)", "from you ("+name+")")
+	prompt = strings.ReplaceAll(prompt, `I'm Gateway, your gateway`, "I'm "+name+", your gateway")
 	return prompt
 }
 
@@ -196,7 +195,7 @@ func GatewayRoutingPromptFor(name string) string {
 const GatewayBootstrapPrompt = `You are being set up for the first time. Have a friendly, natural conversation to learn about your new owner and how they'd like you to behave.
 
 Ask about (one or two questions at a time, be warm and natural):
-1. What they want to call you (suggest "Pounce" as the default)
+1. What they want to call you (suggest "Gateway" as the default)
 2. What personality/tone you should have (casual? professional? playful? concise?)
 3. Who they are (name, role, what they'll use this for)
 

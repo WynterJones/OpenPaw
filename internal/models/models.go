@@ -70,8 +70,7 @@ type Schedule struct {
 	ThreadID            string     `json:"thread_id"`
 	DashboardID         string     `json:"dashboard_id"`
 	WidgetID            string     `json:"widget_id"`
-	BrowserSessionID    string     `json:"browser_session_id"`
-	BrowserInstructions string     `json:"browser_instructions"`
+	WorkspaceID         *string    `json:"workspace_id,omitempty"`
 	LastRunAt           *time.Time `json:"last_run_at,omitempty"`
 	NextRunAt           *time.Time `json:"next_run_at,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`
@@ -275,6 +274,15 @@ type ContextFile struct {
 	IsAboutYou bool      `json:"is_about_you"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type Workspace struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	SortOrder int       `json:"sort_order"`
+	IsDefault bool      `json:"is_default"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ChatAttachment struct {

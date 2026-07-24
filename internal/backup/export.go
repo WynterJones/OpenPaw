@@ -16,6 +16,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// nullStr returns the string value of a nullable column, or "" when NULL.
+// Used so nullable workspace_id columns export as a plain (possibly empty) string.
+func nullStr(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
+}
+
 type Manifest struct {
 	Version   string    `json:"version"`
 	Timestamp time.Time `json:"timestamp"`
@@ -43,9 +52,7 @@ type Stats struct {
 	ThreadMembers   int `json:"thread_members"`
 	Notifications   int `json:"notifications"`
 	SystemStats     int `json:"system_stats"`
-	BrowserSessions int `json:"browser_sessions"`
 	AgentSkills     int `json:"agent_skills"`
-	Workbenches     int `json:"workbenches"`
 	Projects        int `json:"projects"`
 	AgentTasks      int `json:"agent_tasks"`
 	TodoLists       int `json:"todo_lists"`
@@ -155,18 +162,6 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 	if n, err := exportSystemStats(db, destDir); err == nil {
 		files = append(files, n...)
 		stats.SystemStats = len(n)
-	}
-
-	// Browser sessions (config only)
-	if n, err := exportBrowserSessions(db, destDir); err == nil {
-		files = append(files, n...)
-		stats.BrowserSessions = len(n)
-	}
-
-	// Workbenches
-	if n, err := exportWorkbenches(db, destDir); err == nil {
-		files = append(files, n...)
-		stats.Workbenches = len(n)
 	}
 
 	// Projects
@@ -353,7 +348,7 @@ func exportContext(db *database.DB, destDir string) ([]string, error) {
 	}
 
 	// Folders
-	rows, err := db.Query("SELECT id, parent_id, name, sort_order, created_at, updated_at FROM context_folders ORDER BY sort_order")
+	rows, err := db.Query("SELECT id, parent_id, name, sort_order, workspace_id, created_at, updated_at FROM context_folders ORDER BY sort_order")
 	if err == nil {
 		defer rows.Close()
 		var folders []map[string]interface{}
@@ -361,13 +356,15 @@ func exportContext(db *database.DB, destDir string) ([]string, error) {
 			var id, name string
 			var parentID *string
 			var sortOrder int
+			var workspaceID sql.NullString
 			var createdAt, updatedAt time.Time
-			if rows.Scan(&id, &parentID, &name, &sortOrder, &createdAt, &updatedAt) != nil {
+			if rows.Scan(&id, &parentID, &name, &sortOrder, &workspaceID, &createdAt, &updatedAt) != nil {
 				continue
 			}
 			f := map[string]interface{}{
 				"id": id, "parent_id": parentID, "name": name,
-				"sort_order": sortOrder, "created_at": createdAt, "updated_at": updatedAt,
+				"sort_order": sortOrder, "workspace_id": nullStr(workspaceID),
+				"created_at": createdAt, "updated_at": updatedAt,
 			}
 			folders = append(folders, f)
 		}
@@ -381,7 +378,7 @@ func exportContext(db *database.DB, destDir string) ([]string, error) {
 	}
 
 	// Files (with content from context_store if text-based)
-	fRows, err := db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files ORDER BY name")
+	fRows, err := db.Query("SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, workspace_id, created_at, updated_at FROM context_files ORDER BY name")
 	if err == nil {
 		defer fRows.Close()
 		var contextFiles []map[string]interface{}
@@ -389,14 +386,16 @@ func exportContext(db *database.DB, destDir string) ([]string, error) {
 			var id, name, filename, mimeType string
 			var folderID *string
 			var sizeBytes, isAboutYou int
+			var workspaceID sql.NullString
 			var createdAt, updatedAt time.Time
-			if fRows.Scan(&id, &folderID, &name, &filename, &mimeType, &sizeBytes, &isAboutYou, &createdAt, &updatedAt) != nil {
+			if fRows.Scan(&id, &folderID, &name, &filename, &mimeType, &sizeBytes, &isAboutYou, &workspaceID, &createdAt, &updatedAt) != nil {
 				continue
 			}
 			f := map[string]interface{}{
 				"id": id, "folder_id": folderID, "name": name, "filename": filename,
 				"mime_type": mimeType, "size_bytes": sizeBytes,
 				"is_about_you": isAboutYou == 1,
+				"workspace_id": nullStr(workspaceID),
 				"created_at": createdAt, "updated_at": updatedAt,
 			}
 			contextFiles = append(contextFiles, f)
@@ -420,7 +419,7 @@ func exportDashboards(db *database.DB, destDir string) ([]string, error) {
 		return nil, err
 	}
 
-	rows, err := db.Query("SELECT id, name, description, dashboard_type, owner_agent_slug, bg_image, layout, widgets, created_at, updated_at FROM dashboards")
+	rows, err := db.Query("SELECT id, name, description, dashboard_type, owner_agent_slug, bg_image, layout, widgets, workspace_id, created_at, updated_at FROM dashboards")
 	if err != nil {
 		return nil, err
 	}
@@ -428,8 +427,9 @@ func exportDashboards(db *database.DB, destDir string) ([]string, error) {
 
 	for rows.Next() {
 		var id, name, desc, dashType, ownerSlug, bgImage, layout, widgets string
+		var workspaceID sql.NullString
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &name, &desc, &dashType, &ownerSlug, &bgImage, &layout, &widgets, &createdAt, &updatedAt) != nil {
+		if rows.Scan(&id, &name, &desc, &dashType, &ownerSlug, &bgImage, &layout, &widgets, &workspaceID, &createdAt, &updatedAt) != nil {
 			continue
 		}
 		d := map[string]interface{}{
@@ -437,6 +437,7 @@ func exportDashboards(db *database.DB, destDir string) ([]string, error) {
 			"dashboard_type": dashType, "owner_agent_slug": ownerSlug,
 			"bg_image": bgImage, "layout": json.RawMessage(layout),
 			"widgets": json.RawMessage(widgets),
+			"workspace_id": nullStr(workspaceID),
 			"created_at": createdAt, "updated_at": updatedAt,
 		}
 		path := fmt.Sprintf("dashboards/%s.json", id)
@@ -488,7 +489,7 @@ func exportTools(db *database.DB, destDir string) ([]string, error) {
 }
 
 func exportSchedules(db *database.DB, destDir string) ([]string, error) {
-	rows, err := db.Query("SELECT id, name, description, cron_expr, tool_id, action, payload, enabled, type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id, browser_session_id, browser_instructions, created_at, updated_at FROM schedules")
+	rows, err := db.Query("SELECT id, name, description, cron_expr, tool_id, action, payload, enabled, type, agent_role_slug, prompt_content, thread_id, dashboard_id, widget_id, workspace_id, created_at, updated_at FROM schedules")
 	if err != nil {
 		return nil, err
 	}
@@ -498,10 +499,11 @@ func exportSchedules(db *database.DB, destDir string) ([]string, error) {
 	for rows.Next() {
 		var id, name, desc, cron, toolID, action, payload string
 		var typ, agentSlug, promptContent, threadID string
-		var dashboardID, widgetID, browserSessionID, browserInstructions string
+		var dashboardID, widgetID string
+		var workspaceID sql.NullString
 		var enabled int
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &name, &desc, &cron, &toolID, &action, &payload, &enabled, &typ, &agentSlug, &promptContent, &threadID, &dashboardID, &widgetID, &browserSessionID, &browserInstructions, &createdAt, &updatedAt) != nil {
+		if rows.Scan(&id, &name, &desc, &cron, &toolID, &action, &payload, &enabled, &typ, &agentSlug, &promptContent, &threadID, &dashboardID, &widgetID, &workspaceID, &createdAt, &updatedAt) != nil {
 			continue
 		}
 		s := map[string]interface{}{
@@ -510,8 +512,7 @@ func exportSchedules(db *database.DB, destDir string) ([]string, error) {
 			"enabled": enabled == 1, "type": typ, "agent_role_slug": agentSlug,
 			"prompt_content": promptContent, "thread_id": threadID,
 			"dashboard_id": dashboardID, "widget_id": widgetID,
-			"browser_session_id": browserSessionID,
-			"browser_instructions": browserInstructions,
+			"workspace_id": nullStr(workspaceID),
 			"created_at": createdAt, "updated_at": updatedAt,
 		}
 		schedules = append(schedules, s)
@@ -853,7 +854,7 @@ func exportChatHistory(db *database.DB, dataDir, destDir string) ([]string, erro
 	var files []string
 
 	// Threads
-	rows, err := db.Query("SELECT id, title, created_at, updated_at FROM chat_threads ORDER BY created_at")
+	rows, err := db.Query("SELECT id, title, workspace_id, created_at, updated_at FROM chat_threads ORDER BY created_at")
 	if err != nil {
 		return nil, err
 	}
@@ -863,12 +864,14 @@ func exportChatHistory(db *database.DB, dataDir, destDir string) ([]string, erro
 	var threadIDs []string
 	for rows.Next() {
 		var id, title string
+		var workspaceID sql.NullString
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &title, &createdAt, &updatedAt) != nil {
+		if rows.Scan(&id, &title, &workspaceID, &createdAt, &updatedAt) != nil {
 			continue
 		}
 		threads = append(threads, map[string]interface{}{
-			"id": id, "title": title, "created_at": createdAt, "updated_at": updatedAt,
+			"id": id, "title": title, "workspace_id": nullStr(workspaceID),
+			"created_at": createdAt, "updated_at": updatedAt,
 		})
 		threadIDs = append(threadIDs, id)
 	}
@@ -1049,39 +1052,6 @@ func exportSystemStats(db *database.DB, destDir string) ([]string, error) {
 	return []string{path}, nil
 }
 
-func exportBrowserSessions(db *database.DB, destDir string) ([]string, error) {
-	rows, err := db.Query("SELECT id, name, headless, owner_agent_slug, created_at, updated_at FROM browser_sessions")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var sessions []map[string]interface{}
-	for rows.Next() {
-		var id, name, ownerSlug string
-		var headless int
-		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &name, &headless, &ownerSlug, &createdAt, &updatedAt) != nil {
-			continue
-		}
-		sessions = append(sessions, map[string]interface{}{
-			"id": id, "name": name, "headless": headless == 1,
-			"owner_agent_slug": ownerSlug,
-			"created_at": createdAt, "updated_at": updatedAt,
-		})
-	}
-
-	if len(sessions) == 0 {
-		return nil, nil
-	}
-
-	path := "browser_sessions.json"
-	if err := writeJSONFile(filepath.Join(destDir, path), sessions); err != nil {
-		return nil, err
-	}
-	return []string{path}, nil
-}
-
 func exportAgentSkills(dataDir, destDir string) ([]string, error) {
 	var files []string
 
@@ -1120,37 +1090,6 @@ func exportAgentSkills(dataDir, destDir string) ([]string, error) {
 	}
 
 	return files, nil
-}
-
-func exportWorkbenches(db *database.DB, destDir string) ([]string, error) {
-	rows, err := db.Query("SELECT id, name, sort_order, color, created_at FROM workbenches ORDER BY sort_order")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var workbenches []map[string]interface{}
-	for rows.Next() {
-		var id, name, color string
-		var sortOrder int
-		var createdAt time.Time
-		if rows.Scan(&id, &name, &sortOrder, &color, &createdAt) != nil {
-			continue
-		}
-		workbenches = append(workbenches, map[string]interface{}{
-			"id": id, "name": name, "sort_order": sortOrder, "color": color, "created_at": createdAt,
-		})
-	}
-
-	if len(workbenches) == 0 {
-		return nil, nil
-	}
-
-	path := "workbenches.json"
-	if err := writeJSONFile(filepath.Join(destDir, path), workbenches); err != nil {
-		return nil, err
-	}
-	return []string{path}, nil
 }
 
 func exportProjects(db *database.DB, destDir string) ([]string, error) {
@@ -1247,7 +1186,7 @@ func exportAgentTasks(db *database.DB, destDir string) ([]string, error) {
 
 func exportTodoLists(db *database.DB, destDir string) ([]string, int, int, error) {
 	// Export lists
-	listRows, err := db.Query("SELECT id, name, description, color, sort_order, created_at, updated_at FROM todo_lists ORDER BY sort_order")
+	listRows, err := db.Query("SELECT id, name, description, color, sort_order, workspace_id, created_at, updated_at FROM todo_lists ORDER BY sort_order")
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -1257,13 +1196,15 @@ func exportTodoLists(db *database.DB, destDir string) ([]string, int, int, error
 	for listRows.Next() {
 		var id, name, desc, color string
 		var sortOrder int
+		var workspaceID sql.NullString
 		var createdAt, updatedAt time.Time
-		if listRows.Scan(&id, &name, &desc, &color, &sortOrder, &createdAt, &updatedAt) != nil {
+		if listRows.Scan(&id, &name, &desc, &color, &sortOrder, &workspaceID, &createdAt, &updatedAt) != nil {
 			continue
 		}
 		lists = append(lists, map[string]interface{}{
 			"id": id, "name": name, "description": desc, "color": color,
-			"sort_order": sortOrder, "created_at": createdAt, "updated_at": updatedAt,
+			"sort_order": sortOrder, "workspace_id": nullStr(workspaceID),
+			"created_at": createdAt, "updated_at": updatedAt,
 		})
 	}
 	listRows.Close()

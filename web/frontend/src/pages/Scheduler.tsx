@@ -173,9 +173,11 @@ function ScheduleDetail({
               <Loader2 className="w-6 h-6 animate-spin text-accent-primary" />
             </div>
           ) : executions.length === 0 ? (
-            <div className="text-center py-8 text-sm text-text-3">
-              No executions yet
-            </div>
+            <EmptyState
+              icon={<Clock className="w-8 h-8" />}
+              title="No executions yet"
+              description="This schedule hasn't run yet."
+            />
           ) : (
             <DataTable
               columns={[

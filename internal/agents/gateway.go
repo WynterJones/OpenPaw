@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,15 +50,6 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	projectsSection := m.buildProjectsPromptSection()
 	if projectsSection != "" {
 		gatewayPrompt += "\n\n" + projectsSection
-	}
-
-	// Inject browser session info so gateway can route browser-related requests
-	if m.BrowserMgr != nil {
-		sessionPrompt := m.BrowserMgr.BuildSessionsPromptSection("")
-		if sessionPrompt != "" {
-			gatewayPrompt += "\n\n" + sessionPrompt
-			gatewayPrompt += "\nWhen the user asks to interact with websites or browser sessions, route to an agent that can use the browser_action tool.\n"
-		}
 	}
 
 	// Inject routing hints so gateway has full context
@@ -227,8 +219,33 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 	return strings.TrimSpace(text), nil
 }
 
-// RoleChatTools are the tools available to agents with identity files.
+// RoleChatTools are the in-app FS tools available to agents with identity files.
+// These operate in the agent's own identity dir (SOUL/RUNBOOK/memory live there)
+// and are intentionally sandboxed to it. Real coding work in the active
+// workspace's files dir happens through the CLI providers (Claude Code / Codex),
+// whose shelled-out process cwd is set to that workspace dir.
 var RoleChatTools = []string{"Read", "Write", "Edit"}
+
+// buildWorkspacePromptSection tells the agent which workspace it's operating in.
+// Resolved per run (from the active workspace) so switching workspaces changes
+// what the agent is told. The working-directory guidance is only included for
+// CLI providers (Claude Code / Codex), whose process cwd is the workspace files
+// dir; for the OpenRouter loop (sandboxed to the identity dir) only the name is
+// stated, to avoid implying it writes into the workspace.
+func (m *Manager) buildWorkspacePromptSection(providerName string) string {
+	id := m.db.ActiveWorkspaceID()
+	var name string
+	if err := m.db.QueryRow("SELECT name FROM workspaces WHERE id = ?", id).Scan(&name); err != nil || name == "" {
+		name = "Default"
+	}
+
+	section := fmt.Sprintf("## Workspace\nYou are working in the %q workspace.", name)
+	if providerName != llm.ProviderOpenRouter {
+		dir := filepath.Join(m.DataDir, "workspaces", id, "files")
+		section += fmt.Sprintf(" Its working directory is `%s` — this is your current working directory, so clone repos, create files, and run commands here. Files you create appear in this workspace's Directory.", dir)
+	}
+	return section
+}
 
 func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, string, string, error) {
 	provider := m.Provider()
@@ -283,6 +300,9 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 
 	// Append current date/time to system prompt
 	systemPrompt += fmt.Sprintf("\n\nCurrent time: %s", time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"))
+
+	// Tell the agent which workspace it's in (resolved per run).
+	systemPrompt += "\n\n---\n\n" + m.buildWorkspacePromptSection(provider.Name())
 
 	cfg := llm.AgentConfig{
 		Model:   resolvedModel,
@@ -368,13 +388,23 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers[name] = handler
 	}
 
+	// Inject context-document tools so agents can create/update knowledge docs
+	cfg.System += "\n\n---\n\n" + buildContextPromptSection(m.db)
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildContextToolDefs()...)
+	if cfg.ExtraHandlers == nil {
+		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+	}
+	for name, handler := range MakeContextToolHandlers(m.db, m.DataDir, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+
 	// Inject image generation tool (OpenRouter with model fallback chain)
 	if m.client != nil && m.client.IsConfigured() {
 		cfg.ExtraTools = append(cfg.ExtraTools, BuildGenerateImageDef())
 		if cfg.ExtraHandlers == nil {
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 		}
-		cfg.ExtraHandlers["generate_image"] = m.makeGenerateImageHandler()
+		cfg.ExtraHandlers["generate_image"] = m.makeGenerateImageHandler(provider.Name(), threadID)
 		imageNote := "\n\n## IMAGE GENERATION\nYou can generate images using the `generate_image` tool. It uses OpenRouter with automatic model fallback. The tool supports an `images` parameter — pass local image URLs as visual references.\n"
 		cfg.System += imageNote
 		if avatarDescription != "" || avatarPath != "" {
@@ -420,19 +450,6 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	}
 	cfg.System += "\n\n" + buildReactionPromptSection()
 
-	// Inject browser_action tool if browser manager has active sessions
-	if m.BrowserMgr != nil {
-		sessionPrompt := m.BrowserMgr.BuildSessionsPromptSection(agentRoleSlug)
-		if sessionPrompt != "" {
-			cfg.ExtraTools = append(cfg.ExtraTools, m.BrowserMgr.BuildBrowserActionDef())
-			if cfg.ExtraHandlers == nil {
-				cfg.ExtraHandlers = map[string]llm.ToolHandler{}
-			}
-			cfg.ExtraHandlers["browser_action"] = m.BrowserMgr.MakeBrowserActionHandler()
-			cfg.System += "\n\n" + sessionPrompt
-		}
-	}
-
 	// Enable native session resume for CLI providers (per thread + agent)
 	if threadID != "" && agentRoleSlug != "" {
 		cfg.Session = &llm.SessionKey{ThreadID: threadID, AgentSlug: agentRoleSlug}
@@ -475,7 +492,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
-func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID string) (response, usedThreadID string, err error) {
+func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID, workspaceID string) (response, usedThreadID string, err error) {
 	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	err = m.db.QueryRow(
@@ -488,12 +505,16 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 
 	now := time.Now().UTC()
 
-	// Create thread if none provided
+	// Create thread if none provided. Target the schedule's workspace when set,
+	// otherwise fall back to the currently active workspace.
 	if threadID == "" {
+		if workspaceID == "" {
+			workspaceID = m.db.ActiveWorkspaceID()
+		}
 		threadID = uuid.New().String()
 		m.db.Exec(
-			"INSERT INTO chat_threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-			threadID, "Scheduled: "+prompt[:min(len(prompt), 40)], now, now,
+			"INSERT INTO chat_threads (id, title, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+			threadID, "Scheduled: "+prompt[:min(len(prompt), 40)], workspaceID, now, now,
 		)
 	}
 

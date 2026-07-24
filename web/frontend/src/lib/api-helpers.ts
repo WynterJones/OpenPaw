@@ -19,23 +19,19 @@ import type {
   AgentTaskStatus,
   AgentTaskCounts,
   ToolIntegrityInfo,
-  BrowserSession,
-  BrowserActionRequest,
-  BrowserActionResult,
-  BrowserTask,
   AppNotification,
   HeartbeatConfig,
   HeartbeatExecutionPage,
   ConfirmationCard,
   ToolSummaryCard,
   WidgetPayload,
-  TerminalSession,
-  Workbench,
   Project,
   TodoList,
   TodoItem,
   MediaItem,
   MediaListResponse,
+  Workspace,
+  WorkspaceFilesResponse,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -176,26 +172,6 @@ export const agentSkills = {
   publish: (slug: string, skillName: string) => api.post(`/agent-roles/${slug}/skills/${skillName}/publish`),
 };
 
-// Browser automation API helpers
-export const browserApi = {
-  listSessions: () => api.get<BrowserSession[]>('/browser/sessions'),
-  createSession: (data: { name: string; headless?: boolean; owner_agent_slug?: string }) =>
-    api.post<BrowserSession>('/browser/sessions', data),
-  getSession: (id: string) => api.get<BrowserSession>(`/browser/sessions/${id}`),
-  updateSession: (id: string, data: { name?: string; owner_agent_slug?: string }) =>
-    api.put<BrowserSession>(`/browser/sessions/${id}`, data),
-  deleteSession: (id: string) => api.delete(`/browser/sessions/${id}`),
-  startSession: (id: string) => api.post(`/browser/sessions/${id}/start`),
-  stopSession: (id: string) => api.post(`/browser/sessions/${id}/stop`),
-  executeAction: (id: string, action: BrowserActionRequest) =>
-    api.post<BrowserActionResult>(`/browser/sessions/${id}/action`, action),
-  getScreenshot: (id: string) => api.get<{ image: string }>(`/browser/sessions/${id}/screenshot`),
-  takeControl: (id: string) => api.post(`/browser/sessions/${id}/control`),
-  releaseControl: (id: string) => api.post(`/browser/sessions/${id}/release`),
-  listSessionTasks: (id: string) => api.get<BrowserTask[]>(`/browser/sessions/${id}/tasks`),
-  listAllTasks: () => api.get<BrowserTask[]>('/browser/tasks'),
-};
-
 // Notification API helpers
 export const notificationsApi = {
   list: (unread?: boolean) => api.get<AppNotification[]>(`/notifications${unread ? '?unread=true' : ''}`),
@@ -285,47 +261,6 @@ export const toolExtra = {
     return res.json();
   },
   integrity: (id: string) => api.get<ToolIntegrityInfo>(`/tools/${id}/integrity`),
-};
-
-// Terminal API helpers
-export const terminalApi = {
-  list: (workbenchId?: string) => {
-    const qs = workbenchId ? `?workbench_id=${encodeURIComponent(workbenchId)}` : '';
-    return api.get<TerminalSession[]>(`/terminal/sessions${qs}`);
-  },
-  create: (body: { title?: string; cols?: number; rows?: number; color?: string; workbench_id?: string; cwd?: string; initial_command?: string }) =>
-    api.post<TerminalSession>('/terminal/sessions', body),
-  get: (id: string) => api.get<TerminalSession>(`/terminal/sessions/${id}`),
-  update: (id: string, data: { title?: string; color?: string }) =>
-    api.put<TerminalSession>(`/terminal/sessions/${id}`, data),
-  delete: (id: string) => api.delete<void>(`/terminal/sessions/${id}`),
-  listWorkbenches: () => api.get<Workbench[]>('/terminal/workbenches'),
-  createWorkbench: (name: string) => api.post<Workbench>('/terminal/workbenches', { name }),
-  updateWorkbench: (id: string, data: { name: string; color?: string }) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, data),
-  deleteWorkbench: (id: string) => api.delete<{ status: string }>(`/terminal/workbenches/${id}`),
-  reorderWorkbenches: (ids: string[]) => api.put<{ status: string }>('/terminal/workbenches-reorder', { ids }),
-  resolvePath: (name: string, isDir: boolean) =>
-    api.post<{ path: string }>('/terminal/resolve-path', { name, is_dir: isDir }),
-  upload: async (file: File): Promise<{ path: string; filename: string }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const headers: Record<string, string> = {};
-    const csrf = getCSRFToken();
-    if (csrf) headers['X-CSRF-Token'] = csrf;
-    const res = await fetch(`${BASE_URL}/terminal/upload`, {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'same-origin',
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      let message = `Upload failed: ${res.status}`;
-      try { const json = JSON.parse(body); message = json.error || message; } catch { /* ignore */ }
-      throw new ApiError(res.status, message);
-    }
-    return res.json();
-  },
 };
 
 // Projects API helpers
@@ -428,4 +363,16 @@ export const heartbeatApi = {
     return api.get<HeartbeatExecutionPage>(`/heartbeat/history${qs ? '?' + qs : ''}`);
   },
   runNow: () => api.post<{ status: string }>('/heartbeat/run-now'),
+};
+
+// Workspaces API helpers — the active workspace scopes chats/dashboards/context
+// server-side, so the client just switches the active one and refetches.
+export const workspaces = {
+  list: () => api.get<Workspace[]>('/workspaces'),
+  create: (name: string) => api.post<Workspace>('/workspaces', { name }),
+  rename: (id: string, name: string) => api.put<Workspace>(`/workspaces/${id}`, { name }),
+  remove: (id: string) => api.delete(`/workspaces/${id}`),
+  getActive: () => api.get<Workspace>('/workspaces/active'),
+  setActive: (id: string) => api.put<Workspace>('/workspaces/active', { workspace_id: id }),
+  listFiles: (id: string) => api.get<WorkspaceFilesResponse>(`/workspaces/${id}/files`),
 };

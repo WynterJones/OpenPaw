@@ -31,7 +31,7 @@ const useCases = [
       'Create a "Code Reviewer" agent with coding standards in its system prompt',
       'Install the GitHub tool to let agents create issues, review PRs, and check CI status',
       'Set up scheduled code quality reports that run nightly',
-      'Use browser automation to monitor staging deployments',
+      'Build a custom tool to monitor staging deployments and report status',
     ],
     agents: ['Code Reviewer', 'DevOps Agent', 'Documentation Writer'],
     tools: ['GitHub', 'GitLab', 'Docker Hub'],
@@ -59,7 +59,7 @@ const useCases = [
       'Create a "Research Analyst" agent with access to search and academic tools',
       'Install Semantic Scholar and ArXiv tools for academic paper access',
       'Set up automated literature reviews that run weekly',
-      'Use browser automation to scrape and analyze competitor websites',
+      'Build custom tools to pull data from external APIs and analyze trends',
     ],
     agents: ['Research Analyst', 'Data Analyst'],
     tools: ['Semantic Scholar', 'ArXiv', 'Wikipedia', 'Brave Search'],
@@ -73,7 +73,7 @@ const useCases = [
       'Schedule a daily tool action to check system health and report via notifications',
       'Set up heartbeat monitoring so agents proactively check for issues',
       'Create workflows where one agent&apos;s output triggers another agent&apos;s action',
-      'Use the browser automation to fill forms, download reports, or monitor dashboards',
+      'Build custom tools to fetch reports and monitor dashboards on a schedule',
     ],
     agents: ['Automation Agent', 'Monitor Agent'],
     tools: ['HTTP Client', 'Cron Scheduler', 'Notification API'],
@@ -101,8 +101,8 @@ export function UseCases() {
 
       <h2 id="overview">Overview</h2>
       <p>
-        The combination of customizable agents, installable tools, scheduled automation, and
-        browser control makes OpenPaw suitable for everything from personal productivity to
+        The combination of customizable agents, installable tools, and scheduled automation
+        makes OpenPaw suitable for everything from personal productivity to
         team-wide workflow automation.
       </p>
 

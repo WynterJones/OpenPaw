@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   LayoutDashboard,
   RefreshCw,
@@ -58,6 +59,7 @@ export function Dashboards() {
   const [renameSaving, setRenameSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
   const selected = dashboards.find(d => d.id === selectedId) || null;
@@ -133,7 +135,16 @@ export function Dashboards() {
 
   useEffect(() => {
     loadDashboards();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Respond to sidebar navigation to a specific dashboard (?id=) after load
+  useEffect(() => {
+    const urlId = searchParams.get('id');
+    if (urlId && dashboards.some(d => d.id === urlId)) {
+      setSelectedId(urlId);
+      localStorage.setItem(LAST_DASHBOARD_KEY, urlId);
+    }
+  }, [searchParams, dashboards]);
 
   const loadDashboards = async () => {
     try {
@@ -141,10 +152,12 @@ export function Dashboards() {
       const list = Array.isArray(data) ? data : [];
       setDashboards(list);
 
-      // Auto-select: last viewed or first available
+      // Auto-select: URL ?id= param, then last viewed, then first available
       if (list.length > 0) {
+        const urlId = searchParams.get('id');
         const lastId = localStorage.getItem(LAST_DASHBOARD_KEY);
-        const found = list.find(d => d.id === lastId);
+        const found =
+          list.find(d => d.id === urlId) || list.find(d => d.id === lastId);
         setSelectedId(found ? found.id : list[0].id);
       }
     } catch (e) {
@@ -267,11 +280,11 @@ export function Dashboards() {
     return (
       <div className="flex flex-col h-full">
         <Header title="Dashboards" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
           <EmptyState
             icon={<LayoutDashboard className="w-8 h-8" />}
             title="No dashboards yet"
-            description='Create your first dashboard by asking in Chat. Try: "Create a dashboard that monitors my weather tool"'
+            description="Ask in Chat to create your first dashboard."
           />
         </div>
       </div>

@@ -24,12 +24,12 @@
 > OpenPaw can now run all chat, routing, and agent inference through the **Claude Code CLI** (Claude subscription) or **Codex CLI** (ChatGPT subscription) installed on your machine — instead of paying per token through OpenRouter. Switch providers in **Settings → Models**, or pick a detected CLI during setup and skip the API key entirely.
 >
 > - **Additive** — OpenRouter stays the default and is unchanged; CLI providers are opt-in
-> - **Full tool parity** — agents keep their memory, todos, delegation, browser, and image tools via a built-in MCP bridge
+> - **Full tool parity** — agents keep their memory, todos, delegation, and image tools via a built-in MCP bridge
 > - **Session continuity** — multi-turn threads resume native CLI sessions instead of replaying history
 > - **Latest models** — Claude Haiku/Sonnet/Opus/**Fable** and GPT-5.4/**5.5**, with per-model context window tracking
 > - Image generation still uses OpenRouter (optional key — works alongside either CLI provider)
 
-OpenPaw is a single app you run on your computer. You chat with AI agents, describe what you want — a Slack bot, a weather checker, a scheduled report — and they build it for you as a real, running service. Pick from 39 pre-built tools or let agents create something custom. Schedule tasks, build dashboards, automate browsers, all through conversation.
+OpenPaw is a single app you run on your computer. You chat with AI agents, describe what you want — a Slack bot, a weather checker, a scheduled report — and they build it for you as a real, running service. Pick from 39 pre-built tools or let agents create something custom. Schedule tasks and build dashboards, all through conversation.
 
 The app and everything it builds runs locally. AI chat runs through [OpenRouter](https://openrouter.ai/) (bring your own API key) — or through your existing **Claude Code** or **Codex** CLI subscription with no per-token billing.
 
@@ -42,11 +42,11 @@ The app and everything it builds runs locally. AI chat runs through [OpenRouter]
   <tr>
     <td align="center"><img src="assets/library.webp" alt="Library" width="100%" /><br><sub><b>Library</b></sub></td>
     <td align="center"><img src="assets/heartbeat.webp" alt="Heartbeat" width="100%" /><br><sub><b>Heartbeat</b></sub></td>
-    <td align="center"><img src="assets/browsers.webp" alt="Browsers" width="100%" /><br><sub><b>Browsers</b></sub></td>
+    <td align="center"><img src="assets/design.webp" alt="Design" width="100%" /><br><sub><b>Design</b></sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/design.webp" alt="Design" width="100%" /><br><sub><b>Design</b></sub></td>
     <td align="center"><img src="assets/settings.webp" alt="Settings" width="100%" /><br><sub><b>Settings</b></sub></td>
+    <td></td>
     <td></td>
   </tr>
 </table>
@@ -208,7 +208,7 @@ Secret values are encrypted with AES-256-GCM at rest and **never displayed again
 The **Scheduler** page lets you automate tasks:
 
 - Pick from presets (hourly, daily at 9am, weekly) or write custom cron expressions
-- Schedule types: tool calls, agent prompts, and browser tasks
+- Schedule types: tool calls and agent prompts
 - Route results to dashboards or notifications
 - Run any schedule on-demand with the **Run Now** button
 - Toggle schedules on/off and view execution history
@@ -239,19 +239,6 @@ The **Context** page is a file manager for reference documents:
 - Upload documents (up to 10MB) for agents to reference
 - "About You" section for personal context that agents can access
 - Supported files are injected into agent context for informed responses
-
-<p>
-  <img src="assets/headlines/browser-automation.webp" alt="Browser Automation" width="333" />
-</p>
-
-The **Browser** page provides headless browser sessions powered by [go-rod](https://github.com/go-rod/rod):
-
-- Create named browser sessions with persistent user data directories
-- Agents can navigate, click, type, extract data, and take screenshots
-- **Human takeover** — take manual control of a session (e.g., to log in) and release back to the agent
-- View live screenshots of active sessions
-- Track browser tasks with full action history
-- Schedule browser automation tasks via the scheduler
 
 <p>
   <img src="assets/headlines/heartbeat-monitor.webp" alt="Heartbeat Monitor" width="333" />
@@ -513,25 +500,6 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/agents/{id}` | Get agent details |
 | POST | `/api/v1/agents/{id}/stop` | Stop a running agent |
 
-#### Browser
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/browser/sessions` | List browser sessions |
-| POST | `/api/v1/browser/sessions` | Create a session |
-| GET | `/api/v1/browser/sessions/{id}` | Get session details |
-| PUT | `/api/v1/browser/sessions/{id}` | Update a session |
-| DELETE | `/api/v1/browser/sessions/{id}` | Delete a session |
-| POST | `/api/v1/browser/sessions/{id}/start` | Start a session |
-| POST | `/api/v1/browser/sessions/{id}/stop` | Stop a session |
-| POST | `/api/v1/browser/sessions/{id}/action` | Execute a browser action |
-| GET | `/api/v1/browser/sessions/{id}/screenshot` | Get session screenshot |
-| POST | `/api/v1/browser/sessions/{id}/control` | Take manual control |
-| POST | `/api/v1/browser/sessions/{id}/release` | Release manual control |
-| GET | `/api/v1/browser/sessions/{id}/tasks` | List session tasks |
-| GET | `/api/v1/browser/tasks` | List all browser tasks |
-| GET | `/api/v1/browser/tasks/{taskId}` | Get task details |
-| GET | `/api/v1/browser/tasks/{taskId}/actions` | Get task action history |
-
 #### Notifications
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -587,10 +555,9 @@ OpenPaw/
   internal/
     agents/               AI agent system (gateway, spawning, identity, skills, memory, prompts)
     auth/                 bcrypt + JWT sessions
-    browser/              Headless browser automation (go-rod)
     config/               Environment config
     database/             SQLite + numbered migrations (22 migration files)
-    handlers/             HTTP route handlers (chat, tools, agents, browser, heartbeat, etc.)
+    handlers/             HTTP route handlers (chat, tools, agents, heartbeat, etc.)
     heartbeat/            Periodic AI-powered system health checks
     llm/                  LLM client (OpenRouter API, streaming, tool execution, agent loop)
     logger/               Structured logging with colored output
@@ -599,7 +566,7 @@ OpenPaw/
     models/               Data models
     netutil/              Network utilities (LAN IP detection)
     platform/             Platform-specific utilities (browser opening)
-    scheduler/            Cron job runner (tool calls, agent prompts, browser tasks)
+    scheduler/            Cron job runner (tool calls, agent prompts)
     secrets/              AES-256-GCM encryption
     server/               Chi router setup and route registration
     skillssh/             Skills.sh API client (search + install from skills.sh directory)
