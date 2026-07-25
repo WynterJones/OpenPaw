@@ -45,16 +45,16 @@ const navGroups: NavGroup[] = [
   {
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
+      { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
       { to: "/knowledge-base", icon: Database, label: "Context" },
       { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
+      { to: "/agents", icon: Bot, label: "Agents" },
+      { to: "/tools", icon: Wrench, label: "Tools" },
     ],
   },
 ];
 
 const moreItems: NavItem[] = [
-  { to: "/agents", icon: Bot, label: "Agents" },
-  { to: "/tools", icon: Wrench, label: "Tools" },
-  { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
   { to: "/skills", icon: Sparkles, label: "Skills" },
   { to: "/library", icon: Store, label: "Templates" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },

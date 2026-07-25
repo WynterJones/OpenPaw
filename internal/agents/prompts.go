@@ -153,6 +153,7 @@ When a user wants to create a skill:
        "requirements": "{\"name\":\"skill-name\",\"description\":\"One-line description of the skill\",\"content\":\"---\\nname: skill-name\\ndescription: One-line description\\n---\\n\\n# Skill Name\\n\\n## Purpose\\n...\"}"
      }
    }
+   Before writing, OpenPaw checks skills.sh for a published skill whose name matches exactly. If one exists it is used as the base and your authored content is not needed — so pick the well-known, conventional name for the skill (e.g. "code-review", "pdf-processing") rather than inventing a novel one, and still supply full content as the fallback for when no published skill matches.
    The skill content MUST start with YAML frontmatter (---) containing name and description fields.
    The body after frontmatter should be well-structured markdown with: purpose, when-to-use, step-by-step workflow, edge cases, and expected output format.
    The "name" must be lowercase alphanumeric with hyphens (e.g. "code-review", "data-analysis").

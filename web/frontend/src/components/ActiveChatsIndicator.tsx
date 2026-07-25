@@ -8,9 +8,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { Loader2, Square } from 'lucide-react';
 import { api } from '../lib/api';
+import { jumpToWorkspace } from '../lib/jumpToWorkspace';
 
 interface ActiveChat {
   thread_id: string;
@@ -22,7 +22,6 @@ interface ActiveChat {
 
 export function ActiveChatsIndicator() {
   const [chats, setChats] = useState<ActiveChat[]>([]);
-  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +47,7 @@ export function ActiveChatsIndicator() {
   if (chats.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 w-64 max-w-[calc(100vw-2rem)] pointer-events-none">
+    <div className="w-64 max-w-[calc(100vw-2rem)]">
       <div className="pointer-events-auto rounded-xl border border-border-1 bg-surface-1/95 backdrop-blur-md shadow-xl shadow-black/20 overflow-hidden">
         <div className="px-3 py-2 border-b border-border-0 flex items-center gap-2">
           <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin flex-shrink-0" aria-hidden="true" />
@@ -63,7 +62,7 @@ export function ActiveChatsIndicator() {
               className="group w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-2 transition-colors"
             >
               <button
-                onClick={() => navigate(`/chat/${c.thread_id}`)}
+                onClick={() => jumpToWorkspace(c.workspace_id, `/chat/${c.thread_id}`)}
                 className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
                 title={`Open "${c.title}"`}
               >

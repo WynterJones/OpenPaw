@@ -480,6 +480,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			// Terminal / Workbench
 			r.Route("/terminal", func(r chi.Router) {
 				r.Get("/sessions", terminalHandler.ListSessions)
+				r.Get("/active", terminalHandler.ActiveSessions)
 				r.Post("/sessions", terminalHandler.CreateSession)
 				r.Get("/sessions/{id}", terminalHandler.GetSession)
 				r.Put("/sessions/{id}", terminalHandler.UpdateSession)

@@ -4,6 +4,7 @@ import { BottomNav } from './BottomNav';
 import { BackgroundImage } from './BackgroundImage';
 import { ChatCompanions } from './companion/ChatCompanions';
 import { ActiveChatsIndicator } from './ActiveChatsIndicator';
+import { ActiveTerminalsIndicator } from './ActiveTerminalsIndicator';
 import { ViewTogglesProvider, useViewToggles } from '../contexts/ViewTogglesContext';
 
 function LayoutInner() {
@@ -24,7 +25,12 @@ function LayoutInner() {
       </main>
       <BottomNav />
       {onChat && <ChatCompanions />}
-      <ActiveChatsIndicator />
+      {/* One bottom-right stack: terminals sit above chats, and each card hides
+          itself when empty so the survivor keeps the same spot. */}
+      <div className="fixed bottom-4 right-4 z-30 flex flex-col gap-2 items-end pointer-events-none">
+        <ActiveTerminalsIndicator />
+        <ActiveChatsIndicator />
+      </div>
     </div>
   );
 }

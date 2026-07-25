@@ -16,6 +16,7 @@ import (
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
+	"github.com/openpaw/openpaw/internal/skillssh"
 )
 
 func (h *ChatHandler) loadRolesCache() []struct{ slug, name string } {
@@ -1021,8 +1022,17 @@ func (h *ChatHandler) handleCreateSkill(threadID string, resp *agents.GatewayRes
 		return
 	}
 
-	// Ensure frontmatter wrapping if content lacks it
+	// Prefer a community skill from skills.sh as the starting point when one
+	// matches — a published, exercised skill beats one improvised in a single
+	// turn. Falls back silently to the authored content.
 	content := reqs.Content
+	basedOn := ""
+	if base, source, ok := skillsShBase(reqs.Name); ok {
+		content = base
+		basedOn = source
+	}
+
+	// Ensure frontmatter wrapping if content lacks it
 	meta, body := agents.ParseFrontmatter(content)
 	if meta.Description == "" && reqs.Description != "" {
 		content = agents.BuildFrontmatter(reqs.Name, reqs.Description, body)
@@ -1034,8 +1044,43 @@ func (h *ChatHandler) handleCreateSkill(threadID string, resp *agents.GatewayRes
 		return
 	}
 
-	h.saveAssistantMessage(threadID, "", fmt.Sprintf("Created skill **%s**. You can install it on any agent from their settings page.", reqs.Name), 0, 0, 0)
+	msg := fmt.Sprintf("Created skill **%s**. You can install it on any agent from their settings page.", reqs.Name)
+	if basedOn != "" {
+		msg = fmt.Sprintf("Created skill **%s**, based on the published `%s` skill from skills.sh. You can install it on any agent from their settings page.", reqs.Name, basedOn)
+	}
+	h.saveAssistantMessage(threadID, "", msg, 0, 0, 0)
 	h.broadcastStatus(threadID, "done", "")
+}
+
+// skillsShBase looks up a published skills.sh skill to use as the base for a
+// newly created skill, returning its content and "source/skillId".
+//
+// The match must be EXACT on the sanitized skill name. A fuzzy match would
+// silently replace a bespoke skill the user asked for with an unrelated
+// community one, which is far worse than writing the authored content.
+//
+// Any failure — network, no match, empty body — returns ok=false so skill
+// creation proceeds unchanged. skills.sh is an enhancement, never a dependency.
+func skillsShBase(name string) (content string, source string, ok bool) {
+	client := skillssh.NewClient()
+
+	results, err := client.Search(name)
+	if err != nil || len(results) == 0 {
+		return "", "", false
+	}
+
+	want := skillssh.SanitizeSkillName(name)
+	for _, r := range results {
+		if skillssh.SanitizeSkillName(r.SkillID) != want && skillssh.SanitizeSkillName(r.Name) != want {
+			continue
+		}
+		body, err := client.FetchSkillContent(r.Source, r.SkillID)
+		if err != nil || strings.TrimSpace(body) == "" {
+			continue
+		}
+		return body, r.Source + "/" + r.SkillID, true
+	}
+	return "", "", false
 }
 
 func (h *ChatHandler) handleBootstrapComplete(threadID string, resp *agents.GatewayResponse, costUSD float64, inTok, outTok int) {

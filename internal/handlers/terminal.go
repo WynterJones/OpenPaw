@@ -91,6 +91,44 @@ func (h *TerminalHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// ActiveSessions lists every live PTY across ALL workbenches, with the
+// workspace each belongs to, so the UI can offer a jump-back list that works
+// from any screen and any workspace.
+func (h *TerminalHandler) ActiveSessions(w http.ResponseWriter, r *http.Request) {
+	type activeSession struct {
+		SessionID   string `json:"session_id"`
+		Title       string `json:"title"`
+		WorkbenchID string `json:"workbench_id,omitempty"`
+		Workspace   string `json:"workspace_id,omitempty"`
+	}
+
+	sessions := h.terminalMgr.ListSessions("")
+
+	// One lookup for the workbench -> workspace mapping rather than a query per
+	// session; this endpoint is polled.
+	workspaceOf := map[string]string{}
+	if rows, err := h.db.Query("SELECT id, COALESCE(workspace_id, '') FROM workbenches"); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, ws string
+			if rows.Scan(&id, &ws) == nil {
+				workspaceOf[id] = ws
+			}
+		}
+	}
+
+	out := make([]activeSession, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, activeSession{
+			SessionID:   s.ID,
+			Title:       s.Title,
+			WorkbenchID: s.WorkbenchID,
+			Workspace:   workspaceOf[s.WorkbenchID],
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // CreateSession creates a new terminal/PTY session.
 func (h *TerminalHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
