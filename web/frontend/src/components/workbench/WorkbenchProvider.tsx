@@ -41,7 +41,6 @@ interface WorkbenchContextType {
   switchWorkbench: (id: string) => void;
   reorderWorkbenches: (workbenches: Workbench[]) => Promise<void>;
   reorderTabs: (panelId: string, tabs: string[]) => void;
-  busySessions: Set<string>;
   loading: boolean;
 }
 
@@ -189,7 +188,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [rootPanel, setRootPanel] = useState<PanelNode | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busySessions, setBusySessions] = useState<Set<string>>(new Set());
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Sync terminal themes when design config changes ──
@@ -199,20 +197,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }, [config]);
 
   // ── Track busy terminals via activity ──
-  useEffect(() => {
-    const handler = (sessionId: string, busy: boolean) => {
-      setBusySessions(prev => {
-        const next = new Set(prev);
-        if (busy) next.add(sessionId);
-        else next.delete(sessionId);
-        if (next.size === prev.size && [...next].every(id => prev.has(id))) return prev;
-        return next;
-      });
-    };
-    terminalManager.onBusyChange = handler;
-    return () => { terminalManager.onBusyChange = null; };
-  }, []);
-
   // ── Persist layout (debounced, per-workbench) ──
   const saveLayout = useCallback((panel: PanelNode | null, workbenchId: string | null) => {
     if (!workbenchId) return;
@@ -594,7 +578,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         switchWorkbench,
         reorderWorkbenches,
         reorderTabs,
-        busySessions,
         loading,
       }}
     >

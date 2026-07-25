@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Columns2, Rows2, Pencil, Loader2 } from 'lucide-react';
+import { X, Plus, Columns2, Rows2, Pencil } from 'lucide-react';
 import { useWorkbench, type PanelNode } from './WorkbenchProvider';
 import { useDragReorder } from '../../hooks/useDragReorder';
 
@@ -29,7 +29,6 @@ export function TabBar({ node }: TabBarProps) {
     splitPanel,
     updateSession,
     reorderTabs,
-    busySessions,
   } = useWorkbench();
 
   const tabs = node.tabs || [];
@@ -72,7 +71,6 @@ export function TabBar({ node }: TabBarProps) {
           const title = session?.title || 'Terminal';
           const color = session?.color || '';
           const isActive = sessionId === node.activeTab;
-          const isBusy = busySessions.has(sessionId);
           const isBeingDragged = dragId === sessionId;
           const isDragTarget = overId === sessionId && dragId !== sessionId;
 
@@ -84,7 +82,6 @@ export function TabBar({ node }: TabBarProps) {
               color={color}
               isActive={isActive}
               isGloballyActive={sessionId === activeSessionId}
-              isBusy={isBusy}
               isBeingDragged={isBeingDragged}
               isDragTarget={isDragTarget}
               panelId={node.id}
@@ -133,7 +130,6 @@ interface TabProps {
   color: string;
   isActive: boolean;
   isGloballyActive: boolean;
-  isBusy: boolean;
   isBeingDragged: boolean;
   isDragTarget: boolean;
   panelId: string;
@@ -148,7 +144,6 @@ function Tab({
   title,
   color,
   isActive,
-  isBusy,
   isBeingDragged,
   isDragTarget,
   panelId,
@@ -204,12 +199,7 @@ function Tab({
           />
         )}
 
-        {/* Busy indicator */}
-        {isBusy && (
-          <Loader2 className={`w-3 h-3 animate-spin shrink-0 ${color ? 'ml-3' : 'ml-2'}`} style={color ? { color } : { color: 'var(--op-accent-primary)' }} />
-        )}
-
-        <span className={`truncate ${isBusy ? '' : color ? 'pl-3.5' : 'pl-2'}`}>{title}</span>
+        <span className={`truncate ${color ? 'pl-3.5' : 'pl-2'}`}>{title}</span>
 
         {/* Edit button */}
         <button

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { TerminalSquare, Plus, X, Pencil, Loader2 } from 'lucide-react';
+import { TerminalSquare, Plus, X, Pencil } from 'lucide-react';
 import { Button } from '../components/Button';
 import { WorkbenchProvider, useWorkbench } from '../components/workbench/WorkbenchProvider';
 import { PanelContainer } from '../components/workbench/PanelContainer';
@@ -107,8 +107,6 @@ function WorkbenchHeader() {
     updateWorkbenchColor,
     deleteWorkbench,
     reorderWorkbenches,
-    sessions,
-    busySessions,
   } = useWorkbench();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -144,17 +142,11 @@ function WorkbenchHeader() {
     await createWorkbench(name);
   }, [workbenches.length, createWorkbench]);
 
-  // Check if any session in a workbench is busy
-  const isWorkbenchBusy = useCallback((wbId: string) => {
-    return sessions.some(s => s.workbench_id === wbId && busySessions.has(s.id));
-  }, [sessions, busySessions]);
-
   return (
     <div className="flex items-center bg-surface-1 border-b border-border-0 px-1.5 h-10 gap-1 overflow-x-auto shrink-0">
       {workbenches.map((wb) => {
         const isActive = wb.id === activeWorkbenchId;
         const color = wb.color || '';
-        const busy = isWorkbenchBusy(wb.id);
         const isDragTarget = overId === wb.id && dragId !== wb.id;
         const isBeingDragged = dragId === wb.id;
 
@@ -185,11 +177,6 @@ function WorkbenchHeader() {
             )}
 
             <span className={`truncate max-w-28 ${color ? 'pl-4' : 'pl-2.5'} pr-1`}>{wb.name}</span>
-
-            {/* Busy indicator */}
-            {busy && (
-              <Loader2 className="w-3 h-3 text-accent-primary animate-spin shrink-0" />
-            )}
 
             {/* Edit button */}
             <button

@@ -18,8 +18,6 @@ interface TerminalInstance {
   binaryDisposable: { dispose: () => void } | null;
   onExit: ((sessionId: string) => void) | null;
   fitTimer: ReturnType<typeof setTimeout> | null;
-  busyTimer: ReturnType<typeof setTimeout> | null;
-  isBusy: boolean;
   initialGrace: boolean;
   dropOverlay: HTMLDivElement | null;
   pasteDisposable: { dispose: () => void } | null;
@@ -74,7 +72,6 @@ const dragCleanupMap = new WeakMap<HTMLElement, () => void>();
 
 class TerminalManager {
   private instances = new Map<string, TerminalInstance>();
-  onBusyChange: ((sessionId: string, busy: boolean) => void) | null = null;
 
   acquire(sessionId: string): TerminalInstance {
     let instance = this.instances.get(sessionId);
@@ -150,8 +147,6 @@ class TerminalManager {
       binaryDisposable: null,
       onExit: null,
       fitTimer: null,
-      busyTimer: null,
-      isBusy: false,
       initialGrace: true,
       dropOverlay: null,
       pasteDisposable: null,
@@ -197,10 +192,6 @@ class TerminalManager {
     ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
         term.write(new Uint8Array(event.data));
-        // Track activity for busy indicator
-        if (!instance.initialGrace) {
-          this.markBusy(sessionId, instance);
-        }
       } else {
         try {
           const msg = JSON.parse(event.data as string);
@@ -356,18 +347,6 @@ class TerminalManager {
     }
   }
 
-  private markBusy(sessionId: string, instance: TerminalInstance): void {
-    if (!instance.isBusy) {
-      instance.isBusy = true;
-      this.onBusyChange?.(sessionId, true);
-    }
-    if (instance.busyTimer) clearTimeout(instance.busyTimer);
-    instance.busyTimer = setTimeout(() => {
-      instance.isBusy = false;
-      instance.busyTimer = null;
-      this.onBusyChange?.(sessionId, false);
-    }, 1500);
-  }
 
   private debouncedFit(sessionId: string): void {
     const instance = this.instances.get(sessionId);
@@ -419,9 +398,7 @@ class TerminalManager {
     const instance = this.instances.get(sessionId);
     if (!instance) return;
 
-    if (instance.busyTimer) clearTimeout(instance.busyTimer);
     if (instance.reconnectTimer) clearTimeout(instance.reconnectTimer);
-    if (instance.isBusy) this.onBusyChange?.(sessionId, false);
     this.detach(sessionId);
     this.disconnectWS(sessionId);
     instance.term.dispose();
