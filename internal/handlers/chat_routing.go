@@ -253,24 +253,9 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
-	// Priority 3.5: No mention, and exactly one specialist agent is already in
-	// this thread — route straight to it. The sole agent in a chat should answer;
-	// users don't expect to @-tag when there's only one participant. (First
-	// messages have no members yet, so those still go through the gateway below.)
-	if members := h.specialistMembers(threadID); len(members) == 1 {
-		if isFirstMsg {
-			go h.generateThreadTitle(threadID, content)
-		}
-		slug := members[0]
-		h.db.LogAudit(userID, "routing_sole_member", "agent", "agent_role", slug, slug)
-		h.beginAgentWork(threadID, slug)
-		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
-		defer roleChatCancel()
-		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, nil)
-		return
-	}
-
 	// Priority 4: ALL other messages go through the gateway with routing hints
+	// (so build/fix requests still reach the builder). When the gateway assigns
+	// no one, it falls back to the thread's sole specialist member below.
 	h.broadcastStatus(threadID, "analyzing", "Analyzing your request...")
 
 	// Build routing hints for the gateway
@@ -353,11 +338,11 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		switch resp.Action {
 		case "build_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", buildingMsg)
+			h.broadcastStatus(threadID, "spawning", gwName+" is building the tool…")
 			h.handleBuildTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "update_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", buildingMsg)
+			h.broadcastStatus(threadID, "spawning", gwName+" is updating the tool…")
 			h.handleUpdateTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "build_dashboard", "build_custom_dashboard":
 			h.broadcastRoutingIndicator(threadID, "builder")
@@ -394,8 +379,15 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		defer roleChatCancel()
 		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, resp.AssignedAgent, 0, resp.ProjectContext, gatewayCostUSD)
 	} else {
-		// No agent assigned — pick a default agent
-		slug := h.getDefaultAgentSlug()
+		// No agent assigned — prefer the thread's sole specialist member (so a
+		// one-agent chat keeps answering without an @-tag), else a default agent.
+		slug := ""
+		if members := h.specialistMembers(threadID); len(members) == 1 {
+			slug = members[0]
+		}
+		if slug == "" {
+			slug = h.getDefaultAgentSlug()
+		}
 		if slug == "" {
 			h.addThreadMember(threadID, "pounce")
 			h.broadcastRoutingIndicator(threadID, "pounce")
