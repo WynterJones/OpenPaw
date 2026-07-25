@@ -486,7 +486,7 @@ export interface AppNotification {
 export interface HeartbeatExecution {
   id: string;
   agent_role_slug: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'skipped';
   actions_taken: string;
   output: string;
   error: string;
@@ -696,4 +696,16 @@ export interface WorkspaceDirectory {
   label: string;
   missing?: boolean;
   files: WorkspaceFileNode[];
+}
+
+/** An image pasted into the chat composer and stored on disk. */
+export interface PastedImage {
+  id: string;
+  name: string;
+  /** Absolute path on disk — this is what the agent is given. */
+  path: string;
+  /** Served URL, valid once the path appears in a saved chat message. */
+  url: string;
+  mime_type: string;
+  size_bytes: number;
 }

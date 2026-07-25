@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/database"
+	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/netutil"
@@ -328,4 +328,59 @@ func formatBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
+}
+
+// PathInfo resolves an arbitrary absolute path for the folder picker and for
+// folder drops.
+//
+// A drop can land on a file as easily as a directory, and "open a terminal
+// here" should mean the containing directory in that case rather than failing.
+// It also lists child directories so the picker can browse anywhere on disk,
+// not just inside the workspace's attached directories.
+func (h *SystemHandler) PathInfo(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" || !filepath.IsAbs(path) {
+		writeError(w, http.StatusBadRequest, "an absolute path is required")
+		return
+	}
+	path = filepath.Clean(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "that path does not exist")
+		return
+	}
+
+	dir := path
+	if !info.IsDir() {
+		dir = filepath.Dir(path)
+	}
+
+	// Child directories only: this backs "pick a folder", so files would be
+	// noise the user cannot act on.
+	children := []map[string]string{}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			children = append(children, map[string]string{
+				"name": e.Name(),
+				"path": filepath.Join(dir, e.Name()),
+			})
+		}
+	}
+
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		parent = "" // at the filesystem root
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"path":     dir,
+		"name":     filepath.Base(dir),
+		"parent":   parent,
+		"is_dir":   info.IsDir(),
+		"children": children,
+	})
 }

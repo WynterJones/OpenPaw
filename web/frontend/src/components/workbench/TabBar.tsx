@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Columns2, Rows2, Pencil } from 'lucide-react';
+import { X, Plus, Columns2, Rows2, Pencil, FolderOpen } from 'lucide-react';
+import { FolderPicker } from './FolderPicker';
 import { useWorkbench, type PanelNode } from './WorkbenchProvider';
 import { useDragReorder } from '../../hooks/useDragReorder';
 
@@ -26,10 +27,13 @@ export function TabBar({ node }: TabBarProps) {
     activateTab,
     closeSession,
     createSession,
+    launchSession,
     splitPanel,
     updateSession,
     reorderTabs,
   } = useWorkbench();
+
+  const [pickingFolder, setPickingFolder] = useState(false);
 
   const tabs = node.tabs || [];
 
@@ -101,6 +105,22 @@ export function TabBar({ node }: TabBarProps) {
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
+      <button
+        onClick={() => setPickingFolder(true)}
+        className="flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
+        title="New terminal in a folder…"
+      >
+        <FolderOpen className="w-3.5 h-3.5" />
+      </button>
+      {pickingFolder && (
+        <FolderPicker
+          onClose={() => setPickingFolder(false)}
+          onPick={async (path) => {
+            setPickingFolder(false);
+            await launchSession({ title: path.split('/').filter(Boolean).pop() || 'Terminal', cwd: path });
+          }}
+        />
+      )}
 
       <div className="flex-1" />
 

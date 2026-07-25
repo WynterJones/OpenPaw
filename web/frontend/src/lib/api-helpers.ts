@@ -4,6 +4,7 @@ import type {
   ContextFile,
   ContextFolder,
   ChatAttachment,
+  PastedImage,
   MemoryFile,
   MemoryItem,
   Skill,
@@ -119,6 +120,31 @@ export const contextApi = {
       const body = await res.text();
       let message = `Upload failed: ${res.status}`;
       try { const json = JSON.parse(body); message = json.error || message; } catch (e) { console.warn('contextApi.uploadChatAttachment: failed to parse error response:', e); }
+      throw new ApiError(res.status, message);
+    }
+    return res.json();
+  },
+  /**
+   * Stores an image pasted into the composer and returns its path on disk.
+   * The path is what agents get: Claude Code and Codex read files from disk,
+   * so a path works for every provider where a vision payload would not.
+   */
+  uploadPastedImage: async (file: File): Promise<PastedImage> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const headers: Record<string, string> = {};
+    const csrf = getCSRFToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const res = await fetch(`${BASE_URL}/chat/pasted-images`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      let message = `Upload failed: ${res.status}`;
+      try { const json = JSON.parse(body); message = json.error || message; } catch { /* keep the status message */ }
       throw new ApiError(res.status, message);
     }
     return res.json();

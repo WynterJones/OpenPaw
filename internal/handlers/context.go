@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -703,3 +704,100 @@ func detectMimeType(filename, contentType string) string {
 	return "text/plain"
 }
 
+// pastedImagesDir holds images pasted into the composer. Kept separate from
+// chat-attachments because these are written before a message exists — there is
+// no message_id to attach them to yet — and because agents are handed real
+// filesystem paths into this directory.
+func (h *ContextHandler) pastedImagesDir() string {
+	return filepath.Join(h.dataDir, "pasted-images")
+}
+
+// UploadPastedImage stores an image pasted into the chat composer and returns
+// both a URL for display and its absolute path on disk.
+//
+// The path is the point: every provider can then see the image the same way.
+// Claude Code and Codex are shelled-out CLIs that read files from disk, and the
+// in-app agents have a Read tool — so handing over a path works everywhere,
+// where a base64 vision block would only work for OpenRouter models that
+// support vision.
+func (h *ContextHandler) UploadPastedImage(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		writeError(w, http.StatusBadRequest, "image too large (max 10MB)")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	mimeType := detectMimeType(header.Filename, header.Header.Get("Content-Type"))
+	if !strings.HasPrefix(mimeType, "image/") {
+		writeError(w, http.StatusBadRequest, "only images can be pasted")
+		return
+	}
+
+	if err := os.MkdirAll(h.pastedImagesDir(), 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create image directory")
+		return
+	}
+
+	// Clipboard images arrive as "image.png" or with no name at all, so the
+	// stored name is generated and the extension derived from the MIME type.
+	ext := filepath.Ext(header.Filename)
+	if ext == "" {
+		ext = extensionForImageMime(mimeType)
+	}
+	id := uuid.New().String()
+	diskPath := filepath.Join(h.pastedImagesDir(), id+ext)
+
+	dst, err := os.Create(diskPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create file")
+		return
+	}
+	defer dst.Close()
+
+	written, err := io.Copy(dst, file)
+	if err != nil {
+		os.Remove(diskPath)
+		writeError(w, http.StatusInternalServerError, "failed to write image")
+		return
+	}
+
+	name := header.Filename
+	if name == "" {
+		name = "pasted" + ext
+	}
+
+	h.db.LogAudit("user", "image_pasted", "user", "image", id,
+		fmt.Sprintf("%s (%d bytes)", name, written))
+
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"id":   id,
+		"name": name,
+		"path": diskPath,
+		// Served through the existing local-file endpoint, which is already how
+		// the chat renderer displays on-disk images.
+		"url":        "/api/v1/openclaw/file?path=" + url.QueryEscape(diskPath),
+		"mime_type":  mimeType,
+		"size_bytes": written,
+	})
+}
+
+func extensionForImageMime(mime string) string {
+	switch mime {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	case "image/svg+xml":
+		return ".svg"
+	default:
+		return ".png"
+	}
+}

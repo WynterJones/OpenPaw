@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { TerminalSquare, Plus, X, Pencil } from 'lucide-react';
+import { TerminalSquare, Plus, X, Pencil, FolderOpen } from 'lucide-react';
 import { Button } from '../components/Button';
 import { WorkbenchProvider, useWorkbench } from '../components/workbench/WorkbenchProvider';
 import { PanelContainer } from '../components/workbench/PanelContainer';
 import { ProjectsButton } from '../components/workbench/ProjectsPanel';
 import { useDragReorder } from '../hooks/useDragReorder';
 import type { Workbench as WorkbenchType } from '../lib/api';
+import { api } from '../lib/api';
+import { FolderPicker } from '../components/workbench/FolderPicker';
+import { isTauri, listenFolderDrop } from '../lib/tauri';
 
 const TAB_COLORS = [
   '',
@@ -238,7 +241,39 @@ function WorkbenchHeader() {
 // ── Main content area ──
 
 function WorkbenchContent() {
-  const { sessions, rootPanel, createSession, loading } = useWorkbench();
+  const { sessions, rootPanel, createSession, launchSession, loading } = useWorkbench();
+  const [pickingFolder, setPickingFolder] = useState(false);
+  const [dropActive, setDropActive] = useState(false);
+
+  const openInFolder = useCallback(
+    async (path: string) => {
+      setPickingFolder(false);
+      // Resolve first: a drop can land on a file as easily as a folder, and
+      // "open a terminal here" should mean the containing directory then.
+      let cwd = path;
+      try {
+        const info = await api.get<{ path: string }>(`/system/path-info?path=${encodeURIComponent(path)}`);
+        cwd = info.path;
+      } catch {
+        /* fall back to the raw path and let the shell complain */
+      }
+      await launchSession({ title: cwd.split('/').filter(Boolean).pop() || 'Terminal', cwd });
+    },
+    [launchSession],
+  );
+
+  // Folder drops carry a real path only in the desktop shell; a browser hands
+  // over the file contents but never the location on disk.
+  useEffect(() => {
+    return listenFolderDrop({
+      onEnter: () => setDropActive(true),
+      onLeave: () => setDropActive(false),
+      onDrop: (paths) => {
+        setDropActive(false);
+        if (paths.length > 0) openInFolder(paths[0]);
+      },
+    });
+  }, [openInFolder]);
 
   if (loading) {
     return (
@@ -250,23 +285,46 @@ function WorkbenchContent() {
 
   if (!rootPanel || sessions.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 text-text-2">
+      <div
+        className={`flex-1 flex flex-col items-center justify-center gap-4 text-text-2 transition-colors ${
+          dropActive ? 'bg-accent-primary/5 ring-2 ring-inset ring-accent-primary/40' : ''
+        }`}
+      >
         <TerminalSquare className="w-16 h-16 text-text-3" />
         <h2 className="text-xl font-semibold text-text-1">No terminals open</h2>
         <p className="text-sm">Create a terminal to get started.</p>
-        <Button
-          onClick={() => createSession()}
-          icon={<Plus className="w-4 h-4" />}
-        >
-          New Terminal
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => createSession()} icon={<Plus className="w-4 h-4" />}>
+            New Terminal
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setPickingFolder(true)}
+            icon={<FolderOpen className="w-4 h-4" />}
+          >
+            Select Folder
+          </Button>
+        </div>
+        {isTauri() && (
+          <p className="text-xs text-text-3">…or drop a folder here to open a terminal in it.</p>
+        )}
+        {pickingFolder && (
+          <FolderPicker onPick={openInFolder} onClose={() => setPickingFolder(false)} />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex-1 min-h-0">
+    <div
+      className={`flex-1 min-h-0 transition-shadow ${
+        dropActive ? 'ring-2 ring-inset ring-accent-primary/40' : ''
+      }`}
+    >
       <PanelContainer node={rootPanel} />
+      {pickingFolder && (
+        <FolderPicker onPick={openInFolder} onClose={() => setPickingFolder(false)} />
+      )}
     </div>
   );
 }

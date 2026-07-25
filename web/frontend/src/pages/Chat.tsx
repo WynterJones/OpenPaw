@@ -13,7 +13,7 @@ import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { SearchBar } from '../components/SearchBar';
 import { Modal } from '../components/Modal';
-import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, threadMembers } from '../lib/api';
+import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, type PastedImage, threadMembers } from '../lib/api';
 import { todoApi, mediaApi, threadPins } from '../lib/api-helpers';
 import { useOpenRouterBalance } from '../hooks/useOpenRouterBalance';
 import { CLI_CONTEXT_LIMIT } from '../lib/provider';
@@ -176,6 +176,11 @@ export function Chat() {
 
   // File attachment state
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  // Images pasted into the composer. Held with a local blob preview because the
+  // file-serving endpoint only serves paths that already appear in a saved
+  // message, so the stored URL isn't usable until after send.
+  const [pastedImages, setPastedImages] = useState<{ image: PastedImage; preview: string }[]>([]);
+  const [pastingImage, setPastingImage] = useState(false);
   const [attachedDirectories, setAttachedDirectories] = useState<string[]>([]);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
@@ -418,6 +423,41 @@ export function Chat() {
       setToolFilter('');
       toolAnchorRef.current = null;
     }
+  };
+
+  // Paste an image straight into the composer. Uploaded immediately so the send
+  // path only has to reference a path that already exists on disk.
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.items ?? [])
+      .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (files.length === 0) return;
+
+    // Only swallow the paste once we know there is an image: pasting text into
+    // the box must keep working normally.
+    e.preventDefault();
+    setPastingImage(true);
+    try {
+      for (const file of files) {
+        try {
+          const image = await contextApi.uploadPastedImage(file);
+          setPastedImages(prev => [...prev, { image, preview: URL.createObjectURL(file) }]);
+        } catch (err) {
+          toast('error', err instanceof Error ? err.message : 'Could not attach that image');
+        }
+      }
+    } finally {
+      setPastingImage(false);
+    }
+  };
+
+  const removePastedImage = (id: string) => {
+    setPastedImages(prev => {
+      const hit = prev.find(p => p.image.id === id);
+      if (hit) URL.revokeObjectURL(hit.preview);
+      return prev.filter(p => p.image.id !== id);
+    });
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1115,9 +1155,10 @@ export function Chat() {
     // Snapshot attachments before clearing the composer state below.
     const ctxFiles = attachedContextFiles;
     const attachFiles = pendingAttachments;
+    const images = pastedImages;
     const dirs = attachedDirectories;
     const toolIds = attachedTools.map(t => t.id);
-    const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0;
+    const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0 || images.length > 0;
 
     // Reset streaming state
     resetStreaming();
@@ -1132,6 +1173,7 @@ export function Chat() {
     setInput('');
     setAttachedContextFiles([]);
     setPendingAttachments([]);
+    setPastedImages([]);
     setAttachedDirectories([]);
     setAttachedTools([]);
     if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
@@ -1177,6 +1219,15 @@ export function Chat() {
 
     if (dirs.length > 0) {
       content += dirs.map(d => `\n\n---\n**Directory: ${d}**`).join('');
+    }
+
+    // Markdown *link* syntax, not image syntax: the chat renderer turns a link
+    // whose href is an on-disk image path into an inline preview, and the same
+    // text gives the agent a real path it can read — which is what makes this
+    // work identically for OpenRouter, Claude Code and Codex.
+    if (images.length > 0) {
+      content += '\n\n---\n**Pasted image(s)** — read them from disk at these paths:';
+      content += images.map(({ image }) => `\n\n[${image.name}](${image.path})`).join('');
     }
 
     // Reflect the assembled content in the optimistic bubble now that reads are done.
@@ -1824,6 +1875,36 @@ export function Chat() {
                       }
                     }}
                   >
+                  {/* Pasted image thumbnails — shown as previews rather than
+                      filename chips, because the whole point of pasting a
+                      screenshot is seeing that the right one landed. */}
+                  {(pastedImages.length > 0 || pastingImage) && (
+                    <div className="flex flex-wrap gap-2 px-3 pt-2.5">
+                      {pastedImages.map(({ image, preview }) => (
+                        <div key={image.id} className="relative group">
+                          <img
+                            src={preview}
+                            alt={image.name}
+                            title={image.path}
+                            className="h-16 w-16 rounded-lg object-cover border border-border-1"
+                          />
+                          <button
+                            onClick={() => removePastedImage(image.id)}
+                            aria-label={`Remove ${image.name}`}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-surface-0 border border-border-1 text-text-2 hover:text-text-0 hover:bg-surface-2 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+                          >
+                            <X className="w-3 h-3" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                      {pastingImage && (
+                        <div className="h-16 w-16 rounded-lg border border-dashed border-border-1 flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-text-3 animate-spin" aria-hidden="true" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Pending attachments / context files strip */}
                   {(pendingAttachments.length > 0 || attachedContextFiles.length > 0 || attachedDirectories.length > 0 || attachedTools.length > 0) && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -1884,6 +1965,7 @@ export function Chat() {
                     value={input}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
+                    onPaste={handlePaste}
                     placeholder="Ask anything... (@ agents, # tools, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"

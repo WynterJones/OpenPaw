@@ -416,6 +416,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 			// Chat attachments
 			r.Post("/chat/attachments", contextHandler.UploadChatAttachment)
+			r.Post("/chat/pasted-images", contextHandler.UploadPastedImage)
 			r.Get("/chat/attachments/{id}", contextHandler.ServeChatAttachment)
 
 			// Agents
@@ -536,6 +537,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Get("/system/info", systemHandler.Info)
 			r.Get("/system/balance", systemHandler.Balance)
 			r.Delete("/system/data", systemHandler.DeleteData)
+			r.Get("/system/path-info", systemHandler.PathInfo)
 			r.Post("/system/pick-folder", systemHandler.PickFolder)
 			r.Post("/system/open-external", systemHandler.OpenExternal)
 
