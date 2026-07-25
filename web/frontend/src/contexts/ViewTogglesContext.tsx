@@ -1,38 +1,20 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ViewTogglesContext, STORAGE_KEYS, type ViewToggleKey } from './viewToggles';
 
 /**
- * The three layout panes the user can show or hide.
+ * Owns the show/hide state for the sidebar, chat list and chat panel.
  *
- * These used to be three separate buttons scattered across the UI — one in the
- * sidebar footer, two in the chat header — each owning its own state. They live
- * here so a single menu in the header can drive all of them, and so the chat
- * panes keep their setting when you navigate away and back.
+ * These used to be three separate buttons, each owning its own state — one in
+ * the sidebar footer, two in the chat header. They live here so a single menu in
+ * the header can drive all of them, and so the chat panes keep their setting
+ * when you navigate away and back.
  */
-export type ViewToggleKey = 'sidebar' | 'chatList' | 'chatPanel';
-
-interface ViewTogglesValue {
-  /** true = visible. */
-  sidebar: boolean;
-  chatList: boolean;
-  chatPanel: boolean;
-  toggle: (key: ViewToggleKey) => void;
-  set: (key: ViewToggleKey, visible: boolean) => void;
-}
-
-const STORAGE_KEYS: Record<ViewToggleKey, string> = {
-  sidebar: 'openpaw_show_sidebar',
-  chatList: 'openpaw_show_chat_list',
-  chatPanel: 'openpaw_show_chat_panel',
-};
-
 function loadInitial(key: ViewToggleKey, fallback: boolean): boolean {
   const stored = localStorage.getItem(STORAGE_KEYS[key]);
   if (stored === '1') return true;
   if (stored === '0') return false;
   return fallback;
 }
-
-const ViewTogglesContext = createContext<ViewTogglesValue | null>(null);
 
 export function ViewTogglesProvider({ children }: { children: ReactNode }) {
   const [sidebar, setSidebar] = useState(() => loadInitial('sidebar', true));
@@ -63,10 +45,4 @@ export function ViewTogglesProvider({ children }: { children: ReactNode }) {
   );
 
   return <ViewTogglesContext.Provider value={value}>{children}</ViewTogglesContext.Provider>;
-}
-
-export function useViewToggles(): ViewTogglesValue {
-  const ctx = useContext(ViewTogglesContext);
-  if (!ctx) throw new Error('useViewToggles must be used inside ViewTogglesProvider');
-  return ctx;
 }

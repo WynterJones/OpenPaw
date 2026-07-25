@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Folder,
   FolderOpen,
@@ -14,7 +14,6 @@ import {
   Database,
   UserPen,
   Pencil,
-  GripVertical,
   PanelLeft,
 } from "lucide-react";
 import { Button } from "../components/Button";
@@ -124,7 +123,6 @@ interface TreeNodeProps {
   onToggleFolder: (id: string) => void;
   onSelectFile: (file: ContextFile) => void;
   onDeleteFolder: (id: string, name: string) => void;
-  onFileDrop: (fileId: string, folderId: string) => void;
   onContextMenu: (e: React.MouseEvent, file: ContextFile) => void;
 }
 
@@ -136,40 +134,15 @@ function TreeNodeItem({
   onToggleFolder,
   onSelectFile,
   onDeleteFolder,
-  onFileDrop,
   onContextMenu,
 }: TreeNodeProps) {
   const isOpen = expanded.has(node.id);
-  const [dragOver, setDragOver] = useState(false);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/x-context-file")) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      setDragOver(true);
-    }
-  };
-
-  const handleDragLeave = () => setDragOver(false);
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const fileId = e.dataTransfer.getData("application/x-context-file");
-    if (fileId) onFileDrop(fileId, node.id);
-  };
-
   return (
     <div role="treeitem" aria-expanded={isOpen} aria-level={level + 1}>
       <div
-        className={`relative group flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors text-sm text-text-1 ${
-          dragOver ? "ring-2 ring-accent-primary bg-accent-muted/30" : ""
-        }`}
+        className="relative group flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors text-sm text-text-1"
         style={{ paddingLeft: `${8 + level * 16}px` }}
         onClick={() => onToggleFolder(node.id)}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
         {isOpen ? (
           <ChevronDown className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
@@ -207,7 +180,6 @@ function TreeNodeItem({
               onToggleFolder={onToggleFolder}
               onSelectFile={onSelectFile}
               onDeleteFolder={onDeleteFolder}
-              onFileDrop={onFileDrop}
               onContextMenu={onContextMenu}
             />
           ))}
@@ -242,11 +214,6 @@ function FileItem({
   onSelect,
   onContextMenu,
 }: FileItemProps) {
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData("application/x-context-file", file.id);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
   return (
     <div
       role="treeitem"
@@ -260,10 +227,7 @@ function FileItem({
       style={{ paddingLeft: `${8 + level * 16}px` }}
       onClick={() => onSelect(file)}
       onContextMenu={(e) => onContextMenu(e, file)}
-      draggable
-      onDragStart={handleDragStart}
     >
-      <GripVertical className="w-3 h-3 text-text-3 opacity-0 group-hover:opacity-50 flex-shrink-0 cursor-grab" />
       <MimeIcon mime={file.mime_type} className="w-4 h-4 flex-shrink-0" />
       <span className="flex-1 truncate">{file.name}</span>
     </div>
@@ -301,7 +265,6 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
   const dragCounter = useRef(0);
 
   // Root drop zone for moving files to root
-  const [rootDragOver, setRootDragOver] = useState(false);
 
   // Modals
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -583,32 +546,32 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
     }
   };
 
-  // Move file between folders
-  const handleFileDrop = async (fileId: string, folderId: string) => {
+  // Move a file between folders. Drag-and-drop used to do this, but the desktop
+  // webview swallows HTML5 drag events, so the folder is chosen from a select on
+  // the open file instead — which also works on touch and with a keyboard.
+  // Folder tree flattened to "Parent / Child" labels for the move selector.
+  const flatFolders = useMemo(() => {
+    const out: { id: string; label: string }[] = [];
+    const walk = (nodes: ContextTreeNode[], prefix: string) => {
+      for (const n of nodes) {
+        const label = prefix ? `${prefix} / ${n.name}` : n.name;
+        out.push({ id: n.id, label });
+        if (n.children?.length) walk(n.children, label);
+      }
+    };
+    walk(tree.folders, "");
+    return out;
+  }, [tree.folders]);
+
+  const moveFileToFolder = async (fileId: string, folderId: string | null) => {
     try {
       await contextApi.moveFile(fileId, folderId);
       await loadTree();
-      toast("success", "File moved");
+      setSelectedFile(prev => (prev && prev.id === fileId ? { ...prev, folder_id: folderId ?? "" } : prev));
+      toast("success", folderId ? "Moved to folder" : "Moved to root");
     } catch (e) {
       console.warn("contextOperation failed:", e);
       toast("error", "Failed to move file");
-    }
-  };
-
-  // Move file to root
-  const handleRootDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setRootDragOver(false);
-    const fileId = e.dataTransfer.getData("application/x-context-file");
-    if (fileId) {
-      try {
-        await contextApi.moveFile(fileId, null);
-        await loadTree();
-        toast("success", "File moved to root");
-      } catch (e) {
-        console.warn("contextOperation failed:", e);
-        toast("error", "Failed to move file");
-      }
     }
   };
 
@@ -750,7 +713,6 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                       onToggleFolder={toggleFolder}
                       onSelectFile={selectFile}
                       onDeleteFolder={handleDeleteFolder}
-                      onFileDrop={handleFileDrop}
                       onContextMenu={handleFileContextMenu}
                     />
                   ))}
@@ -775,31 +737,6 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                   )}
                 </div>
 
-                {/* Root drop zone — move files to root */}
-                {tree.folders.length > 0 && (
-                  <div
-                    className={`mx-2 mt-2 rounded-lg border-2 border-dashed py-3 text-center text-xs transition-colors ${
-                      rootDragOver
-                        ? "border-accent-primary bg-accent-muted/30 text-accent-text"
-                        : "border-border-0 text-text-3"
-                    }`}
-                    onDragOver={(e) => {
-                      if (
-                        e.dataTransfer.types.includes(
-                          "application/x-context-file",
-                        )
-                      ) {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                        setRootDragOver(true);
-                      }
-                    }}
-                    onDragLeave={() => setRootDragOver(false)}
-                    onDrop={handleRootDrop}
-                  >
-                    Drop here for root
-                  </div>
-                )}
               </>
             )}
           </div>
@@ -961,6 +898,22 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                   <span className="hidden sm:inline text-xs text-text-3 flex-shrink-0">
                     {formatBytes(selectedFile.size_bytes)}
                   </span>
+                  {/* Folder placement — replaces dragging a file onto a folder. */}
+                  <label className="hidden md:flex items-center gap-1.5 flex-shrink-0">
+                    <Folder className="w-3.5 h-3.5 text-text-3" aria-hidden="true" />
+                    <span className="sr-only">Folder</span>
+                    <select
+                      value={selectedFile.folder_id || ""}
+                      onChange={(e) => moveFileToFolder(selectedFile.id, e.target.value || null)}
+                      className="text-xs rounded-md border border-border-1 bg-surface-0 text-text-2 px-1.5 py-1 cursor-pointer hover:border-border-0 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors"
+                      title="Move this file to a folder"
+                    >
+                      <option value="">No folder (root)</option>
+                      {flatFolders.map((f) => (
+                        <option key={f.id} value={f.id}>{f.label}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">

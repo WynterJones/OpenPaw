@@ -11,7 +11,7 @@ import {
 import { useDesign } from "../contexts/DesignContext";
 import { NotificationBell } from "./NotificationBell";
 import { startWindowDrag } from "../lib/tauri";
-import { useViewToggles } from "../contexts/ViewTogglesContext";
+import { useViewToggles } from "../contexts/viewToggles";
 
 function fmt(n: number): string {
   if (n < 0.01 && n > 0) return `$${n.toFixed(4)}`;

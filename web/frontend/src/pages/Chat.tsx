@@ -26,7 +26,7 @@ import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbl
 import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
-import { useViewToggles } from '../contexts/ViewTogglesContext';
+import { useViewToggles } from '../contexts/viewToggles';
 
 type ContextItem =
   | { kind: 'file'; file: ContextFile }
@@ -1276,7 +1276,22 @@ export function Chat() {
   const clampedPage = Math.min(threadPage, totalPages);
   const pagedThreads = filteredThreads.slice((clampedPage - 1) * THREADS_PER_PAGE, clampedPage * THREADS_PER_PAGE);
   const activeRole = roles.find(r => r.slug === agent);
-  const thinkingRole = activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : activeRole;
+  // Who is currently working. activeAgentSlug only arrives once the status
+  // recovery request lands, which is a few seconds after re-opening an
+  // in-progress chat — until then the last assistant message names the same
+  // agent, so use it rather than falling back to the Gateway and visibly
+  // swapping the avatar and name once the real answer shows up.
+  const lastAssistantSlug = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'assistant' && m.agent_role_slug) return m.agent_role_slug;
+    }
+    return '';
+  }, [messages]);
+  const thinkingRole =
+    (activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : undefined) ??
+    (lastAssistantSlug ? roles.find(r => r.slug === lastAssistantSlug) : undefined) ??
+    activeRole;
   const isStreaming = streamActive || streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
   // Provider-aware usage bar: CLI subscription providers (Claude Code / Codex) have
   // no per-token cost and a 1M context window; OpenRouter uses the model's window.
@@ -1377,7 +1392,7 @@ export function Chat() {
                         <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); thread.pinned ? unpinThread(thread) : setPinTarget(thread); }}
+                        onClick={(e) => { e.stopPropagation(); if (thread.pinned) { unpinThread(thread); } else { setPinTarget(thread); } }}
                         className={`p-1.5 rounded-md cursor-pointer focus:opacity-100 ${thread.pinned ? 'text-accent-primary hover:bg-accent-muted' : 'text-text-3 hover:text-text-1 hover:bg-surface-3'}`}
                         aria-label={thread.pinned ? 'Unpin chat' : 'Pin chat'}
                         title={thread.pinned ? 'Unpin — makes this chat editable again' : 'Pin — archive this chat with a summary'}

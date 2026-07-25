@@ -5,7 +5,8 @@ import { BackgroundImage } from './BackgroundImage';
 import { ChatCompanions } from './companion/ChatCompanions';
 import { ActiveChatsIndicator } from './ActiveChatsIndicator';
 import { ActiveTerminalsIndicator } from './ActiveTerminalsIndicator';
-import { ViewTogglesProvider, useViewToggles } from '../contexts/ViewTogglesContext';
+import { ViewTogglesProvider } from '../contexts/ViewTogglesContext';
+import { useViewToggles } from '../contexts/viewToggles';
 
 function LayoutInner() {
   const { sidebar, toggle } = useViewToggles();

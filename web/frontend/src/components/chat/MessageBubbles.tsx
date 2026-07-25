@@ -50,10 +50,12 @@ const STATUS_LABEL_HOLD_MS = 600;
  */
 function useHeldLabel(label: string): string {
   const [shown, setShown] = useState(label);
-  const shownAtRef = useRef(Date.now());
+  // 0 until the first swap; set inside the effect so render stays pure.
+  const shownAtRef = useRef(0);
 
   useEffect(() => {
     if (label === shown) return;
+    if (shownAtRef.current === 0) shownAtRef.current = Date.now();
     const elapsed = Date.now() - shownAtRef.current;
     const wait = Math.max(0, STATUS_LABEL_HOLD_MS - elapsed);
     const timer = setTimeout(() => {
@@ -99,20 +101,25 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   return (
     <div className="streaming-entrance flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
-        <div className="w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
-          {role ? (
+        {/* Until the working agent is known, show a neutral placeholder rather
+            than the Gateway avatar — guessing wrong means the avatar and name
+            visibly swap a second later. */}
+        <div className={`w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1 ${role ? '' : 'animate-pulse'}`}>
+          {role && (
             <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
-          ) : (
-            <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
           )}
         </div>
-        {role && (
+        {role ? (
           <p className="text-sm font-semibold text-accent-primary md:hidden">{role.name}</p>
+        ) : (
+          <span className="h-3 w-20 rounded bg-surface-2 animate-pulse md:hidden" aria-hidden="true" />
         )}
       </div>
       <div className="max-w-full md:max-w-[75%]">
-        {role && (
+        {role ? (
           <p className="text-xs font-medium text-accent-primary mb-0.5 px-1 hidden md:block">{role.name}</p>
+        ) : (
+          <span className="mb-0.5 mx-1 hidden md:block h-3 w-24 rounded bg-surface-2 animate-pulse" aria-hidden="true" />
         )}
         {text ? (
           <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
