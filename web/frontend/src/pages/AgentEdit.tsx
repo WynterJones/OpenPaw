@@ -16,7 +16,7 @@ interface AgentTool extends Tool {
   access_type: 'owned' | 'granted';
 }
 
-const PRESET_AVATARS = Array.from({ length: 105 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
+const PRESET_AVATARS = Array.from({ length: 117 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
 
 interface FileTab {
   key: string;
