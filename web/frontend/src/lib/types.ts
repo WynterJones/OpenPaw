@@ -676,6 +676,15 @@ export interface WorkspaceFileNode {
   children?: WorkspaceFileNode[];
 }
 
+/** A single file's contents, for the in-app quick editor. */
+export interface WorkspaceFileContent {
+  path: string;
+  name: string;
+  content: string;
+  size: number;
+  modified_at: string;
+}
+
 export interface WorkspaceFilesResponse {
   workspace_id: string;
   files: WorkspaceFileNode[];

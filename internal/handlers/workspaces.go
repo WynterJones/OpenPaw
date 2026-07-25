@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/openpaw/openpaw/internal/llm"
 
@@ -542,21 +543,8 @@ func (h *WorkspacesHandler) Browse(w http.ResponseWriter, r *http.Request) {
 	dirID := r.URL.Query().Get("dir")
 	rel := r.URL.Query().Get("path")
 
-	var base string
-	if dirID == "" {
-		base = h.filesDir(id)
-	} else {
-		if err := h.db.QueryRow(
-			"SELECT path FROM workspace_directories WHERE id = ? AND workspace_id = ?", dirID, id,
-		).Scan(&base); err != nil {
-			writeError(w, http.StatusNotFound, "directory not found")
-			return
-		}
-	}
-
-	target, ok := safeJoin(base, rel)
+	target, ok := h.resolveBrowsePath(w, id, dirID, rel)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid path")
 		return
 	}
 	nodes, err := listDirLevel(target, rel)
@@ -565,6 +553,151 @@ func (h *WorkspacesHandler) Browse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"path": rel, "files": nodes})
+}
+
+// resolveBrowsePath maps a (workspace, dir, relative path) triple onto an
+// absolute path, refusing anything that escapes its base. Shared by Browse,
+// ReadFile and WriteFile so all three enforce the same boundary — a read/write
+// endpoint with its own path handling is exactly how traversal bugs appear.
+// Writes an error response and returns ok=false on failure.
+func (h *WorkspacesHandler) resolveBrowsePath(w http.ResponseWriter, workspaceID, dirID, rel string) (string, bool) {
+	var base string
+	if dirID == "" {
+		base = h.filesDir(workspaceID)
+	} else {
+		if err := h.db.QueryRow(
+			"SELECT path FROM workspace_directories WHERE id = ? AND workspace_id = ?", dirID, workspaceID,
+		).Scan(&base); err != nil {
+			writeError(w, http.StatusNotFound, "directory not found")
+			return "", false
+		}
+	}
+
+	target, ok := safeJoin(base, rel)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return "", false
+	}
+	return target, true
+}
+
+// maxEditableFileSize caps what the in-app editor will open. The editor is for
+// quick edits to source and config; loading a multi-megabyte file into a
+// textarea would hang the renderer, and a binary would be corrupted on save.
+const maxEditableFileSize = 2 << 20 // 2 MiB
+
+// ReadFile returns the contents of a single file for the in-app editor.
+//
+// Refuses directories, oversized files, and anything that isn't valid UTF-8 —
+// the last check is what stops a binary being opened, mangled by a round trip
+// through a textarea, and written back over the original.
+func (h *WorkspacesHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	target, ok := h.resolveBrowsePath(w, id, r.URL.Query().Get("dir"), r.URL.Query().Get("path"))
+	if !ok {
+		return
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if info.IsDir() {
+		writeError(w, http.StatusBadRequest, "that path is a directory")
+		return
+	}
+	if info.Size() > maxEditableFileSize {
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("file is %s — too large to edit in the app", formatBytes(info.Size())))
+		return
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read file")
+		return
+	}
+	if !utf8.Valid(data) {
+		writeError(w, http.StatusUnsupportedMediaType, "this looks like a binary file, so it can't be edited here")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"path":        r.URL.Query().Get("path"),
+		"name":        filepath.Base(target),
+		"content":     string(data),
+		"size":        info.Size(),
+		"modified_at": info.ModTime().UTC(),
+	})
+}
+
+// WriteFile saves edited contents back over an existing file.
+//
+// Deliberately refuses to create new files: this endpoint backs an editor
+// opened from a tree row, so a path that no longer exists means the file moved
+// or was deleted, and silently recreating it would resurrect deleted content.
+func (h *WorkspacesHandler) WriteFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	var req struct {
+		Dir     string `json:"dir"`
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	target, ok := h.resolveBrowsePath(w, id, req.Dir, req.Path)
+	if !ok {
+		return
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "file no longer exists")
+		return
+	}
+	if info.IsDir() {
+		writeError(w, http.StatusBadRequest, "that path is a directory")
+		return
+	}
+	if int64(len(req.Content)) > maxEditableFileSize {
+		writeError(w, http.StatusRequestEntityTooLarge, "content is too large to save")
+		return
+	}
+
+	// Preserve the file's existing permissions rather than imposing 0644 — this
+	// edits real files in the user's repositories, including scripts that must
+	// stay executable.
+	if err := os.WriteFile(target, []byte(req.Content), info.Mode().Perm()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save file")
+		return
+	}
+
+	updated, err := os.Stat(target)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "saved, but failed to stat the file")
+		return
+	}
+
+	h.db.LogAudit("user", "workspace_file_edited", "user", "file", req.Path,
+		fmt.Sprintf("edited %s (%s)", filepath.Base(target), formatBytes(updated.Size())))
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":      "saved",
+		"size":        updated.Size(),
+		"modified_at": updated.ModTime().UTC(),
+	})
 }
 
 // workspaceDirectory is one external directory attached to a workspace, beyond

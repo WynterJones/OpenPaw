@@ -32,6 +32,7 @@ import type {
   MediaListResponse,
   Workspace,
   WorkspaceFileNode,
+  WorkspaceFileContent,
   WorkspaceFilesResponse,
   WorkspaceDirectory,
   ThreadPin,
@@ -399,6 +400,15 @@ export const workspaces = {
   browse: (id: string, dir: string, path: string) =>
     api.get<{ path: string; files: WorkspaceFileNode[] }>(
       `/workspaces/${id}/browse?dir=${encodeURIComponent(dir)}&path=${encodeURIComponent(path)}`,
+    ),
+  readFile: (id: string, dir: string, path: string) =>
+    api.get<WorkspaceFileContent>(
+      `/workspaces/${id}/file?dir=${encodeURIComponent(dir)}&path=${encodeURIComponent(path)}`,
+    ),
+  writeFile: (id: string, dir: string, path: string, content: string) =>
+    api.put<{ status: string; size: number; modified_at: string }>(
+      `/workspaces/${id}/file`,
+      { dir, path, content },
     ),
   reveal: (id: string) => api.post<{ path: string }>(`/workspaces/${id}/reveal`, {}),
   listDirectories: (id: string) => api.get<WorkspaceDirectory[]>(`/workspaces/${id}/directories`),

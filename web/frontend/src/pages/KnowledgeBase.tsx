@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { BookOpen, ImageIcon, UserPen, FolderTree, Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderPlus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
+import { FileEditorModal } from '../components/FileEditorModal';
 import { ContextPanel } from './Context';
 import { MediaLibraryPanel } from './MediaLibrary';
 import { api } from '../lib/api';
@@ -39,10 +40,12 @@ function DirTreeNode({
   node,
   level,
   loadChildren,
+  onOpenFile,
 }: {
   node: WorkspaceFileNode;
   level: number;
   loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
+  onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<WorkspaceFileNode[] | null>(node.children ?? null);
@@ -90,7 +93,13 @@ function DirTreeNode({
         {open && children && children.length > 0 && (
           <div>
             {children.map((child) => (
-              <DirTreeNode key={child.path} node={child} level={level + 1} loadChildren={loadChildren} />
+              <DirTreeNode
+                key={child.path}
+                node={child}
+                level={level + 1}
+                loadChildren={loadChildren}
+                onOpenFile={onOpenFile}
+              />
             ))}
           </div>
         )}
@@ -104,14 +113,19 @@ function DirTreeNode({
   }
 
   return (
-    <div style={pad} className="flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-2">
+    <button
+      onClick={() => onOpenFile(node)}
+      style={pad}
+      title={`Open ${node.name}`}
+      className="group w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-2 hover:bg-surface-2 hover:text-text-1 transition-colors cursor-pointer text-left"
+    >
       <span className="w-3.5 flex-shrink-0" aria-hidden="true" />
-      <File className="w-4 h-4 text-text-3 flex-shrink-0" aria-hidden="true" />
+      <File className="w-4 h-4 text-text-3 group-hover:text-accent-primary flex-shrink-0 transition-colors" aria-hidden="true" />
       <span className="flex-1 min-w-0 truncate">{node.name}</span>
       {node.size > 0 && (
         <span className="text-[11px] text-text-3 flex-shrink-0">{formatSize(node.size)}</span>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -120,11 +134,13 @@ function AttachedDirectorySection({
   onRemove,
   removing,
   loadChildren,
+  onOpenFile,
 }: {
   dir: WorkspaceDirectory;
   onRemove: () => void;
   removing: boolean;
   loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
+  onOpenFile: (node: WorkspaceFileNode) => void;
 }) {
   return (
     <div className="mb-5">
@@ -150,7 +166,13 @@ function AttachedDirectorySection({
       ) : (
         <div>
           {dir.files.map((node) => (
-            <DirTreeNode key={node.path} node={node} level={0} loadChildren={loadChildren} />
+            <DirTreeNode
+              key={node.path}
+              node={node}
+              level={0}
+              loadChildren={loadChildren}
+              onOpenFile={onOpenFile}
+            />
           ))}
         </div>
       )}
@@ -166,6 +188,7 @@ function WorkspaceDirectoryPanel() {
   const [revealing, setRevealing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ dirId: string; path: string; name: string } | null>(null);
 
   const refresh = useCallback(async (id: string) => {
     const [filesRes, dirsRes] = await Promise.all([
@@ -297,6 +320,7 @@ function WorkspaceDirectoryPanel() {
                     node={node}
                     level={0}
                     loadChildren={(p) => workspaces.browse(wsId!, '', p).then((r) => r.files)}
+                    onOpenFile={(f) => setEditing({ dirId: '', path: f.path, name: f.name })}
                   />
                 ))}
               </div>
@@ -308,10 +332,21 @@ function WorkspaceDirectoryPanel() {
                 onRemove={() => removeDirectory(dir.id)}
                 removing={removingId === dir.id}
                 loadChildren={(p) => workspaces.browse(wsId!, dir.id, p).then((r) => r.files)}
+                onOpenFile={(f) => setEditing({ dirId: dir.id, path: f.path, name: f.name })}
               />
             ))}
           </div>
         </div>
+      )}
+      {editing && wsId && (
+        <FileEditorModal
+          key={`${editing.dirId}:${editing.path}`}
+          workspaceId={wsId}
+          dirId={editing.dirId}
+          path={editing.path}
+          name={editing.name}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
