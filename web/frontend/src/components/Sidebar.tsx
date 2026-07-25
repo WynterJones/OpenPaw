@@ -481,7 +481,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
           }}
           aria-expanded={open}
           aria-label={open ? "Collapse dashboards list" : "Expand dashboards list"}
-          className="ml-1 p-2 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+          className="ml-1 px-2 py-3 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
         >
           <ChevronDown
             className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
@@ -491,7 +491,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
       </div>
 
       {open && (
-        <div className="mt-0.5 ml-4 pl-2 border-l border-border-0 space-y-0.5">
+        <div className="mt-0.5 space-y-0.5">
           {dashboards.length === 0 ? (
             <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
           ) : (
@@ -603,6 +603,14 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const balance = useOpenRouterBalance();
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    api.get<{ version: string }>("/system/info").then((d) => setVersion(d.version || "")).catch(() => {});
+  }, []);
+  const openWynter = (e: React.MouseEvent) => {
+    e.preventDefault();
+    api.post("/system/open-external", { url: "https://wynter.ai" }).catch(() => {});
+  };
   return (
     <aside
       data-tauri-drag-region
@@ -683,14 +691,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               Currently using {providerName(balance)}
             </p>
             <p className="text-[10px] text-text-3 mb-2" aria-hidden="true">
-              &copy; OpenPaw &middot; Agentic Factory
+              &copy; OpenPaw{version ? ` - v${version}` : ""}
             </p>
             <a
               href="https://wynter.ai"
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={openWynter}
               title="Made by Wynter — visit wynter.ai"
-              className="block w-[40%] opacity-50 hover:opacity-90 transition-opacity"
+              className="block w-[40%] opacity-50 hover:opacity-90 transition-opacity cursor-pointer"
             >
               <img
                 src="/wynter-logo.png"

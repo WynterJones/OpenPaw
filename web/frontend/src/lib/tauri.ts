@@ -62,3 +62,29 @@ export function startWindowDrag(e: React.MouseEvent): void {
   if (target && target.closest(INTERACTIVE)) return;
   invokeStartDragging();
 }
+
+// Native OS folder/file drag-drop (desktop app only). Tauri delivers real
+// absolute paths via a global webview event — the browser's HTML drop event
+// can't expose filesystem paths. No-ops (returns a no-op unlisten) in a normal
+// browser, where dragging a folder can't yield a usable path anyway.
+export function listenFolderDrop(handlers: {
+  onEnter?: () => void;
+  onLeave?: () => void;
+  onDrop?: (paths: string[]) => void;
+}): () => void {
+  if (!isTauri()) return () => {};
+  const ev = (window as any).__TAURI__?.event;
+  if (!ev?.listen) return () => {};
+  const pending: Array<Promise<() => void>> = [
+    ev.listen("tauri://drag-enter", () => handlers.onEnter?.()),
+    ev.listen("tauri://drag-leave", () => handlers.onLeave?.()),
+    ev.listen("tauri://drag-drop", (e: any) => {
+      handlers.onLeave?.();
+      const paths: string[] = e?.payload?.paths ?? [];
+      if (paths.length > 0) handlers.onDrop?.(paths);
+    }),
+  ];
+  return () => {
+    pending.forEach((p) => p.then((u) => u()).catch(() => {}));
+  };
+}

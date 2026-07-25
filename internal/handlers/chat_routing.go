@@ -715,7 +715,7 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_tool: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔨 Building **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔨 Building **"+resp.WorkOrder.Title+"**.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
@@ -761,7 +761,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "update_tool: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔧 Updating **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "🔧 Updating **"+resp.WorkOrder.Title+"**.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnToolBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {
@@ -855,7 +855,7 @@ func (h *ChatHandler) handleBuildCustomDashboard(ctx context.Context, threadID, 
 	}
 
 	h.db.LogAudit(userID, "work_order_created", "work_order", "work_order", wo.ID, "build_custom_dashboard: "+resp.WorkOrder.Title)
-	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building custom dashboard **"+resp.WorkOrder.Title+"**. This may take a few minutes.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
+	placeholderID := h.saveAssistantMessage(threadID, "builder", "Building custom dashboard **"+resp.WorkOrder.Title+"**.", gatewayCostUSD, gatewayInTok, gatewayOutTok)
 
 	_, err = h.agentManager.SpawnCustomDashboardBuilder(context.Background(), wo, threadID, userID, placeholderID)
 	if err != nil {

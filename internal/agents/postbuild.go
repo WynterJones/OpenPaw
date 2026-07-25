@@ -146,7 +146,7 @@ func (m *Manager) postBuildCustomDashboard(workOrder *models.WorkOrder, dashboar
 	}
 
 	m.db.LogAudit("system", "dashboard_"+action, "dashboard", "dashboard", dashboardID, workOrder.Title)
-	return fmt.Sprintf("Custom dashboard **%s** %s. View it on the Dashboards page.", workOrder.Title, action)
+	return fmt.Sprintf("Custom dashboard **%s** %s.", workOrder.Title, action)
 }
 
 // postBuildDashboard parses the builder output JSON and saves the dashboard to DB.

@@ -1656,19 +1656,25 @@ export function Chat() {
                             <p className="text-[11px] text-text-3 px-2 py-1">No agents yet</p>
                           ) : members.map(m => (
                             <div key={m.agent_role_slug} className="group flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-surface-2 transition-colors">
-                              <div className="relative flex-shrink-0">
-                                {m.avatar_path ? (
-                                  <img src={m.avatar_path} alt={m.name} className="w-6 h-6 rounded-md object-cover ring-1 ring-border-1" />
-                                ) : (
-                                  <div className="w-6 h-6 rounded-md bg-surface-3 flex items-center justify-center ring-1 ring-border-1">
-                                    <Bot className="w-3 h-3 text-text-3" />
-                                  </div>
-                                )}
-                                {activeAgentSlug === m.agent_role_slug && (
-                                  <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-surface-1" />
-                                )}
-                              </div>
-                              <p className="text-[11px] font-medium text-text-1 truncate flex-1">{m.name}</p>
+                              <button
+                                onClick={() => chatNavigate(m.agent_role_slug === 'builder' ? '/agents/gateway' : `/agents/${m.agent_role_slug}`)}
+                                className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-left"
+                                title={`Edit ${m.name}`}
+                              >
+                                <div className="relative flex-shrink-0">
+                                  {m.avatar_path ? (
+                                    <img src={m.avatar_path} alt={m.name} className="w-6 h-6 rounded-md object-cover ring-1 ring-border-1" />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-md bg-surface-3 flex items-center justify-center ring-1 ring-border-1">
+                                      <Bot className="w-3 h-3 text-text-3" />
+                                    </div>
+                                  )}
+                                  {activeAgentSlug === m.agent_role_slug && (
+                                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-surface-1" />
+                                  )}
+                                </div>
+                                <p className="text-[11px] font-medium text-text-1 truncate flex-1">{m.name}</p>
+                              </button>
                               <button
                                 onClick={() => removeMember(m.agent_role_slug)}
                                 className="p-0.5 rounded text-text-3 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"

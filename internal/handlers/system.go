@@ -16,6 +16,7 @@ import (
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/netutil"
+	"github.com/openpaw/openpaw/internal/platform"
 )
 
 var startTime = time.Now()
@@ -232,6 +233,26 @@ func (h *SystemHandler) Prerequisites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// OpenExternal opens an http(s) URL in the user's default browser. Works for
+// both the desktop app and the local npx server (the server runs on the same
+// machine as the user), so a footer link reliably opens the real browser.
+func (h *SystemHandler) OpenExternal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	u := strings.TrimSpace(req.URL)
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		writeError(w, http.StatusBadRequest, "only http(s) URLs are allowed")
+		return
+	}
+	platform.OpenBrowser(u)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // PickFolder opens a native folder selection dialog and returns the chosen path.

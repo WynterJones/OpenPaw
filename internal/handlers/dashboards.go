@@ -294,11 +294,26 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Set content type based on extension
-	ext := filepath.Ext(resolved)
-	contentType := mime.TypeByExtension(ext)
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	// Set content type based on extension. Force the correct type for the common
+	// dashboard assets — the system mime table sometimes maps .js to text/plain,
+	// which makes the browser REFUSE to run `<script type="module">` (blank page).
+	ext := strings.ToLower(filepath.Ext(resolved))
+	var contentType string
+	switch ext {
+	case ".js", ".mjs":
+		contentType = "text/javascript; charset=utf-8"
+	case ".css":
+		contentType = "text/css; charset=utf-8"
+	case ".html", ".htm":
+		contentType = "text/html; charset=utf-8"
+	case ".json":
+		contentType = "application/json; charset=utf-8"
+	case ".svg":
+		contentType = "image/svg+xml"
+	default:
+		if contentType = mime.TypeByExtension(ext); contentType == "" {
+			contentType = "application/octet-stream"
+		}
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")

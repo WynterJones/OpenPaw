@@ -157,6 +157,10 @@ func (h *ChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The Gateway is a participant of every chat — add it up front so a new,
+	// empty thread already shows Gateway in "Agents in chat".
+	h.addThreadMember(id, "builder")
+
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "chat_thread_created", "chat", "chat_thread", id, req.Title)
 
@@ -321,10 +325,11 @@ func (h *ChatHandler) ActiveThreads(w http.ResponseWriter, r *http.Request) {
 		Streaming   bool   `json:"streaming"`
 	}
 
-	// A thread is active if it's mid-routing (cancel func present) OR the builder
-	// is running a work order for it (tool/dashboard build) — the latter often
-	// runs in its own goroutine, e.g. after an Approve, so it isn't in the cancel
-	// set and would otherwise be missed.
+	// A thread is active if it's mid-routing (cancel func present) OR a builder
+	// agent is currently RUNNING for it (tool/dashboard build) — the latter runs
+	// in its own goroutine, e.g. after an Approve, so it isn't in the cancel set.
+	// We key off a running AGENT (not work-order status) so stale/orphaned work
+	// orders from earlier attempts don't keep a finished chat showing as "working".
 	seen := map[string]bool{}
 	var ids []string
 	add := func(id string) {
@@ -340,7 +345,9 @@ func (h *ChatHandler) ActiveThreads(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	if rows, err := h.db.Query(
-		"SELECT DISTINCT thread_id FROM work_orders WHERE status IN ('pending', 'in_progress') AND thread_id != ''",
+		`SELECT DISTINCT wo.thread_id FROM work_orders wo
+		 JOIN agents a ON a.work_order_id = wo.id
+		 WHERE a.status = 'running' AND wo.thread_id != ''`,
 	); err == nil {
 		defer rows.Close()
 		for rows.Next() {

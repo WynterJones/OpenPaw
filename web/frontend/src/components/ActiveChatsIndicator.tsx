@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Square } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface ActiveChat {
@@ -58,15 +58,30 @@ export function ActiveChatsIndicator() {
         </div>
         <div className="max-h-56 overflow-y-auto">
           {chats.map((c) => (
-            <button
+            <div
               key={c.thread_id}
-              onClick={() => navigate(`/chat/${c.thread_id}`)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors cursor-pointer"
-              title={`Open "${c.title}"`}
+              className="group w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-2 transition-colors"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse flex-shrink-0" aria-hidden="true" />
-              <span className="flex-1 min-w-0 text-xs text-text-1 truncate">{c.title}</span>
-            </button>
+              <button
+                onClick={() => navigate(`/chat/${c.thread_id}`)}
+                className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer"
+                title={`Open "${c.title}"`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse flex-shrink-0" aria-hidden="true" />
+                <span className="flex-1 min-w-0 text-xs text-text-1 truncate">{c.title}</span>
+              </button>
+              <button
+                onClick={() => {
+                  api.post(`/chat/threads/${c.thread_id}/stop`).catch(() => {});
+                  setChats((prev) => prev.filter((x) => x.thread_id !== c.thread_id));
+                }}
+                className="p-1 rounded flex-shrink-0 text-text-3 hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                title="Stop this chat"
+                aria-label="Stop chat"
+              >
+                <Square className="w-3 h-3 fill-current" aria-hidden="true" />
+              </button>
+            </div>
           ))}
         </div>
       </div>
