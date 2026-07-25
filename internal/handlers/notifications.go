@@ -14,10 +14,24 @@ import (
 
 type NotificationsHandler struct {
 	db *database.DB
+	// broadcast notifies open clients that read/archived state changed. Without
+	// it the sidebar's unread badge kept its count after everything was read:
+	// the bell updated its own local state optimistically, but nothing told any
+	// other consumer — or another window — that anything had happened.
+	broadcast func(msgType string, payload interface{})
 }
 
-func NewNotificationsHandler(db *database.DB) *NotificationsHandler {
-	return &NotificationsHandler{db: db}
+func NewNotificationsHandler(db *database.DB, broadcast func(string, interface{})) *NotificationsHandler {
+	return &NotificationsHandler{db: db, broadcast: broadcast}
+}
+
+// notifyChanged tells clients to re-read their counts. Both message types are
+// already handled by the bell and the sidebar badge.
+func (h *NotificationsHandler) notifyChanged(msgType string) {
+	if h.broadcast == nil {
+		return
+	}
+	h.broadcast(msgType, map[string]string{"status": "changed"})
 }
 
 const notificationColumns = `id, title, body, detail, prompt, workspace_id, priority,
@@ -101,6 +115,7 @@ func (h *NotificationsHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
+	h.notifyChanged("notifications_cleared")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
 }
 
@@ -117,6 +132,7 @@ func (h *NotificationsHandler) MarkUnread(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
+	h.notifyChanged("notification_read")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "unread"})
 }
 
@@ -142,6 +158,7 @@ func (h *NotificationsHandler) MarkRead(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
+	h.notifyChanged("notification_read")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "read"})
 }
 
@@ -151,6 +168,7 @@ func (h *NotificationsHandler) MarkAllRead(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to mark all notifications read")
 		return
 	}
+	h.notifyChanged("notification_read")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "all_read"})
 }
 
@@ -166,6 +184,7 @@ func (h *NotificationsHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
+	h.notifyChanged("notifications_cleared")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "dismissed"})
 }
 
@@ -175,6 +194,7 @@ func (h *NotificationsHandler) DismissAll(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "failed to dismiss all notifications")
 		return
 	}
+	h.notifyChanged("notifications_cleared")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "all_dismissed"})
 }
 
@@ -299,6 +319,7 @@ func (h *NotificationsHandler) OpenAsChat(w http.ResponseWriter, r *http.Request
 
 	h.db.LogAudit("user", "notification_open_chat", "user", "notification", id,
 		"opened report as chat thread "+threadID)
+	h.notifyChanged("notification_read")
 
 	writeJSON(w, http.StatusOK, map[string]string{"thread_id": threadID})
 }

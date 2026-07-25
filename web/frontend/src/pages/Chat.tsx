@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { markdownLinkComponents } from '../components/MarkdownLink';
 import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
@@ -1566,7 +1567,7 @@ export function Chat() {
                       <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
                         {activePin.pin_summary ? (
                           <div className="prose-chat">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{activePin.pin_summary}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>{activePin.pin_summary}</ReactMarkdown>
                           </div>
                         ) : (
                           <p className="text-sm text-text-3">

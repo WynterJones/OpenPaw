@@ -4,6 +4,7 @@ import type { Components } from 'react-markdown';
 import type { AgentRole } from '../../lib/api';
 import { MentionBadge } from './MentionBadge';
 import { CollapsibleCode } from './CollapsibleCode';
+import { handleExternalLinkClick } from '../../lib/openExternal';
 
 let _cachedPatternRoles: AgentRole[] = [];
 let _cachedPattern = `@([A-Za-z][A-Za-z0-9_-]*)`;
@@ -128,7 +129,17 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
         const label = typeof children === 'string' ? children : extractText(children as ReactNode);
         return renderInlineImage(imgSrc, label);
       }
-      return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}</a>;
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => handleExternalLinkClick(e, href)}
+          {...props}
+        >
+          {children}
+        </a>
+      );
     },
     p: ({ children, ...props }) => <p {...props}>{processChildren(children, roles)}</p>,
     li: ({ children, ...props }) => <li {...props}>{processChildren(children, roles)}</li>,

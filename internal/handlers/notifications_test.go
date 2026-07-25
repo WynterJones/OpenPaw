@@ -28,6 +28,73 @@ func newTestNotificationsHandler(t *testing.T) *NotificationsHandler {
 	return &NotificationsHandler{db: db}
 }
 
+// recordingHandler captures the message types broadcast to clients.
+func recordingHandler(t *testing.T) (*NotificationsHandler, *[]string) {
+	t.Helper()
+	h := newTestNotificationsHandler(t)
+	var sent []string
+	h.broadcast = func(msgType string, _ interface{}) { sent = append(sent, msgType) }
+	return h, &sent
+}
+
+// The sidebar badge kept a stale count because read/archive changes were never
+// announced — the bell updated its own local state and nothing told anyone else.
+func TestMutations_BroadcastSoClientsRefresh(t *testing.T) {
+	cases := []struct {
+		name    string
+		call    func(h *NotificationsHandler, id string)
+		wantMsg string
+	}{
+		{"mark read", func(h *NotificationsHandler, id string) {
+			r := chi.NewRouter()
+			r.Put("/n/{id}/read", h.MarkRead)
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/n/"+id+"/read", nil))
+		}, "notification_read"},
+		{"mark unread", func(h *NotificationsHandler, id string) {
+			r := chi.NewRouter()
+			r.Put("/n/{id}/unread", h.MarkUnread)
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/n/"+id+"/unread", nil))
+		}, "notification_read"},
+		{"mark all read", func(h *NotificationsHandler, _ string) {
+			h.MarkAllRead(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/n/read-all", nil))
+		}, "notification_read"},
+		{"archive", func(h *NotificationsHandler, id string) {
+			r := chi.NewRouter()
+			r.Delete("/n/{id}", h.Dismiss)
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodDelete, "/n/"+id, nil))
+		}, "notifications_cleared"},
+		{"restore", func(h *NotificationsHandler, id string) {
+			r := chi.NewRouter()
+			r.Put("/n/{id}/restore", h.Restore)
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPut, "/n/"+id+"/restore", nil))
+		}, "notifications_cleared"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h, sent := recordingHandler(t)
+			n, _ := CreateNotification(h.db, models.NotificationInput{Title: "t"})
+			c.call(h, n.ID)
+			if len(*sent) != 1 || (*sent)[0] != c.wantMsg {
+				t.Errorf("broadcasts = %v, want exactly [%s]", *sent, c.wantMsg)
+			}
+		})
+	}
+}
+
+// A nil broadcast (any construction that doesn't wire one) must not panic.
+func TestMutations_NilBroadcastIsSafe(t *testing.T) {
+	h := newTestNotificationsHandler(t)
+	n, _ := CreateNotification(h.db, models.NotificationInput{Title: "t"})
+	r := chi.NewRouter()
+	r.Put("/n/{id}/read", h.MarkRead)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/n/"+n.ID+"/read", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
 // openAsChat drives the handler through a router so chi's URL param is populated
 // the same way it is in production.
 func openAsChat(t *testing.T, h *NotificationsHandler, id string) *httptest.ResponseRecorder {

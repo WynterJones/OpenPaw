@@ -583,6 +583,36 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	return responseText, usage, collector.JSON(), collector.ToolCallsJSON(), result.ImageURL, nil
 }
 
+// scheduledReportDirective tells the agent it is writing a report, not holding
+// a conversation.
+//
+// A scheduled run has no one on the other end at the moment it happens. Without
+// this, agents end reports the way they end chat turns — "want me to set up a
+// recurring check?", "let me know which you'd prefer" — questions that are
+// never answered, and in the threadless case cannot be, because the run
+// produces a report rather than a conversation. It also stops agents proposing
+// to schedule the very thing that is already scheduled.
+func scheduledReportDirective(threadless bool) string {
+	delivery := "This report is being posted into an existing chat thread."
+	if threadless {
+		delivery = "This report is filed in the user's Inbox. There is no conversation attached to it, " +
+			"and any question you ask will go unanswered."
+	}
+
+	return "\n\n## THIS IS A SCHEDULED RUN\n\n" +
+		"You were triggered by a schedule, not by a person. Nobody is waiting at a keyboard. " +
+		delivery + "\n\n" +
+		"Write a self-contained report:\n" +
+		"- Do the work now with the tools and skills you have. Do not ask for permission or clarification first.\n" +
+		"- Do not end with a question, an offer, or a call to action. No \"want me to…\", " +
+		"\"should I…\", \"let me know if…\".\n" +
+		"- Do not propose setting up a recurring check or a schedule — this run is already that schedule.\n" +
+		"- If something blocked you, say plainly what it was and what you managed anyway. " +
+		"That is the finding; report it rather than asking how to proceed.\n" +
+		"- Lead with what matters. Assume the reader is skimming and may not remember the request.\n" +
+		"- Use markdown. Keep it as short as the content allows.\n"
+}
+
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
@@ -647,6 +677,8 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 			agentDir = AgentDir(m.DataDir, agentSlug)
 		}
 	}
+
+	systemPrompt += scheduledReportDirective(threadID == "")
 
 	var result, widgetJSON, toolCallsJSON, imageURL string
 	var usage *llm.UsageInfo

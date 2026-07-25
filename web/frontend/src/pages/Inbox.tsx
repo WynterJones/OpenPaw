@@ -35,6 +35,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { notificationsApi, api, type AppNotification, type AgentRole, type WSMessage } from '../lib/api';
 import { useWebSocket } from '../lib/useWebSocket';
+import { markdownLinkComponents } from '../components/MarkdownLink';
 
 type Folder = 'all' | 'unread' | 'archived';
 
@@ -484,7 +485,7 @@ function ReadingPane({
           )}
 
           <div className="prose-chat">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.detail || report.body}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>{report.detail || report.body}</ReactMarkdown>
           </div>
 
           <p className="text-[11px] text-text-3 mt-8 pt-4 border-t border-border-0 leading-relaxed">

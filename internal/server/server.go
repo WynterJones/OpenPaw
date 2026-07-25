@@ -113,7 +113,6 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, providers, dataDir, port)
 	agentsHandler := handlers.NewAgentsHandler(s.DB, s.AgentManager)
 	systemHandler := handlers.NewSystemHandler(s.DB, dataDir, llmClient, providers, port)
-	notificationsHandler := handlers.NewNotificationsHandler(s.DB)
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
 	backupHandler := handlers.NewBackupHandler(s.DB, s.BackupMgr)
 	memoryHandler := handlers.NewMemoryHandler(s.MemoryMgr)
@@ -133,6 +132,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})
 	}
 	updateHandler := handlers.NewUpdateHandler(s.DB, dataDir, updateBroadcast)
+	// Constructed after updateBroadcast so read/archive changes can tell open
+	// clients to refresh their unread counts.
+	notificationsHandler := handlers.NewNotificationsHandler(s.DB, updateBroadcast)
 	pixelLabHandler := handlers.NewPixelLabHandler(s.DB, secretsMgr, dataDir)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {

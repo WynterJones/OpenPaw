@@ -724,7 +724,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   <span className="relative flex-shrink-0">
                     <item.icon className="w-5 h-5" />
                     {item.to === "/inbox" && unread > 0 && collapsed && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
                     )}
                   </span>
                   {!collapsed && (
@@ -733,7 +733,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     </span>
                   )}
                   {item.to === "/inbox" && unread > 0 && !collapsed && (
-                    <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-accent-primary text-white text-[10px] font-bold flex items-center justify-center leading-none">
                       {unread > 99 ? "99+" : unread}
                     </span>
                   )}
