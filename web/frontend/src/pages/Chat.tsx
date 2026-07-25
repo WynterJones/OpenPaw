@@ -23,6 +23,7 @@ import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
 import { timeAgo, getToolDetail } from '../lib/chatUtils';
 import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbles';
+import { TmuxSessionCard } from '../components/chat/TmuxSessionCard';
 import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
@@ -1651,6 +1652,7 @@ export function Chat() {
               ) : (
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
+                  <TmuxSessionCard threadId={activeThread} />
                   {/* Tools # autocomplete dropdown */}
                   {/* Shown when there are matches, or when the workspace genuinely
                       has no tools. A filter that matches nothing just closes,
