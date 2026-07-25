@@ -321,13 +321,35 @@ func (h *ChatHandler) ActiveThreads(w http.ResponseWriter, r *http.Request) {
 		Streaming   bool   `json:"streaming"`
 	}
 
+	// A thread is active if it's mid-routing (cancel func present) OR the builder
+	// is running a work order for it (tool/dashboard build) — the latter often
+	// runs in its own goroutine, e.g. after an Approve, so it isn't in the cancel
+	// set and would otherwise be missed.
+	seen := map[string]bool{}
 	var ids []string
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
 	h.threadCancels.Range(func(k, _ interface{}) bool {
 		if id, ok := k.(string); ok {
-			ids = append(ids, id)
+			add(id)
 		}
 		return true
 	})
+	if rows, err := h.db.Query(
+		"SELECT DISTINCT thread_id FROM work_orders WHERE status IN ('pending', 'in_progress') AND thread_id != ''",
+	); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				add(id)
+			}
+		}
+	}
 
 	out := []activeThread{}
 	for _, id := range ids {
