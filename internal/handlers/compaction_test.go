@@ -274,6 +274,44 @@ func TestThreadContextUsed_IncludesPendingMessages(t *testing.T) {
 	}
 }
 
+// A CLI provider reports usage for the whole agentic run — every internal turn
+// plus cache reads — so a tool-heavy turn logs millions of "input tokens". That
+// is spend, not context fill, and must not be reported as context usage.
+func TestThreadContextUsed_IgnoresCumulativeToolCallUsage(t *testing.T) {
+	h := newTestHandler(t)
+	threadID := createTestThread(t, h)
+
+	addMessage(t, h, threadID, "user", "build the thing", 0, 0)
+	// 3.5M reported against a 1M window: impossible as a context measurement.
+	addMessage(t, h, threadID, "assistant", strings.Repeat("y", 900), 3_567_638, 1)
+
+	got := h.threadContextUsed(threadID)
+	if got >= 3_000_000 {
+		t.Fatalf("cumulative run usage leaked into context usage: got %d", got)
+	}
+	// Falls back to sizing the conversation instead.
+	if got <= systemPromptTokenAllowance {
+		t.Fatalf("expected an estimate above the system allowance, got %d", got)
+	}
+	if limit := h.getEffectiveContextLimit(threadID); limit > 0 && got > limit {
+		t.Fatalf("estimate %d exceeds the window %d", got, limit)
+	}
+}
+
+// A plausible per-request count is still preferred — it includes the system
+// prompt and tools that a message-size estimate can only approximate.
+func TestThreadContextUsed_KeepsPlausibleReportedCount(t *testing.T) {
+	h := newTestHandler(t)
+	threadID := createTestThread(t, h)
+
+	addMessage(t, h, threadID, "user", "hi", 0, 0)
+	addMessage(t, h, threadID, "assistant", "short reply", 250_000, 1)
+
+	if got := h.threadContextUsed(threadID); got != 250_000 {
+		t.Fatalf("usage = %d, want the reported 250000", got)
+	}
+}
+
 // An empty summary must never destroy history.
 func TestCompaction_EmptySummaryAborts(t *testing.T) {
 	h := newTestHandler(t)

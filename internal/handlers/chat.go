@@ -840,6 +840,9 @@ func (h *ChatHandler) compactThreadWith(ctx context.Context, threadID string, su
 // the model of the agent who last responded — resolved through the active
 // provider so tier names map to real models. Falls back to the builder model.
 func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
+	if h.agentManager == nil {
+		return llm.ContextWindowForModel(llm.ModelSonnet)
+	}
 	if h.agentManager.ContextLimitOverride > 0 {
 		return h.agentManager.ContextLimitOverride
 	}
@@ -890,32 +893,62 @@ func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
 // threadContextUsed reports how much of the context window the thread's next
 // request will consume, in tokens.
 //
-// Each API call sends the whole retained history, so the peak input_tokens of an
-// assistant message is the best measure of context fill — it already includes
-// the system prompt and tool definitions the provider counted. Messages created
-// at or before the last compaction are excluded: their token counts describe a
-// history that no longer exists, and counting them would keep the thread pinned
-// above the threshold forever.
+// Two sources are combined:
 //
-// Tokens for messages added since that assistant turn (the new user message and
-// any attached context) are added on top, so a large paste is accounted for
-// before it overflows the window rather than after.
+//   - The peak input_tokens of an assistant message, which is exact when it is
+//     a real per-request count: it already includes the system prompt and tool
+//     definitions the provider counted.
+//   - A size estimate from the retained messages, used when that figure is not
+//     a context measurement at all.
+//
+// The second case is not an edge case. CLI providers report usage for the WHOLE
+// agentic run on their final result line — every internal turn's input plus
+// cache reads and writes, summed. A turn with dozens of tool calls therefore
+// reports millions of "input tokens" while the actual conversation is a fraction
+// of the window, which showed up as "352% of 1M" with no way for the thread to
+// be that large: the API would have rejected the request. Any figure above the
+// window is cumulative spend, so fall back to measuring the conversation.
+//
+// Messages created at or before the last compaction are excluded: their counts
+// describe a history that no longer exists, and counting them would keep the
+// thread pinned above the threshold forever.
 func (h *ChatHandler) threadContextUsed(threadID string) int {
 	var compactedAt sql.NullTime
 	h.db.QueryRow("SELECT compacted_at FROM chat_threads WHERE id = ?", threadID).Scan(&compactedAt)
 
-	query := `SELECT COALESCE(MAX(input_tokens), 0), COALESCE(MAX(created_at), '') FROM chat_messages
-	          WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`
-	args := []interface{}{threadID}
+	liveClause := ""
+	liveArgs := []interface{}{threadID}
 	if compactedAt.Valid {
-		query += " AND created_at > ?"
-		args = append(args, compactedAt.Time)
+		liveClause = " AND created_at > ?"
+		liveArgs = append(liveArgs, compactedAt.Time)
 	}
 
-	var used int
+	// Size of the conversation that will actually be sent.
+	var liveChars int
+	h.db.QueryRow(
+		"SELECT COALESCE(SUM(LENGTH(content)), 0) FROM chat_messages WHERE thread_id = ?"+liveClause,
+		liveArgs...,
+	).Scan(&liveChars)
+	estimate := liveChars/charsPerTokenEstimate + systemPromptTokenAllowance
+
+	args := append([]interface{}{}, liveArgs...)
+	var reported int
 	var peakAt sql.NullString
-	if err := h.db.QueryRow(query, args...).Scan(&used, &peakAt); err != nil || used == 0 {
-		return 0
+	err := h.db.QueryRow(
+		`SELECT COALESCE(MAX(input_tokens), 0), COALESCE(MAX(created_at), '') FROM chat_messages
+		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`+liveClause,
+		args...,
+	).Scan(&reported, &peakAt)
+	if err != nil || reported == 0 {
+		if liveChars == 0 {
+			return 0
+		}
+		return estimate
+	}
+
+	// Reject a figure that cannot describe a context window.
+	if limit := h.getEffectiveContextLimit(threadID); limit > 0 && reported > limit {
+		return estimate
 	}
 
 	// Add an estimate for anything appended after that turn — those tokens are
@@ -926,11 +959,19 @@ func (h *ChatHandler) threadContextUsed(threadID string) int {
 			`SELECT COALESCE(SUM(LENGTH(content)), 0) FROM chat_messages
 			 WHERE thread_id = ? AND created_at > ?`, threadID, peakAt.String,
 		).Scan(&pendingChars)
-		used += pendingChars / charsPerTokenEstimate
+		reported += pendingChars / charsPerTokenEstimate
 	}
 
-	return used
+	// A plausible reported count is authoritative — it already includes the
+	// system prompt and tool definitions the estimate can only approximate — so
+	// it is NOT floored by the estimate.
+	return reported
 }
+
+// systemPromptTokenAllowance approximates the system prompt, tool definitions
+// and identity files that ride along with every request but are not stored as
+// chat messages. Only used when estimating from message sizes.
+const systemPromptTokenAllowance = 4000
 
 // charsPerTokenEstimate is the rough characters-per-token ratio used to size
 // messages the provider has not tokenized yet. Deliberately conservative (real
