@@ -14,7 +14,13 @@ export function getCSRFToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+interface RequestExtras {
+  /** Skip the global 401 -> /login redirect. For optional, non-blocking reads
+      that must never bounce a visitor off a public page (e.g. the docs). */
+  noAuthRedirect?: boolean;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, extras: RequestExtras = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -37,7 +43,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     const currentPath = window.location.pathname;
-    if (currentPath !== '/login' && currentPath !== '/setup') {
+    if (!extras.noAuthRedirect && currentPath !== '/login' && currentPath !== '/setup') {
       window.location.href = '/login';
     }
     throw new ApiError(401, 'Unauthorized');
@@ -68,6 +74,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getQuiet: <T>(path: string) => request<T>(path, {}, { noAuthRedirect: true }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>

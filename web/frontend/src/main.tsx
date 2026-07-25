@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { SplashScreen } from './components/SplashScreen'
 
 // When running inside the Tauri desktop shell the macOS window uses an overlay
 // title bar (no native toolbar), so the traffic-light buttons float over the
@@ -13,6 +14,8 @@ if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {/* Outside the router so navigating never replays it. */}
+    <SplashScreen />
     <App />
   </StrictMode>,
 )
