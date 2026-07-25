@@ -18,15 +18,8 @@ import { useToast } from "../components/Toast";
 import { Toggle } from "../components/Toggle";
 import { api, agentTasks, type AgentRole } from "../lib/api";
 import { workspaces } from "../lib/api-helpers";
+import { PRESET_AVATARS } from "../lib/avatars";
 
-const PRESET_AVATARS = [
-  "/avatars/avatar-1.webp",
-  "/avatars/avatar-2.webp",
-  "/avatars/avatar-3.webp",
-  "/avatars/avatar-4.webp",
-  "/avatars/avatar-5.webp",
-  "/avatars/avatar-6.webp",
-];
 
 const MODEL_OPTIONS = [
   { id: "anthropic/claude-haiku-4.5", label: "Haiku 4.5" },
@@ -144,20 +137,28 @@ function CreateAgentModal({
           <label className="block text-xs font-medium text-text-1 mb-2">
             Avatar
           </label>
+          {/* Full preset set in a scrolling grid — the same control the edit page
+              uses. A flex-wrap row of every avatar would overflow the modal. */}
+          <div className="w-full max-h-48 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2 mb-3">
+            <div className="grid grid-cols-8 md:grid-cols-10 gap-1.5">
+              {PRESET_AVATARS.map((path, i) => (
+                <button
+                  key={path}
+                  onClick={() => setAvatarPath(path)}
+                  aria-label={`Select avatar ${i + 1}`}
+                  aria-pressed={avatarPath === path}
+                  className={`aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                    avatarPath === path
+                      ? "border-accent-primary ring-2 ring-accent-primary/20 scale-105"
+                      : "border-transparent hover:border-border-0 opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <img src={path} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
-            {PRESET_AVATARS.map((path) => (
-              <button
-                key={path}
-                onClick={() => setAvatarPath(path)}
-                className={`w-14 h-14 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                  avatarPath === path
-                    ? "border-accent-primary ring-2 ring-accent-primary/30"
-                    : "border-border-1 hover:border-border-0"
-                }`}
-              >
-                <img src={path} alt="" className="w-full h-full" />
-              </button>
-            ))}
             <label
               className={`w-14 h-14 rounded-xl border-2 border-dashed flex items-center justify-center cursor-pointer transition-all ${
                 !PRESET_AVATARS.includes(avatarPath)

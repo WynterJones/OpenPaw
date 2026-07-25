@@ -7,7 +7,7 @@ import { api, type User } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 
-const PRESET_AVATARS = Array.from({ length: 141 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
+import { PRESET_AVATARS } from '../lib/avatars';
 
 export function Setup() {
   const navigate = useNavigate();

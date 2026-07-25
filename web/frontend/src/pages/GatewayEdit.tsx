@@ -8,7 +8,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 import { api, gatewayFiles, type AgentRole, type MemoryFile } from '../lib/api';
 
-const PRESET_AVATARS = Array.from({ length: 45 }, (_, i) => `/avatars/avatar-${i + 1}.webp`);
+import { PRESET_AVATARS } from '../lib/avatars';
 
 interface FileTab {
   key: string;
