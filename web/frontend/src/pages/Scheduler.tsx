@@ -9,6 +9,7 @@ import {
   Loader2,
   Bot,
   MessageSquare,
+  Inbox,
 } from "lucide-react";
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
@@ -141,16 +142,22 @@ function ScheduleDetail({
         </Card>
       </div>
 
-      {schedule.thread_id && (
-        <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">
-            Chat Thread
-          </p>
-          <p className="text-sm text-text-1">
+      <Card>
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">
+          Results go to
+        </p>
+        {schedule.thread_id ? (
+          <p className="text-sm text-text-1 flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5 text-text-3" />
             {getThreadTitle(schedule.thread_id)}
           </p>
-        </Card>
-      )}
+        ) : (
+          <p className="text-sm text-text-1 flex items-center gap-1.5">
+            <Inbox className="w-3.5 h-3.5 text-text-3" />
+            Inbox
+          </p>
+        )}
+      </Card>
 
       {schedule.prompt_content && (
         <Card>
@@ -363,8 +370,8 @@ export function Scheduler() {
   ];
 
   const threadOptions = [
-    { value: "", label: "Create new chat each run" },
-    ...threads.map((t) => ({ value: t.id, label: t.title })),
+    { value: "", label: "File a report in the Inbox" },
+    ...threads.map((t) => ({ value: t.id, label: `Continue in: ${t.title}` })),
   ];
 
   const canCreate = name.trim() && agentSlug && promptContent.trim();
@@ -488,14 +495,21 @@ export function Scheduler() {
                             {getCronLabel(s.cron_expr)}
                           </p>
                         </div>
-                        {s.thread_id && (
-                          <div className="flex items-center gap-1.5 text-xs text-text-3">
-                            <MessageSquare className="w-3 h-3" />
-                            <span className="truncate">
-                              {getThreadTitle(s.thread_id)}
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 text-xs text-text-3">
+                          {s.thread_id ? (
+                            <>
+                              <MessageSquare className="w-3 h-3" />
+                              <span className="truncate">
+                                {getThreadTitle(s.thread_id)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Inbox className="w-3 h-3" />
+                              <span className="truncate">Inbox</span>
+                            </>
+                          )}
+                        </div>
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={(e) => {
@@ -574,7 +588,7 @@ export function Scheduler() {
                       },
                       {
                         key: "thread",
-                        header: "Chat",
+                        header: "Results",
                         hideOnMobile: true,
                         render: (s: Schedule) => (
                           <span className="text-sm text-text-1">
@@ -584,7 +598,10 @@ export function Scheduler() {
                                 {getThreadTitle(s.thread_id)}
                               </span>
                             ) : (
-                              <span className="text-text-3">New each run</span>
+                              <span className="flex items-center gap-1.5 text-text-3">
+                                <Inbox className="w-3.5 h-3.5" />
+                                Inbox
+                              </span>
                             )}
                           </span>
                         ),
@@ -692,12 +709,19 @@ export function Scheduler() {
             options={agentOptions}
           />
 
-          <Select
-            label="Chat"
-            value={threadId}
-            onChange={(e) => setThreadId(e.target.value)}
-            options={threadOptions}
-          />
+          <div>
+            <Select
+              label="Results go to"
+              value={threadId}
+              onChange={(e) => setThreadId(e.target.value)}
+              options={threadOptions}
+            />
+            <p className="mt-1.5 text-xs text-text-3 leading-relaxed">
+              {threadId
+                ? "Each run posts into this existing chat thread."
+                : "Each run files a report in your Inbox. Open it as a chat from there if you want to reply."}
+            </p>
+          </div>
 
           <Select
             label="Schedule"
