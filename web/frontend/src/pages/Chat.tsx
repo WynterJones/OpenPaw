@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Zap, Minimize2, Square, Users, AlertTriangle,
-  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench,
+  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench, Pin, Sparkles,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { SearchBar } from '../components/SearchBar';
 import { Modal } from '../components/Modal';
 import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEvent, type WSMessage, type ThreadStats, type ThreadMember, type SubAgentTask, contextApi, type ContextFile, type ContextTree, type ContextTreeNode, threadMembers } from '../lib/api';
-import { todoApi, mediaApi } from '../lib/api-helpers';
+import { todoApi, mediaApi, threadPins } from '../lib/api-helpers';
 import { useOpenRouterBalance } from '../hooks/useOpenRouterBalance';
 import { CLI_CONTEXT_LIMIT } from '../lib/provider';
-import type { TodoItem, MediaItem, Tool } from '../lib/types';
+import type { TodoItem, MediaItem, Tool, ThreadPin } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
@@ -147,6 +149,14 @@ export function Chat() {
   const [toolItems, setToolItems] = useState<Tool[]>([]);
   const [attachedTools, setAttachedTools] = useState<Tool[]>([]);
   const [toolsLoaded, setToolsLoaded] = useState(false);
+
+  // Pinned (archived) chats: the sidebar tab, the explainer modal target, and
+  // the pin state of the thread currently open.
+  const [threadTab, setThreadTab] = useState<'all' | 'pinned'>('all');
+  const [pinTarget, setPinTarget] = useState<ChatThread | null>(null);
+  const [pinning, setPinning] = useState(false);
+  const [activePin, setActivePin] = useState<ThreadPin | null>(null);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // File attachment state
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
@@ -869,6 +879,11 @@ export function Chat() {
       loadMessages(activeThread);
       loadStats(activeThread);
       loadMembers(activeThread);
+      // Pin state decides whether this thread renders as a read-only archive.
+      setTranscriptOpen(false);
+      threadPins.get(activeThread)
+        .then(p => setActivePin(p.pinned ? p : null))
+        .catch(() => setActivePin(null));
 
       // Recover streaming state if agent is mid-stream
       api.get<{ active: boolean; stream_state?: { text: string; tools: { name: string; id: string; done: boolean; detail?: string }[]; agent_slug: string; active: boolean } }>(`/chat/threads/${activeThread}/status`).then(status => {
@@ -1174,6 +1189,34 @@ export function Chat() {
     }
   };
 
+  const pinThread = async (thread: ChatThread) => {
+    setPinning(true);
+    try {
+      const result = await threadPins.pin(thread.id);
+      setThreads(prev => prev.map(t => t.id === thread.id ? { ...t, pinned: true } : t));
+      if (activeThread === thread.id) {
+        setActivePin({ pinned: true, pin_summary: result.pin_summary });
+      }
+      setPinTarget(null);
+      toast('success', 'Chat pinned and summarised');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to pin chat');
+    } finally {
+      setPinning(false);
+    }
+  };
+
+  const unpinThread = async (thread: ChatThread) => {
+    try {
+      await threadPins.unpin(thread.id);
+      setThreads(prev => prev.map(t => t.id === thread.id ? { ...t, pinned: false } : t));
+      if (activeThread === thread.id) setActivePin(null);
+      toast('success', 'Chat unpinned — you can continue it now');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to unpin chat');
+    }
+  };
+
   const renameThread = async (threadId: string, title: string) => {
     if (!title.trim()) { setEditingThread(null); return; }
     try {
@@ -1225,7 +1268,10 @@ export function Chat() {
     } catch (e) { console.warn('stopThread failed:', e); }
   };
 
-  const filteredThreads = threads.filter(t => t?.title?.toLowerCase().includes(search.toLowerCase()));
+  const filteredThreads = threads.filter(t =>
+    t?.title?.toLowerCase().includes(search.toLowerCase()) &&
+    (threadTab === 'pinned' ? !!t.pinned : !t.pinned)
+  );
   const totalPages = Math.max(1, Math.ceil(filteredThreads.length / THREADS_PER_PAGE));
   const clampedPage = Math.min(threadPage, totalPages);
   const pagedThreads = filteredThreads.slice((clampedPage - 1) * THREADS_PER_PAGE, clampedPage * THREADS_PER_PAGE);
@@ -1262,6 +1308,21 @@ export function Chat() {
           <div className="p-3 space-y-2">
             <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
+            <div className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5" role="tablist">
+              {([['all', 'All Chats'], ['pinned', 'Pinned']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={threadTab === key}
+                  onClick={() => { setThreadTab(key); setThreadPage(1); }}
+                  className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    threadTab === key ? 'bg-surface-0 text-text-0 shadow-sm' : 'text-text-3 hover:text-text-1'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
             {pagedThreads.length === 0 ? (
@@ -1314,6 +1375,14 @@ export function Chat() {
                         aria-label="Rename thread"
                       >
                         <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); thread.pinned ? unpinThread(thread) : setPinTarget(thread); }}
+                        className={`p-1.5 rounded-md cursor-pointer focus:opacity-100 ${thread.pinned ? 'text-accent-primary hover:bg-accent-muted' : 'text-text-3 hover:text-text-1 hover:bg-surface-3'}`}
+                        aria-label={thread.pinned ? 'Unpin chat' : 'Pin chat'}
+                        title={thread.pinned ? 'Unpin — makes this chat editable again' : 'Pin — archive this chat with a summary'}
+                      >
+                        <Pin className={`w-3.5 h-3.5 ${thread.pinned ? 'fill-current' : ''}`} aria-hidden="true" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(thread); }}
@@ -1470,7 +1539,38 @@ export function Chat() {
                     )}
                   </div>
                 )}
-                {messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} onReact={handleReaction} />)}
+                {activePin?.pinned && (
+                  <div className="mb-6">
+                    <div className="rounded-2xl border-2 border-accent-primary bg-surface-0/95 overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-black/30">
+                        <Pin className="w-3.5 h-3.5 text-accent-primary fill-current flex-shrink-0" aria-hidden="true" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-accent-primary">Pinned Chat</span>
+                        <span className="text-[10px] text-text-3 ml-auto">Read-only archive</span>
+                      </div>
+                      <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
+                        {activePin.pin_summary ? (
+                          <div className="prose-chat">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{activePin.pin_summary}</ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-text-3">
+                            No summary was generated for this chat. The full conversation is below.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setTranscriptOpen(o => !o)}
+                      aria-expanded={transcriptOpen}
+                      className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+                    >
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${transcriptOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                      {transcriptOpen ? 'Hide full conversation' : `Show full conversation (${messages.length} messages)`}
+                    </button>
+                  </div>
+                )}
+                {(!activePin?.pinned || transcriptOpen) &&
+                  messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} onReact={handleReaction} />)}
                 {isStreaming && (
                   <StreamingMessage
                     text={streamingText}
@@ -1514,6 +1614,26 @@ export function Chat() {
                 <div ref={messagesEndRef} />
                 </div>
               </div>
+              {activePin?.pinned ? (
+                <div className="absolute bottom-0 left-0 right-0 z-10 p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
+                  <div className="max-w-[960px] mx-auto flex items-center gap-3">
+                    <Pin className="w-4 h-4 text-accent-primary fill-current flex-shrink-0" aria-hidden="true" />
+                    <p className="flex-1 text-sm text-text-2">
+                      This chat is pinned and read-only.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const t = threads.find(x => x.id === activeThread);
+                        if (t) unpinThread(t);
+                      }}
+                    >
+                      Unpin to continue
+                    </Button>
+                  </div>
+                </div>
+              ) : (
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
                   {/* Tools # autocomplete dropdown */}
@@ -1789,6 +1909,7 @@ export function Chat() {
                   </div>
                 </div>
               </div>
+              )}
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-4 md:p-8">
@@ -2005,6 +2126,35 @@ export function Chat() {
           </>
         )}
       </div>
+
+      <Modal open={!!pinTarget} onClose={() => !pinning && setPinTarget(null)} title="Pin this chat?" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-2">
+            Pinning turns <span className="font-medium text-text-1">"{pinTarget?.title}"</span> into a saved reference.
+          </p>
+          <ul className="space-y-2 text-sm text-text-2">
+            <li className="flex gap-2">
+              <Pin className="w-4 h-4 text-accent-primary flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <span>It moves to the <span className="text-text-1 font-medium">Pinned</span> tab.</span>
+            </li>
+            <li className="flex gap-2">
+              <Sparkles className="w-4 h-4 text-accent-primary flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <span>The AI writes a detailed summary so you can catch up without re-reading everything.</span>
+            </li>
+            <li className="flex gap-2">
+              <CircleCheck className="w-4 h-4 text-accent-primary flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <span>The chat becomes <span className="text-text-1 font-medium">read-only</span> — nothing is deleted, and the full conversation stays available behind a toggle.</span>
+            </li>
+          </ul>
+          <p className="text-xs text-text-3">You can unpin at any time to carry on the conversation.</p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setPinTarget(null)} disabled={pinning}>Cancel</Button>
+            <Button size="sm" onClick={() => pinTarget && pinThread(pinTarget)} loading={pinning}>
+              {pinning ? 'Summarising…' : 'Pin chat'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Chat" size="sm">
         <div className="space-y-4">

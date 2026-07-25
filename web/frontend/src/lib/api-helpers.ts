@@ -34,6 +34,7 @@ import type {
   WorkspaceFileNode,
   WorkspaceFilesResponse,
   WorkspaceDirectory,
+  ThreadPin,
   TerminalSession,
   Workbench,
 } from './types';
@@ -456,3 +457,10 @@ export const terminalApi = {
   },
 };
 
+
+// Pinned (archived) chat helpers
+export const threadPins = {
+  get: (threadId: string) => api.get<ThreadPin>(`/chat/threads/${threadId}/pin`),
+  pin: (threadId: string) => api.post<{ status: string; pin_summary: string }>(`/chat/threads/${threadId}/pin`),
+  unpin: (threadId: string) => api.post<{ status: string }>(`/chat/threads/${threadId}/unpin`),
+};

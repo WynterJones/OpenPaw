@@ -71,13 +71,24 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("offset"); v != "" {
 		fmt.Sscanf(v, "%d", &offset)
 	}
+	// ?pinned=1 / ?pinned=0 backs the All Chats / Pinned tabs; omitted returns both.
+	pinnedFilter := ""
+	args := []interface{}{activeWorkspaceID(h.db)}
+	switch r.URL.Query().Get("pinned") {
+	case "1", "true":
+		pinnedFilter = " AND t.pinned = 1"
+	case "0", "false":
+		pinnedFilter = " AND t.pinned = 0"
+	}
+	args = append(args, limit, offset)
+
 	rows, err := h.db.Query(
-		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.created_at, t.updated_at
+		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.pinned, t.created_at, t.updated_at
 		 FROM chat_threads t
 		 LEFT JOIN (SELECT thread_id, SUM(cost_usd) AS cost FROM chat_messages GROUP BY thread_id) c ON c.thread_id = t.id
-		 WHERE t.workspace_id = ?
+		 WHERE t.workspace_id = ?`+pinnedFilter+`
 		 ORDER BY t.updated_at DESC LIMIT ? OFFSET ?`,
-		activeWorkspaceID(h.db), limit, offset,
+		args...,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list threads")
@@ -88,7 +99,7 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	threads := []models.ChatThread{}
 	for rows.Next() {
 		var t models.ChatThread
-		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.Pinned, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan thread")
 			return
 		}
@@ -511,6 +522,11 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "content is required")
 		return
 	}
+	// Pinned threads are archived: kept verbatim as a reference, never added to.
+	if h.threadIsPinned(threadID) {
+		writeError(w, http.StatusConflict, "this chat is pinned and read-only — unpin it to continue the conversation")
+		return
+	}
 	if req.Role == "" {
 		req.Role = "user"
 	}
@@ -557,6 +573,155 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, userMsg)
+}
+
+// pinSummaryPrompt asks for a longer, reference-grade write-up than compaction's
+// summary. A pinned chat is meant to be read instead of the transcript, so this
+// favours completeness over brevity — the opposite trade from compaction, which
+// exists to shrink a live context window.
+const pinSummaryPrompt = `Write a detailed reference summary of this conversation. It will be read later INSTEAD of the transcript, so be thorough — several paragraphs, and use markdown headings and bullet lists.
+
+Cover:
+- What the conversation set out to do, and the outcome.
+- Every decision made, and the reasoning behind it.
+- Concrete specifics worth keeping: file paths, commands, names, versions, numbers, code snippets.
+- Problems hit and how they were resolved.
+- Anything left unfinished or explicitly deferred.
+
+Do not editorialise and do not add a preamble — start directly with the summary.
+
+---
+
+%s`
+
+// PinThread archives a thread: it becomes read-only and gains a long-form
+// summary so it stays useful as a reference.
+func (h *ChatHandler) PinThread(w http.ResponseWriter, r *http.Request) {
+	threadID := chi.URLParam(r, "id")
+
+	var exists string
+	if err := h.db.QueryRow("SELECT id FROM chat_threads WHERE id = ?", threadID).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "thread not found")
+		return
+	}
+	if h.agentManager == nil {
+		writeError(w, http.StatusServiceUnavailable, "no AI provider configured")
+		return
+	}
+
+	transcript, err := h.threadTranscript(threadID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if strings.TrimSpace(transcript) == "" {
+		writeError(w, http.StatusBadRequest, "this chat has no messages to summarise")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	provider := h.agentManager.Provider()
+	summary, usage, err := provider.RunOneShot(
+		ctx,
+		provider.ResolveModel(h.agentManager.GatewayModel, llm.ModelSonnet),
+		"", fmt.Sprintf(pinSummaryPrompt, transcript),
+	)
+	summary = strings.TrimSpace(summary)
+	if err != nil || summary == "" {
+		// Pin anyway — the archive matters more than the summary, and the UI
+		// falls back to the transcript. A retry can fill it in later.
+		if err != nil {
+			logger.Warn("pin summary failed for thread %s: %v", threadID, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	if _, err := h.db.Exec(
+		"UPDATE chat_threads SET pinned = 1, pinned_at = ?, pin_summary = ? WHERE id = ?",
+		now, summary, threadID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to pin thread")
+		return
+	}
+
+	if usage != nil && (usage.CostUSD > 0 || usage.InputTokens > 0) {
+		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_cost_usd'", usage.CostUSD)
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "chat_thread_pinned", "chat", "chat_thread", threadID, "")
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":      "pinned",
+		"pin_summary": summary,
+	})
+}
+
+// GetPin returns a thread's pin state and summary, so the chat view can render
+// the archive banner and summary card without loading the whole thread list.
+func (h *ChatHandler) GetPin(w http.ResponseWriter, r *http.Request) {
+	threadID := chi.URLParam(r, "id")
+
+	var pinned bool
+	var summary string
+	var pinnedAt sql.NullTime
+	err := h.db.QueryRow(
+		"SELECT pinned, COALESCE(pin_summary, ''), pinned_at FROM chat_threads WHERE id = ?", threadID,
+	).Scan(&pinned, &summary, &pinnedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "thread not found")
+		return
+	}
+
+	out := map[string]interface{}{"pinned": pinned, "pin_summary": summary}
+	if pinnedAt.Valid {
+		out["pinned_at"] = pinnedAt.Time
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// UnpinThread returns a thread to normal, editable use. The summary is kept so
+// re-pinning doesn't have to pay for it again.
+func (h *ChatHandler) UnpinThread(w http.ResponseWriter, r *http.Request) {
+	threadID := chi.URLParam(r, "id")
+	if _, err := h.db.Exec("UPDATE chat_threads SET pinned = 0, pinned_at = NULL WHERE id = ?", threadID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to unpin thread")
+		return
+	}
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "chat_thread_unpinned", "chat", "chat_thread", threadID, "")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unpinned"})
+}
+
+// threadTranscript renders a thread as "[role]: content" lines.
+func (h *ChatHandler) threadTranscript(threadID string) (string, error) {
+	rows, err := h.db.Query(
+		"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		threadID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to load messages: %w", err)
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	for rows.Next() {
+		var role, content string
+		if err := rows.Scan(&role, &content); err != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, content))
+	}
+	return sb.String(), nil
+}
+
+// threadIsPinned reports whether a thread is archived and therefore read-only.
+func (h *ChatHandler) threadIsPinned(threadID string) bool {
+	var pinned bool
+	h.db.QueryRow("SELECT pinned FROM chat_threads WHERE id = ?", threadID).Scan(&pinned)
+	return pinned
 }
 
 // attachedToolsSection resolves tool IDs attached via the `#` picker into a

@@ -92,9 +92,18 @@ export interface ChatThread {
   title: string;
   agent: string;
   total_cost_usd: number;
+  /** Pinned threads are archived: read-only, with a long-form summary. */
+  pinned?: boolean;
+  pin_summary?: string;
   created_at: string;
   updated_at: string;
   message_count: number;
+}
+
+export interface ThreadPin {
+  pinned: boolean;
+  pin_summary: string;
+  pinned_at?: string;
 }
 
 export interface Reaction {

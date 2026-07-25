@@ -134,6 +134,8 @@ type ChatThread struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
 	TotalCostUSD float64   `json:"total_cost_usd"`
+	Pinned       bool      `json:"pinned"`
+	PinSummary   string    `json:"pin_summary,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
