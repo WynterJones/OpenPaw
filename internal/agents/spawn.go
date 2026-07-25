@@ -99,6 +99,11 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 			Tools:    cfg.tools,
 			WorkDir:  cfg.workDir,
 			MaxTurns: cfg.maxTurns,
+			// Give the builder call_tool so it can actually invoke platform tools
+			// (e.g. live-test the stats tool a dashboard depends on), not just edit
+			// files.
+			ExtraTools:    []llm.ToolDef{llm.BuildCallToolDef()},
+			ExtraHandlers: map[string]llm.ToolHandler{"call_tool": m.makeCallToolHandler()},
 			OnEvent: func(event StreamEvent) {
 				switch event.Type {
 				case EventTextDelta:

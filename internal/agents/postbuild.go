@@ -137,10 +137,11 @@ func (m *Manager) postBuildCustomDashboard(workOrder *models.WorkOrder, dashboar
 		)
 		action = "updated"
 	} else {
-		// Insert new
+		// Insert new — scope it to the workspace the build was requested in, not
+		// the column-default (Default) workspace, so it shows in the right place.
 		m.db.Exec(
-			"INSERT INTO dashboards (id, name, description, layout, widgets, dashboard_type, owner_agent_slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			dashboardID, workOrder.Title, workOrder.Description, "{}", "[]", "custom", "builder", now, now,
+			"INSERT INTO dashboards (id, name, description, layout, widgets, dashboard_type, owner_agent_slug, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			dashboardID, workOrder.Title, workOrder.Description, "{}", "[]", "custom", "builder", m.threadWorkspaceID(workOrder.ThreadID), now, now,
 		)
 	}
 
@@ -201,11 +202,11 @@ func (m *Manager) postBuildDashboard(workOrder *models.WorkOrder, builderOutput 
 		)
 		action = "updated"
 	} else {
-		// Insert new
+		// Insert new — scope to the workspace the build was requested in.
 		dashboardID = uuid.New().String()
 		m.db.Exec(
-			"INSERT INTO dashboards (id, name, description, layout, widgets, owner_agent_slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			dashboardID, config.Name, config.Description, layoutStr, widgetsStr, "builder", now, now,
+			"INSERT INTO dashboards (id, name, description, layout, widgets, owner_agent_slug, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			dashboardID, config.Name, config.Description, layoutStr, widgetsStr, "builder", m.threadWorkspaceID(workOrder.ThreadID), now, now,
 		)
 	}
 
