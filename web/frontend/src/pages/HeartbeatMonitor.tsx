@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Heart, Play, Clock, CheckCircle, XCircle, Loader2, RefreshCw, Settings2, Bot } from 'lucide-react';
+import { Heart, Play, Clock, CheckCircle, XCircle, AlertTriangle, Loader2, RefreshCw, Settings2, Bot } from 'lucide-react';
 import { Toggle } from '../components/Toggle';
 import { Header } from '../components/Header';
 import { Card } from '../components/Card';
@@ -480,6 +480,9 @@ export function HeartbeatMonitor() {
                             <Loader2 className="w-4 h-4 animate-spin text-accent-primary" />
                           ) : exec.status === 'completed' ? (
                             <CheckCircle className="w-4 h-4 text-green-400" />
+                          ) : exec.status === 'skipped' ? (
+                            // A skip is something to fix, not something that broke.
+                            <AlertTriangle className="w-4 h-4 text-amber-400" />
                           ) : (
                             <XCircle className="w-4 h-4 text-red-400" />
                           )}
@@ -501,7 +504,9 @@ export function HeartbeatMonitor() {
                             </div>
                           )}
                           {exec.error && (
-                            <p className="text-[10px] text-red-400 mt-1 truncate">{exec.error}</p>
+                            <p className={`text-[10px] mt-1 ${exec.status === 'skipped' ? 'text-amber-400' : 'text-red-400'}`}>
+                              {exec.error}
+                            </p>
                           )}
                           {exec.cost_usd > 0 && (
                             <p className="text-[10px] text-text-3 mt-0.5">${exec.cost_usd.toFixed(4)} &middot; {exec.input_tokens + exec.output_tokens} tokens</p>

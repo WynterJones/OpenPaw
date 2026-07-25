@@ -394,16 +394,48 @@ func (m *Manager) findRecentThread(slug string, maxAge time.Duration) (threadID,
 	return threadID, threadTitle
 }
 
+// recordSkip files a visible execution for an agent the heartbeat could not
+// run.
+//
+// These skips used to return silently, before any execution row was written.
+// The result was a heartbeat that looked completely dead: the UI showed it
+// active with the agent enabled, the loop really was running every interval,
+// and the Executions tab stayed empty with nothing anywhere explaining why.
+//
+// Deduplicated against the agent's latest execution so an unattended skip
+// doesn't add a row every interval forever — the point is to explain the
+// silence once, not to fill the tab.
+func (m *Manager) recordSkip(slug, reason string) {
+	var lastStatus, lastError string
+	err := m.db.QueryRow(
+		"SELECT status, error FROM heartbeat_executions WHERE agent_role_slug = ? ORDER BY started_at DESC LIMIT 1",
+		slug,
+	).Scan(&lastStatus, &lastError)
+	if err == nil && lastStatus == "skipped" && lastError == reason {
+		return
+	}
+
+	now := time.Now().UTC()
+	m.db.Exec(
+		`INSERT INTO heartbeat_executions (id, agent_role_slug, status, error, started_at, finished_at)
+		 VALUES (?, ?, 'skipped', ?, ?, ?)`,
+		uuid.New().String(), slug, reason, now, now,
+	)
+	m.broadcast("heartbeat_cycle_done", map[string]interface{}{})
+}
+
 func (m *Manager) executeForAgent(slug, model string) {
 	// Read HEARTBEAT.md
 	hbPath := filepath.Join(agents.AgentDir(m.dataDir, slug), agents.FileHeartbeat)
 	heartbeatContent, err := os.ReadFile(hbPath)
 	if err != nil {
 		logger.Warn("Heartbeat: skipping %s — cannot read HEARTBEAT.md: %v", slug, err)
+		m.recordSkip(slug, "HEARTBEAT.md could not be read, so this agent has no instructions to act on.")
 		return
 	}
 	if strings.TrimSpace(string(heartbeatContent)) == "" {
 		logger.Info("Heartbeat: skipping %s — HEARTBEAT.md is empty", slug)
+		m.recordSkip(slug, "HEARTBEAT.md is empty. Add instructions telling this agent what to check on each heartbeat.")
 		return
 	}
 
