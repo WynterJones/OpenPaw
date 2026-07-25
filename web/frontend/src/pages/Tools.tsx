@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   AlertTriangle,
   KeyRound,
+  FolderOpen,
 } from "lucide-react";
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
@@ -577,15 +578,21 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
           <div className="text-sm text-text-2 mt-0.5">
             <EditableField value={tool.description} onSave={v => updateField("description", v)} multiline />
           </div>
-          <div className="mt-1 max-w-[200px]">
-            <FolderAssign
-              value={tool.folder || ''}
-              folders={allFolders}
-              onChange={(f) => updateField("folder", f)}
-            />
-          </div>
-          <div className="mt-3 max-w-xs">
+          {/* Folder sits beside Availability, both labelled the same way. */}
+          <div className="mt-3 flex flex-wrap items-start gap-4">
+            <div className="w-full max-w-[200px]">
+              <label className="text-xs font-medium text-text-2 mb-1.5 flex items-center gap-1.5">
+                <FolderOpen className="w-3.5 h-3.5" />
+                Folder
+              </label>
+              <FolderAssign
+                value={tool.folder || ''}
+                folders={allFolders}
+                onChange={(f) => updateField("folder", f)}
+              />
+            </div>
             <AvailabilitySelect
+              className="w-full max-w-[200px]"
               value={tool.workspace_id}
               onChange={(v) => updateField("workspace_id", v || '')}
             />

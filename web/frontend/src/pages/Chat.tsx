@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Zap, Minimize2, Square, Users, AlertTriangle,
-  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon,
+  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -14,7 +14,7 @@ import { api, type ChatThread, type ChatMessage, type AgentRole, type StreamEven
 import { todoApi, mediaApi } from '../lib/api-helpers';
 import { useOpenRouterBalance } from '../hooks/useOpenRouterBalance';
 import { CLI_CONTEXT_LIMIT } from '../lib/provider';
-import type { TodoItem, MediaItem } from '../lib/types';
+import type { TodoItem, MediaItem, Tool } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
@@ -54,6 +54,30 @@ function buildContextItems(tree: ContextTree): ContextItem[] {
   return items;
 }
 
+function ToolPickerRow({ tool, selected, onSelect }: { tool: Tool; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      role="option"
+      aria-selected={selected}
+      onClick={onSelect}
+      className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors cursor-pointer ${
+        selected ? 'bg-accent-muted' : 'hover:bg-surface-2'
+      }`}
+    >
+      <Wrench className="w-4 h-4 text-accent-primary flex-shrink-0" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-text-0 truncate">{tool.name}</p>
+        {tool.description && (
+          <p className="text-xs text-text-3 truncate">{tool.description}</p>
+        )}
+      </div>
+      {tool.status !== 'running' && (
+        <span className="text-[10px] uppercase tracking-wide text-text-3 flex-shrink-0">{tool.status}</span>
+      )}
+    </button>
+  );
+}
+
 export function Chat() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
   const chatNavigate = useNavigate();
@@ -89,6 +113,10 @@ export function Chat() {
     mediaFilter, setMediaFilter,
     mediaIndex, setMediaIndex,
     mediaAnchorRef,
+    toolOpen, setToolOpen,
+    toolFilter, setToolFilter,
+    toolIndex, setToolIndex,
+    toolAnchorRef,
   } = useAutocomplete();
   const [activeThread, setActiveThread] = useState<string | null>(() => localStorage.getItem('openpaw_active_thread'));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -109,6 +137,12 @@ export function Chat() {
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [attachedContextFiles, setAttachedContextFiles] = useState<ContextFile[]>([]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+
+  // Tools attachable via the `#` trigger. `/tools` already returns this
+  // workspace's tools plus global ones (workspace_id === null).
+  const [toolItems, setToolItems] = useState<Tool[]>([]);
+  const [attachedTools, setAttachedTools] = useState<Tool[]>([]);
+  const [toolsLoaded, setToolsLoaded] = useState(false);
 
   // File attachment state
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
@@ -136,6 +170,26 @@ export function Chat() {
     item.prompt.toLowerCase().includes(mediaFilter.toLowerCase()) ||
     item.source_model.toLowerCase().includes(mediaFilter.toLowerCase())
   ), [mediaItems, mediaFilter]);
+
+  // `#` picker: filter by name/description, then split into workspace vs global
+  // sections. `flatTools` keeps one running index so arrow keys move across
+  // both sections as a single list.
+  const filteredTools = useMemo(() => {
+    const q = toolFilter.toLowerCase();
+    const attachedIds = new Set(attachedTools.map(t => t.id));
+    return toolItems.filter(t =>
+      !attachedIds.has(t.id) &&
+      (t.name.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q))
+    );
+  }, [toolItems, toolFilter, attachedTools]);
+
+  const workspaceTools = useMemo(() => filteredTools.filter(t => !!t.workspace_id), [filteredTools]);
+  const globalTools = useMemo(() => filteredTools.filter(t => !t.workspace_id), [filteredTools]);
+  const flatTools = useMemo(() => [...workspaceTools, ...globalTools], [workspaceTools, globalTools]);
+
+  // The picker is only "live" (rendered + capturing keys) when it has matches
+  // or the workspace has no tools at all.
+  const toolPickerVisible = toolOpen && toolsLoaded && (flatTools.length > 0 || toolItems.length === 0);
 
   const insertMention = (role: AgentRole) => {
     const ta = textareaRef.current;
@@ -236,6 +290,40 @@ export function Chat() {
     }, 0);
   };
 
+  // Load tools for the `#` picker. `/tools` is already scoped to the active
+  // workspace + globals, so no extra filtering is needed here.
+  const loadToolItems = async () => {
+    try {
+      const data = await api.get<Tool[]>('/tools');
+      setToolItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.warn('loadToolItems failed:', e);
+    } finally {
+      setToolsLoaded(true);
+    }
+  };
+
+  // Attaching a tool strips the `#query` text and adds a chip instead — the
+  // tool travels in the `tools` payload field, not in the message text.
+  const attachTool = (tool: Tool) => {
+    const ta = textareaRef.current;
+    if (!ta || toolAnchorRef.current === null) return;
+    const before = input.slice(0, toolAnchorRef.current);
+    const after = input.slice(ta.selectionStart);
+    const newValue = `${before}${after}`;
+    setInput(newValue);
+    setAttachedTools(prev => prev.some(t => t.id === tool.id) ? prev : [...prev, tool]);
+    setToolOpen(false);
+    setToolFilter('');
+    toolAnchorRef.current = null;
+    setTimeout(() => {
+      ta.selectionStart = before.length;
+      ta.selectionEnd = before.length;
+      ta.focus();
+      autoResize(ta);
+    }, 0);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const cursorPos = e.target.selectionStart;
@@ -284,9 +372,52 @@ export function Chat() {
       setMediaFilter('');
       mediaAnchorRef.current = null;
     }
+
+    // Detect # trigger for attaching Tools (only at the start of the input or
+    // after whitespace, so `#` inside a word or a markdown heading is ignored).
+    const toolMatch = textBefore.match(/(^|\s)#([\w-]*)$/);
+    if (toolMatch) {
+      const query = toolMatch[2];
+      toolAnchorRef.current = cursorPos - query.length - 1;
+      setToolFilter(query);
+      setToolOpen(true);
+      setToolIndex(0);
+      if (!toolsLoaded) loadToolItems();
+    } else {
+      setToolOpen(false);
+      setToolFilter('');
+      toolAnchorRef.current = null;
+    }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tools picker (#). Escape is handled even with an empty list so the
+    // "no tools available" state can still be dismissed.
+    if (toolPickerVisible) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setToolOpen(false);
+        return;
+      }
+      if (flatTools.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setToolIndex(i => (i + 1) % flatTools.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setToolIndex(i => (i - 1 + flatTools.length) % flatTools.length);
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          attachTool(flatTools[Math.min(toolIndex, flatTools.length - 1)]);
+          return;
+        }
+      }
+    }
+
     // Context file/folder autocomplete
     if (contextOpen && filteredContextItems.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -947,6 +1078,7 @@ export function Chat() {
     const ctxFiles = attachedContextFiles;
     const attachFiles = pendingAttachments;
     const dirs = attachedDirectories;
+    const toolIds = attachedTools.map(t => t.id);
     const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0;
 
     // Reset streaming state
@@ -963,6 +1095,7 @@ export function Chat() {
     setAttachedContextFiles([]);
     setPendingAttachments([]);
     setAttachedDirectories([]);
+    setAttachedTools([]);
     if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
     setSending(true); setThinking(true);
     setWorkStatus(hasAttachments ? 'Reading attached files…' : 'Preparing response...');
@@ -1015,7 +1148,12 @@ export function Chat() {
     setWorkStatus('Preparing response...');
 
     try {
-      const saved = await api.post<ChatMessage>(`/chat/threads/${threadId}/messages`, { content, agent_role_slug: agent });
+      // `tools` is omitted entirely for plain text-only sends so the existing
+      // request shape is unchanged when nothing is attached.
+      const payload: { content: string; agent_role_slug: string; tools?: string[] } =
+        { content, agent_role_slug: agent };
+      if (toolIds.length > 0) payload.tools = toolIds;
+      const saved = await api.post<ChatMessage>(`/chat/threads/${threadId}/messages`, payload);
       setMessages(prev => prev.map(m => m.id === tempId ? saved : m));
       setSending(false);
       startPolling(threadId, saved.id);
@@ -1099,9 +1237,14 @@ export function Chat() {
       <Header title="Chat"
         actions={
           <>
-            <button onClick={() => setThreadsCollapsed(c => !c)} className="hidden md:inline-flex p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={threadsCollapsed ? 'Show chat threads' : 'Hide chat threads'} aria-pressed={!threadsCollapsed} title={threadsCollapsed ? 'Show chats' : 'Hide chats'}>
-              {threadsCollapsed ? <PanelLeftOpen className="w-5 h-5" aria-hidden="true" /> : <PanelLeftClose className="w-5 h-5" aria-hidden="true" />}
-            </button>
+            {/* Collapsing now lives beside "New Chat" inside the sidebar. That
+                row is unreachable once the sidebar is collapsed to zero width,
+                so the header keeps a re-open affordance for that state only. */}
+            {threadsCollapsed && (
+              <button onClick={() => setThreadsCollapsed(false)} className="hidden md:inline-flex p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label="Show chat threads" aria-pressed={false} title="Show chats">
+                <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />
+              </button>
+            )}
             <button onClick={() => setShowThreads(!showThreads)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showThreads ? 'Hide chat threads' : 'Show chat threads'}>
               {showThreads ? <PanelLeftClose className="w-5 h-5" aria-hidden="true" /> : <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />}
             </button>
@@ -1116,7 +1259,18 @@ export function Chat() {
       <div className="flex flex-1 overflow-hidden relative">
         <div className={`${showThreads ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${threadsCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-72 md:border-r'} absolute md:relative z-30 w-[85vw] max-w-72 h-full flex flex-col overflow-hidden border-r border-border-0 bg-surface-1 transition-all duration-200`}>
           <div className="p-3 space-y-2">
-            <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="flex-1" size="sm">New Chat</Button>
+              <button
+                onClick={() => setThreadsCollapsed(c => !c)}
+                className="hidden md:inline-flex items-center justify-center p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
+                aria-label={threadsCollapsed ? 'Show chat threads' : 'Hide chat threads'}
+                aria-pressed={!threadsCollapsed}
+                title={threadsCollapsed ? 'Show chats' : 'Hide chats'}
+              >
+                {threadsCollapsed ? <PanelLeftOpen className="w-5 h-5" aria-hidden="true" /> : <PanelLeftClose className="w-5 h-5" aria-hidden="true" />}
+              </button>
+            </div>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
@@ -1381,6 +1535,48 @@ export function Chat() {
               </div>
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
+                  {/* Tools # autocomplete dropdown */}
+                  {/* Shown when there are matches, or when the workspace genuinely
+                      has no tools. A filter that matches nothing just closes,
+                      so typing "#5" in prose isn't interrupted. */}
+                  {toolPickerVisible && (
+                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Attach tools">
+                      {flatTools.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-text-3">
+                          No tools available. Add tools in Settings.
+                        </div>
+                      ) : (
+                        <>
+                          {workspaceTools.length > 0 && (
+                            <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0">
+                              Workspace Tools
+                            </div>
+                          )}
+                          {workspaceTools.map((tool, i) => (
+                            <ToolPickerRow
+                              key={tool.id}
+                              tool={tool}
+                              selected={i === toolIndex}
+                              onSelect={() => attachTool(tool)}
+                            />
+                          ))}
+                          {globalTools.length > 0 && (
+                            <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0 border-t">
+                              Global Tools
+                            </div>
+                          )}
+                          {globalTools.map((tool, i) => (
+                            <ToolPickerRow
+                              key={tool.id}
+                              tool={tool}
+                              selected={workspaceTools.length + i === toolIndex}
+                              onSelect={() => attachTool(tool)}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
                   {/* Media @@ autocomplete dropdown */}
                   {mediaOpen && filteredMediaItems.length > 0 && (
                     <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Media library">
@@ -1487,8 +1683,22 @@ export function Chat() {
                     }}
                   >
                   {/* Pending attachments / context files strip */}
-                  {(pendingAttachments.length > 0 || attachedContextFiles.length > 0 || attachedDirectories.length > 0) && (
+                  {(pendingAttachments.length > 0 || attachedContextFiles.length > 0 || attachedDirectories.length > 0 || attachedTools.length > 0) && (
                     <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+                      {attachedTools.map(tool => (
+                        <span key={`tool-${tool.id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-muted text-accent-text text-xs font-medium">
+                          <Wrench className="w-3 h-3" />
+                          {tool.name}
+                          <button
+                            onClick={() => setAttachedTools(prev => prev.filter(t => t.id !== tool.id))}
+                            className="ml-0.5 hover:text-red-400 cursor-pointer"
+                            aria-label={`Remove ${tool.name}`}
+                            title={`Remove ${tool.name}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
                       {attachedContextFiles.map(cf => (
                         <span key={`ctx-${cf.id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-muted text-accent-text text-xs font-medium">
                           <FileText className="w-3 h-3" />
@@ -1532,7 +1742,7 @@ export function Chat() {
                     value={input}
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
-                    placeholder="Ask anything... (@ agents, !! context, @@ media)"
+                    placeholder="Ask anything... (@ agents, # tools, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
                     disabled={sending}

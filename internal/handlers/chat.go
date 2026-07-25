@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -170,6 +172,44 @@ func (h *ChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
+}
+
+// archiveMessageCosts moves the cost/token totals of specific messages from the
+// live counters to the archived ones. Compaction removes only part of a thread,
+// so archiving the whole thread's costs would double-count the messages that
+// are still present.
+func archiveMessageCosts(db *database.DB, messageIDs []string) {
+	if len(messageIDs) == 0 {
+		return
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(messageIDs)), ",")
+	args := make([]interface{}, len(messageIDs))
+	for i, id := range messageIDs {
+		args[i] = id
+	}
+
+	var cost float64
+	var inTok, outTok int
+	db.QueryRow(
+		"SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM chat_messages WHERE id IN ("+placeholders+")",
+		args...,
+	).Scan(&cost, &inTok, &outTok)
+
+	if cost <= 0 && inTok <= 0 && outTok <= 0 {
+		return
+	}
+	if _, err := db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'archived_cost_usd'", cost); err != nil {
+		logger.Error("Failed to archive cost: %v", err)
+	}
+	if _, err := db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'archived_input_tokens'", float64(inTok)); err != nil {
+		logger.Error("Failed to archive input tokens: %v", err)
+	}
+	if _, err := db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'archived_output_tokens'", float64(outTok)); err != nil {
+		logger.Error("Failed to archive output tokens: %v", err)
+	}
+	db.Exec("UPDATE system_stats SET value = value - ? WHERE key = 'live_cost_usd'", cost)
+	db.Exec("UPDATE system_stats SET value = value - ? WHERE key = 'live_input_tokens'", float64(inTok))
+	db.Exec("UPDATE system_stats SET value = value - ? WHERE key = 'live_output_tokens'", float64(outTok))
 }
 
 func archiveThreadCosts(db *database.DB, threadID string) {
@@ -458,9 +498,10 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Role          string `json:"role"`
-		Content       string `json:"content"`
-		AgentRoleSlug string `json:"agent_role_slug"`
+		Role          string   `json:"role"`
+		Content       string   `json:"content"`
+		AgentRoleSlug string   `json:"agent_role_slug"`
+		Tools         []string `json:"tools"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -509,10 +550,67 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		var msgCount int
 		h.db.QueryRow("SELECT COUNT(*) FROM chat_messages WHERE thread_id = ?", threadID).Scan(&msgCount)
 		isFirstMsg = msgCount == 1
-		go h.handleAgentRouting(threadID, req.Content, userID, req.AgentRoleSlug, isFirstMsg)
+		// Tools attached via the `#` picker are appended to the routed content
+		// only — the stored message stays exactly what the user typed.
+		routedContent := req.Content + h.attachedToolsSection(req.Tools, threadID)
+		go h.handleAgentRouting(threadID, routedContent, userID, req.AgentRoleSlug, isFirstMsg)
 	}
 
 	writeJSON(w, http.StatusCreated, userMsg)
+}
+
+// attachedToolsSection resolves tool IDs attached via the `#` picker into a
+// directive the agent can act on. Tools are re-checked against the thread's
+// workspace (plus globals) so a stale or foreign ID can't smuggle in a tool the
+// thread isn't entitled to. Returns "" when nothing valid is attached.
+func (h *ChatHandler) attachedToolsSection(toolIDs []string, threadID string) string {
+	if len(toolIDs) == 0 {
+		return ""
+	}
+
+	var wsID string
+	if err := h.db.QueryRow("SELECT COALESCE(workspace_id, '') FROM chat_threads WHERE id = ?", threadID).Scan(&wsID); err != nil {
+		wsID = h.db.ActiveWorkspaceID()
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(toolIDs)), ",")
+	args := make([]interface{}, 0, len(toolIDs)+1)
+	for _, id := range toolIDs {
+		args = append(args, id)
+	}
+	args = append(args, wsID)
+
+	rows, err := h.db.Query(
+		"SELECT name, description, status FROM tools WHERE id IN ("+placeholders+
+			") AND deleted_at IS NULL AND (workspace_id IS NULL OR workspace_id = ?) ORDER BY name ASC",
+		args...,
+	)
+	if err != nil {
+		logger.Error("Failed to resolve attached tools: %v", err)
+		return ""
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	count := 0
+	for rows.Next() {
+		var name, description, status string
+		if err := rows.Scan(&name, &description, &status); err != nil {
+			continue
+		}
+		count++
+		sb.WriteString(fmt.Sprintf("- **%s** (status: %s)", name, status))
+		if description != "" {
+			sb.WriteString(" — " + description)
+		}
+		sb.WriteString("\n")
+	}
+	if count == 0 {
+		return ""
+	}
+
+	return "\n\n---\n**Attached tools** — the user explicitly attached these OpenPaw platform tools to this message. " +
+		"Use the `call_tool` tool to invoke them, preferring them over other tools where they fit the request:\n" + sb.String()
 }
 
 func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
@@ -536,14 +634,9 @@ func (h *ChatHandler) ThreadStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the maximum input_tokens across all assistant messages as context usage.
-	// Each API call sends the full conversation history, so the highest input_tokens
-	// represents the peak context window fill for this thread.
-	var contextUsed int
-	h.db.QueryRow(
-		`SELECT COALESCE(MAX(input_tokens), 0) FROM chat_messages
-		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`, threadID,
-	).Scan(&contextUsed)
+	// Same measure the auto-compact trigger uses, so the percentage the UI shows
+	// always matches the one that decides whether to compact.
+	contextUsed := h.threadContextUsed(threadID)
 	contextLimit := h.getEffectiveContextLimit(threadID)
 
 	autoCompactEnabled := false
@@ -585,55 +678,112 @@ func (h *ChatHandler) CompactThread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "compacted"})
 }
 
-// compactThreadInternal performs the core compaction logic: loads messages,
-// summarizes them via LLM, replaces all messages with the summary.
+// compactRetainMessages is how many of the most recent messages survive
+// compaction verbatim. Everything older is replaced by a single summary.
+// Keeping a live tail matters: compaction runs *after* the incoming user
+// message is saved, so summarizing the entire thread would erase the message
+// the user just sent, along with the immediate context the agent needs.
+const compactRetainMessages = 6
+
+// errCompactionInProgress is returned when a compaction is already running for
+// the thread. Callers treat it as a no-op rather than a failure.
+var errCompactionInProgress = errors.New("compaction already in progress")
+
+// summarizeFunc produces the summary for a transcript. Injected so compaction
+// can be tested without a live provider.
+type summarizeFunc func(ctx context.Context, transcript string) (string, *llm.UsageInfo, error)
+
+// compactThreadInternal compacts a thread using the configured LLM provider.
+// The guard is held here (not just in doAutoCompact) so a manual compaction and
+// an auto-compaction can never run against the same thread concurrently.
 func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string) error {
+	if _, loaded := h.compactingGuard.LoadOrStore(threadID, true); loaded {
+		return errCompactionInProgress
+	}
+	defer h.compactingGuard.Delete(threadID)
+
+	return h.compactThreadWith(ctx, threadID, func(ctx context.Context, transcript string) (string, *llm.UsageInfo, error) {
+		prompt := fmt.Sprintf(
+			"Summarize this conversation concisely, preserving: key decisions, requirements, outcomes, and technical details needed to continue. Format as a clear readable summary.\n\n---\n\n%s",
+			transcript,
+		)
+		compactCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		return h.agentManager.Provider().RunOneShot(
+			compactCtx,
+			h.agentManager.Provider().ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku),
+			"", prompt,
+		)
+	})
+}
+
+// compactThreadWith summarizes the older half of a thread and replaces just
+// those messages with a single summary, leaving the most recent
+// compactRetainMessages intact. The summary is inserted at the timestamp of the
+// oldest summarized message so it sorts ahead of the retained tail.
+func (h *ChatHandler) compactThreadWith(ctx context.Context, threadID string, summarize summarizeFunc) error {
+	type msgRow struct {
+		ID        string
+		Role      string
+		Content   string
+		CreatedAt time.Time
+	}
+
 	rows, err := h.db.Query(
-		"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		"SELECT id, role, content, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC, id ASC",
 		threadID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load messages: %w", err)
 	}
-	defer rows.Close()
-
-	var transcript strings.Builder
+	var msgs []msgRow
 	for rows.Next() {
-		var role, content string
-		if err := rows.Scan(&role, &content); err != nil {
+		var m msgRow
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+			rows.Close()
 			return fmt.Errorf("failed to scan message: %w", err)
 		}
-		transcript.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, content))
+		msgs = append(msgs, m)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("failed to read messages: %w", err)
+	}
+	// Closed explicitly rather than deferred: SQLite will not begin the write
+	// transaction below while a read cursor is still open on the same table.
+	rows.Close()
 
-	if transcript.Len() == 0 {
+	if len(msgs) == 0 {
 		return fmt.Errorf("no messages to compact")
 	}
+	// Nothing would be removed — summarizing here would burn a call and, worse,
+	// replace recent context with a lossy paraphrase for no gain.
+	if len(msgs) <= compactRetainMessages {
+		return fmt.Errorf("thread too short to compact: %d message(s)", len(msgs))
+	}
 
-	prompt := fmt.Sprintf(
-		"Summarize this conversation concisely, preserving: key decisions, requirements, outcomes, and technical details needed to continue. Format as a clear readable summary.\n\n---\n\n%s",
-		transcript.String(),
-	)
+	older := msgs[:len(msgs)-compactRetainMessages]
+	var transcript strings.Builder
+	for _, m := range older {
+		transcript.WriteString(fmt.Sprintf("[%s]: %s\n\n", m.Role, m.Content))
+	}
 
-	compactCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-
-	summary, usage, err := h.agentManager.Provider().RunOneShot(compactCtx, h.agentManager.Provider().ResolveModel(h.agentManager.GatewayModel, llm.ModelHaiku), "", prompt)
+	summary, usage, err := summarize(ctx, transcript.String())
 	if err != nil {
 		return fmt.Errorf("summarization failed: %w", err)
 	}
-
-	archiveThreadCosts(h.db, threadID)
-
-	tx, err := h.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
+	summary = strings.TrimSpace(summary)
+	// An empty summary would destroy history and replace it with nothing, so
+	// bail out before any deletion — the thread is left exactly as it was.
+	if summary == "" {
+		return fmt.Errorf("summarization returned an empty summary")
 	}
-	defer tx.Rollback()
 
-	if _, err := tx.Exec("DELETE FROM chat_messages WHERE thread_id = ?", threadID); err != nil {
-		return fmt.Errorf("failed to delete messages: %w", err)
+	olderIDs := make([]string, len(older))
+	for i, m := range older {
+		olderIDs[i] = m.ID
 	}
+	archiveMessageCosts(h.db, olderIDs)
 
 	var costUSD float64
 	var inTok, outTok int
@@ -643,13 +793,33 @@ func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string
 		outTok = int(usage.OutputTokens)
 	}
 
-	msgID := generateID()
+	tx, err := h.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(olderIDs)), ",")
+	delArgs := make([]interface{}, len(olderIDs))
+	for i, id := range olderIDs {
+		delArgs[i] = id
+	}
+	if _, err := tx.Exec("DELETE FROM chat_messages WHERE id IN ("+placeholders+")", delArgs...); err != nil {
+		return fmt.Errorf("failed to delete messages: %w", err)
+	}
+
 	now := time.Now().UTC()
 	if _, err := tx.Exec(
 		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		msgID, threadID, "system", strings.TrimSpace(summary), "", costUSD, inTok, outTok, now,
+		generateID(), threadID, "system", summary, "", costUSD, inTok, outTok, older[0].CreatedAt,
 	); err != nil {
 		return fmt.Errorf("failed to insert summary: %w", err)
+	}
+
+	// The watermark stops the retained tail's pre-compaction input_tokens from
+	// counting against the context window and re-triggering compaction forever.
+	if _, err := tx.Exec("UPDATE chat_threads SET compacted_at = ?, updated_at = ? WHERE id = ?", now, now, threadID); err != nil {
+		return fmt.Errorf("failed to record compaction: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -660,10 +830,6 @@ func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_cost_usd'", costUSD)
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_input_tokens'", float64(inTok))
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_output_tokens'", float64(outTok))
-	}
-
-	if _, err = h.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID); err != nil {
-		logger.Error("Failed to update thread timestamp: %v", err)
 	}
 
 	return nil
@@ -721,36 +887,88 @@ func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
 	return best
 }
 
+// threadContextUsed reports how much of the context window the thread's next
+// request will consume, in tokens.
+//
+// Each API call sends the whole retained history, so the peak input_tokens of an
+// assistant message is the best measure of context fill — it already includes
+// the system prompt and tool definitions the provider counted. Messages created
+// at or before the last compaction are excluded: their token counts describe a
+// history that no longer exists, and counting them would keep the thread pinned
+// above the threshold forever.
+//
+// Tokens for messages added since that assistant turn (the new user message and
+// any attached context) are added on top, so a large paste is accounted for
+// before it overflows the window rather than after.
+func (h *ChatHandler) threadContextUsed(threadID string) int {
+	var compactedAt sql.NullTime
+	h.db.QueryRow("SELECT compacted_at FROM chat_threads WHERE id = ?", threadID).Scan(&compactedAt)
+
+	query := `SELECT COALESCE(MAX(input_tokens), 0), COALESCE(MAX(created_at), '') FROM chat_messages
+	          WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`
+	args := []interface{}{threadID}
+	if compactedAt.Valid {
+		query += " AND created_at > ?"
+		args = append(args, compactedAt.Time)
+	}
+
+	var used int
+	var peakAt sql.NullString
+	if err := h.db.QueryRow(query, args...).Scan(&used, &peakAt); err != nil || used == 0 {
+		return 0
+	}
+
+	// Add an estimate for anything appended after that turn — those tokens are
+	// real and will be sent, but no provider has counted them yet.
+	if peakAt.Valid && peakAt.String != "" {
+		var pendingChars int
+		h.db.QueryRow(
+			`SELECT COALESCE(SUM(LENGTH(content)), 0) FROM chat_messages
+			 WHERE thread_id = ? AND created_at > ?`, threadID, peakAt.String,
+		).Scan(&pendingChars)
+		used += pendingChars / charsPerTokenEstimate
+	}
+
+	return used
+}
+
+// charsPerTokenEstimate is the rough characters-per-token ratio used to size
+// messages the provider has not tokenized yet. Deliberately conservative (real
+// English prose runs ~4); under-estimating here would let a thread overflow.
+const charsPerTokenEstimate = 3
+
+// compactionNeeded reports whether usage has reached the configured threshold.
+// The comparison is inclusive so a thread sitting exactly on the threshold
+// compacts rather than waiting for the turn that overflows it.
+func compactionNeeded(contextUsed, contextLimit, thresholdPercent int) bool {
+	if contextUsed <= 0 || contextLimit <= 0 {
+		return false
+	}
+	ratio := float64(contextUsed) / float64(contextLimit) * 100
+	return ratio >= float64(thresholdPercent)
+}
+
 // shouldAutoCompact checks whether auto-compaction should trigger for the given thread.
 func (h *ChatHandler) shouldAutoCompact(threadID string) bool {
 	if h.agentManager == nil || !h.agentManager.AutoCompactEnabled {
 		return false
 	}
-
-	var contextUsed int
-	if err := h.db.QueryRow(
-		`SELECT COALESCE(MAX(input_tokens), 0) FROM chat_messages
-		 WHERE thread_id = ? AND role = 'assistant' AND input_tokens > 0`, threadID,
-	).Scan(&contextUsed); err != nil || contextUsed == 0 {
+	// Below the retain floor there is nothing compaction could remove, so
+	// triggering would loop on a thread it cannot shrink.
+	var msgCount int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM chat_messages WHERE thread_id = ?", threadID).Scan(&msgCount); err != nil || msgCount <= compactRetainMessages {
 		return false
 	}
-	contextLimit := h.getEffectiveContextLimit(threadID)
-	if contextLimit <= 0 {
-		return false
-	}
-
-	ratio := float64(contextUsed) / float64(contextLimit) * 100
-	return ratio >= float64(h.agentManager.AutoCompactThreshold)
+	return compactionNeeded(h.threadContextUsed(threadID), h.getEffectiveContextLimit(threadID), h.agentManager.AutoCompactThreshold)
 }
 
-// doAutoCompact runs compaction with a guard to prevent double-compaction on the same thread.
+// doAutoCompact runs compaction, treating an in-flight compaction as a no-op.
 func (h *ChatHandler) doAutoCompact(ctx context.Context, threadID string) error {
-	if _, loaded := h.compactingGuard.LoadOrStore(threadID, true); loaded {
-		return nil // already compacting
+	err := h.compactThreadInternal(ctx, threadID)
+	if errors.Is(err, errCompactionInProgress) {
+		return nil
 	}
-	defer h.compactingGuard.Delete(threadID)
-
-	return h.compactThreadInternal(ctx, threadID)
+	return err
 }
 
 func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content string, costUSD float64, inputTokens, outputTokens int, extras ...string) string {

@@ -882,12 +882,31 @@ func (h *ChatHandler) fetchThreadHistory(threadID string, limits ...int) []agent
 	defer rows.Close()
 
 	var msgs []agents.ThreadMessage
+	haveSummary := false
 	for rows.Next() {
 		var id, role, content, agentSlug string
 		if err := rows.Scan(&id, &role, &content, &agentSlug); err != nil {
 			continue
 		}
+		if role == "system" {
+			haveSummary = true
+		}
 		msgs = append(msgs, agents.ThreadMessage{ID: id, Role: role, Content: content, AgentSlug: agentSlug})
+	}
+
+	// The compaction summary carries the timestamp of the oldest message it
+	// replaced, so it is the first to fall outside the LIMIT window as the
+	// thread grows. Without this the agent loses every pre-compaction fact — the
+	// whole point of compacting. Re-attach it at the front when it dropped out.
+	if !haveSummary {
+		var id, content string
+		if err := h.db.QueryRow(
+			`SELECT id, content FROM chat_messages
+			 WHERE thread_id = ? AND role = 'system' AND content != ''
+			 ORDER BY created_at DESC LIMIT 1`, threadID,
+		).Scan(&id, &content); err == nil {
+			msgs = append([]agents.ThreadMessage{{ID: id, Role: "system", Content: content}}, msgs...)
+		}
 	}
 
 	return msgs

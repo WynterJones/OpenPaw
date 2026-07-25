@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { DollarSign, Zap, Download, Wrench } from 'lucide-react';
+import { DollarSign, Zap, Download, Wrench, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
@@ -158,6 +158,34 @@ function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; 
   );
 }
 
+/**
+ * The summary left behind by context compaction. It stands in for messages that
+ * no longer exist, so it gets a labelled 2px accent border rather than looking
+ * like just another reply in the thread.
+ */
+function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: AgentRole[] }) {
+  return (
+    <div className="my-2">
+      <div className="rounded-2xl border-2 border-accent-primary bg-accent-muted/20 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-accent-muted/30">
+          <Minimize2 className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" aria-hidden="true" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-accent-primary">
+            Chat Summary
+          </span>
+          <span className="text-[10px] text-text-3 ml-auto">
+            Earlier messages were compacted
+          </span>
+        </div>
+        <div className="px-4 py-3 text-base font-medium text-text-1">
+          <div className="prose-chat">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{message.content}</ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageBubble({ message, roles, onRefresh, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
   const isUser = message.role === 'user';
   const role = message.agent_role_slug ? roles.find(r => r.slug === message.agent_role_slug) : null;
@@ -165,6 +193,7 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
   const [toolsOpen, setToolsOpen] = useState(false);
 
   if (isUser) return <UserMessageBubble message={message} roles={roles} onReact={onReact} />;
+  if (message.role === 'system') return <ChatSummaryBubble message={message} roles={roles} />;
 
   const confirmation = parseConfirmation(message.content);
   const toolSummary = !confirmation ? parseToolSummary(message.content) : null;

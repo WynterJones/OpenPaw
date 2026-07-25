@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, X, Save, Wrench } from 'lucide-react';
+import { Plus, Trash2, X, Save, Wrench, FolderOpen } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -215,6 +215,10 @@ export function Skills() {
               </Button>
               <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
               <div className="w-[160px]">
+                <label className="text-xs font-medium text-text-2 mb-1.5 flex items-center gap-1.5">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  Folder
+                </label>
                 <FolderAssign
                   value={editing.folder || ''}
                   folders={folderGrouping.folders}

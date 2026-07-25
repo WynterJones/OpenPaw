@@ -316,14 +316,19 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	for _, msg := range history {
 		role := msg.Role
 		content := msg.Content
-		if role == "system" {
+		isSummary := role == "system"
+		if isSummary {
+			// Compaction summaries stand in for messages that no longer exist.
+			// Labelled so the agent treats them as established history rather
+			// than as something it said verbatim.
 			role = "assistant"
+			content = "[Summary of earlier conversation — the original messages were compacted]:\n" + content
 		}
 		if role != "user" && role != "assistant" {
 			continue
 		}
 		// Prepend message ID so agents can reference messages for reactions
-		if msg.ID != "" {
+		if msg.ID != "" && !isSummary {
 			content = fmt.Sprintf("[msg_id:%s]\n%s", msg.ID, content)
 		}
 		// If an assistant message came from a different agent, present it as

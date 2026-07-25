@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
 	"os"
@@ -317,13 +318,37 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'")
+
+	// The dashboard renders in an iframe sandboxed with `allow-scripts` but NOT
+	// `allow-same-origin`, so the document has an opaque origin. CSP `'self'`
+	// never matches an opaque origin, which silently blocked every script and
+	// stylesheet and left the dashboard blank. Name this server's origin
+	// explicitly instead — that still confines the dashboard to assets we serve.
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	origin := scheme + "://" + r.Host
+	w.Header().Set("Content-Security-Policy", fmt.Sprintf(
+		"default-src %[1]s; script-src %[1]s 'unsafe-inline'; style-src %[1]s 'unsafe-inline'; "+
+			"img-src %[1]s data: blob:; font-src %[1]s data:; connect-src %[1]s; frame-ancestors 'self'",
+		origin,
+	))
 	// Sandboxed iframes have a null origin — allow any origin for static assets
 	// and remove credentials header since * is incompatible with credentials
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Del("Access-Control-Allow-Credentials")
 
-	http.ServeFile(w, r, resolved)
+	// ServeContent rather than ServeFile: ServeFile 301-redirects any request
+	// whose path ends in "/index.html", which the iframe has to chase on every
+	// load. ServeContent serves it directly and still handles Range/If-Modified.
+	f, err := os.Open(resolved)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	defer f.Close()
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 // RefreshData calls tool endpoints for each widget and returns fresh data.

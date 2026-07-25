@@ -12,8 +12,8 @@ import { toolLibrary, agentLibrary, skillLibrary, skillsSh, secretsApi, type Lib
 
 type LibraryTab = 'tools' | 'agents' | 'skills';
 const libraryTabs: { key: LibraryTab; label: string; icon: typeof Wrench }[] = [
-  { key: 'tools', label: 'Tools', icon: Wrench },
   { key: 'agents', label: 'Agents', icon: Bot },
+  { key: 'tools', label: 'Tools', icon: Wrench },
   { key: 'skills', label: 'Skills', icon: Sparkles },
 ];
 
@@ -680,7 +680,7 @@ function SkillsPanel() {
 }
 
 export function Library() {
-  const [tab, setTab] = useState<LibraryTab>('tools');
+  const [tab, setTab] = useState<LibraryTab>('agents');
   const [counts, setCounts] = useState<Record<LibraryTab, number | null>>({ tools: null, agents: null, skills: null });
 
   useEffect(() => {
