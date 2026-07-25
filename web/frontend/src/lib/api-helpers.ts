@@ -181,12 +181,25 @@ export const agentSkills = {
 
 // Notification API helpers
 export const notificationsApi = {
-  list: (unread?: boolean) => api.get<AppNotification[]>(`/notifications${unread ? '?unread=true' : ''}`),
+  list: (opts?: { unread?: boolean; archived?: boolean; sourceType?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (opts?.unread) q.set('unread', 'true');
+    if (opts?.archived) q.set('archived', 'true');
+    if (opts?.sourceType) q.set('source_type', opts.sourceType);
+    if (opts?.limit) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return api.get<AppNotification[]>(`/notifications${qs ? `?${qs}` : ''}`);
+  },
   unreadCount: () => api.get<{ count: number }>('/notifications/count'),
   markRead: (id: string) => api.put(`/notifications/${id}/read`),
+  markUnread: (id: string) => api.put(`/notifications/${id}/unread`),
   markAllRead: () => api.put('/notifications/read-all'),
+  /** Archives (hides from the inbox) rather than deleting the record. */
   dismiss: (id: string) => api.delete(`/notifications/${id}`),
   dismissAll: () => api.delete('/notifications'),
+  restore: (id: string) => api.put(`/notifications/${id}/restore`),
+  /** Creates a chat thread from the report so the conversation can continue. */
+  openAsChat: (id: string) => api.post<{ thread_id: string }>(`/notifications/${id}/open-chat`, {}),
 };
 
 // Agent Library API helpers

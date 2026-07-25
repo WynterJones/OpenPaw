@@ -465,10 +465,18 @@ export interface ChatAttachment {
 export interface AppNotification {
   id: string;
   title: string;
+  /** Short preview shown in the bell dropdown and inbox list. */
   body: string;
+  /** The agent's full report, in markdown — rendered by the Inbox reading pane. */
+  detail: string;
+  /** The instruction that produced the report, shown as the quoted request. */
+  prompt: string;
+  workspace_id: string;
   priority: 'low' | 'normal' | 'high';
   source_agent_slug: string;
   source_type: string;
+  source_id: string;
+  /** Set once the report has a chat thread; empty until "Open as chat" is used. */
   link: string;
   read: boolean;
   dismissed: boolean;

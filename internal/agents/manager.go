@@ -75,7 +75,7 @@ type Manager struct {
 	ToolMgr              ToolManager
 	MemoryMgr            MemoryManager
 	FrontendFS           fs.FS
-	NotifyFn             func(title, body, priority, sourceAgentSlug, sourceType, link string)
+	NotifyFn             func(models.NotificationInput)
 	manifestCache        sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState
 	activeSubAgents int32    // atomic counter for concurrent sub-agents

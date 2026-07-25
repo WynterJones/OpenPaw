@@ -3,12 +3,14 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/models"
 	"github.com/robfig/cron/v3"
 )
 
@@ -18,7 +20,7 @@ type PromptSender interface {
 }
 
 // NotifyFunc creates a notification and broadcasts it.
-type NotifyFunc func(title, body, priority, sourceAgentSlug, sourceType, link string)
+type NotifyFunc func(models.NotificationInput)
 
 type ScheduleConfig struct {
 	ID            string
@@ -131,21 +133,88 @@ func (s *Scheduler) executeSchedule(cfg ScheduleConfig) {
 		status, output, errStr, finishedAt, execID,
 	)
 
-	// Send notification with link to the chat thread
-	if s.notifyFn != nil && status == "success" && threadID != "" {
-		title := "Scheduled task completed"
-		// Look up a friendly name for the agent
-		var agentName string
-		s.db.QueryRow("SELECT name FROM agent_roles WHERE slug = ?", cfg.AgentRoleSlug).Scan(&agentName)
-		if agentName != "" {
-			title = agentName + " completed a scheduled task"
-		}
-		body := cfg.PromptContent
-		if len(body) > 100 {
-			body = body[:100] + "..."
-		}
-		s.notifyFn(title, body, "normal", cfg.AgentRoleSlug, "schedule", "/chat/"+threadID)
+	s.fileReport(cfg, execID, status, output, errStr, threadID)
+}
+
+// fileReport files the run's outcome into the Inbox.
+//
+// Both outcomes report. A failed run used to notify nothing at all, so a broken
+// scheduled prompt failed silently — the only trace was a row in
+// schedule_executions nobody thinks to look at.
+func (s *Scheduler) fileReport(cfg ScheduleConfig, execID, status, output, errStr, threadID string) {
+	if s.notifyFn == nil {
+		return
 	}
+
+	// Prefer the agent's display name — "Research Assistant reported back" reads
+	// like mail from a colleague, which is how the Inbox presents it.
+	who := cfg.AgentRoleSlug
+	var agentName string
+	s.db.QueryRow("SELECT name FROM agent_roles WHERE slug = ?", cfg.AgentRoleSlug).Scan(&agentName)
+	if agentName != "" {
+		who = agentName
+	}
+
+	var scheduleName string
+	s.db.QueryRow("SELECT name FROM schedules WHERE id = ?", cfg.ID).Scan(&scheduleName)
+	subject := scheduleName
+	if subject == "" {
+		subject = truncate(cfg.PromptContent, 60)
+	}
+
+	in := models.NotificationInput{
+		Prompt:          cfg.PromptContent,
+		WorkspaceID:     cfg.WorkspaceID,
+		SourceAgentSlug: cfg.AgentRoleSlug,
+		SourceType:      "schedule",
+		SourceID:        execID,
+	}
+
+	if status == "success" {
+		in.Title = who + ": " + subject
+		in.Detail = output
+		in.Body = preview(output)
+		in.Priority = "normal"
+		if in.Detail == "" {
+			in.Detail = "_The agent completed the task without producing a written report._"
+			in.Body = "Completed with no output"
+		}
+	} else {
+		in.Title = "Failed — " + who + ": " + subject
+		in.Detail = "**This scheduled run failed.**\n\n```\n" + errStr + "\n```\n\n**Prompt**\n\n" + cfg.PromptContent
+		in.Body = truncate(errStr, 160)
+		in.Priority = "high"
+	}
+
+	// A schedule pinned to a thread already wrote its turn there, so link it.
+	// Threadless runs leave the link empty and the Inbox offers "Open as chat".
+	if threadID != "" {
+		in.Link = "/chat/" + threadID
+	}
+
+	s.notifyFn(in)
+}
+
+// preview reduces a markdown report to a one-line summary for the notification
+// list and OS push, skipping headings and blank lines so the line shown is
+// actual prose rather than "## Summary".
+func preview(report string) string {
+	for _, line := range strings.Split(report, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "```") {
+			continue
+		}
+		return truncate(strings.TrimLeft(line, "-*> "), 160)
+	}
+	return truncate(strings.TrimSpace(report), 160)
+}
+
+func truncate(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return strings.TrimSpace(s[:n]) + "…"
 }
 
 func (s *Scheduler) executePrompt(cfg ScheduleConfig) (output, threadID string, err error) {

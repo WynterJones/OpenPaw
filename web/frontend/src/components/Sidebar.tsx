@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, Link, useLocation } from "react-router";
 import {
   MessageSquare,
+  Inbox as InboxIcon,
   Wrench,
   TerminalSquare,
   Bot,
@@ -25,8 +26,9 @@ import {
   Trash2,
   Brain,
 } from "lucide-react";
-import { api, type Dashboard } from "../lib/api";
-import { workspaces } from "../lib/api-helpers";
+import { api, type Dashboard, type WSMessage } from "../lib/api";
+import { workspaces, notificationsApi } from "../lib/api-helpers";
+import { useWebSocket } from "../lib/useWebSocket";
 import type { Workspace } from "../lib/types";
 import { startWindowDrag } from "../lib/tauri";
 import { Button } from "./Button";
@@ -45,17 +47,18 @@ const navGroups: NavGroup[] = [
   {
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
+      { to: "/inbox", icon: InboxIcon, label: "Inbox" },
       { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
       { to: "/knowledge-base", icon: Database, label: "Context" },
       { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
       { to: "/agents", icon: Bot, label: "Agents" },
       { to: "/tools", icon: Wrench, label: "Tools" },
+      { to: "/skills", icon: Sparkles, label: "Skills" },
     ],
   },
 ];
 
 const moreItems: NavItem[] = [
-  { to: "/skills", icon: Sparkles, label: "Skills" },
   { to: "/library", icon: Store, label: "Templates" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },
   { to: "/heartbeat", icon: Heart, label: "Heartbeat" },
@@ -63,6 +66,42 @@ const moreItems: NavItem[] = [
   { to: "/logs", icon: FileText, label: "Logs" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
+
+/**
+ * Unread count for the Inbox nav item.
+ *
+ * Deliberately not `useNotifications` — that hook also plays a sound and raises
+ * an OS notification on each arrival, so mounting it a second time alongside the
+ * header bell would double every alert. This only reads the count.
+ */
+function useUnreadCount() {
+  const [count, setCount] = useState(0);
+
+  const refresh = useCallback(() => {
+    notificationsApi
+      .unreadCount()
+      .then(d => setCount(d.count))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const onMessage = useCallback(
+    (msg: WSMessage) => {
+      if (
+        msg.type === "notification_created" ||
+        msg.type === "notification_read" ||
+        msg.type === "notifications_cleared"
+      ) {
+        refresh();
+      }
+    },
+    [refresh],
+  );
+  useWebSocket({ onMessage });
+
+  return count;
+}
 
 function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   const [open, setOpen] = useState(false);
@@ -631,6 +670,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed }: SidebarProps) {
   const balance = useOpenRouterBalance();
+  const unread = useUnreadCount();
   const [version, setVersion] = useState("");
   useEffect(() => {
     api.get<{ version: string }>("/system/info").then((d) => setVersion(d.version || "")).catch(() => {});
@@ -681,10 +721,20 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   }
                   title={collapsed ? item.label : undefined}
                 >
-                  <item.icon className="flex-shrink-0 w-5 h-5" />
+                  <span className="relative flex-shrink-0">
+                    <item.icon className="w-5 h-5" />
+                    {item.to === "/inbox" && unread > 0 && collapsed && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
+                    )}
+                  </span>
                   {!collapsed && (
                     <span className={item.featured ? "font-semibold" : ""}>
                       {item.label}
+                    </span>
+                  )}
+                  {item.to === "/inbox" && unread > 0 && !collapsed && (
+                    <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                      {unread > 99 ? "99+" : unread}
                     </span>
                   )}
                 </NavLink>

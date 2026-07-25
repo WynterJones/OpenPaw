@@ -25,6 +25,7 @@ import (
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/memory"
+	"github.com/openpaw/openpaw/internal/models"
 	"github.com/openpaw/openpaw/internal/platform"
 	"github.com/openpaw/openpaw/internal/providers"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -270,8 +271,8 @@ func main() {
 	agentMgr.FrontendFS = frontendFS
 
 	// Wire notification function (creates notification + broadcasts)
-	notifyFn := func(title, body, priority, sourceAgentSlug, sourceType, link string) {
-		n, err := handlers.CreateNotification(db, title, body, priority, sourceAgentSlug, sourceType, link)
+	notifyFn := func(in models.NotificationInput) {
+		n, err := handlers.CreateNotification(db, in)
 		if err != nil {
 			logger.Error("Failed to create notification: %v", err)
 			return

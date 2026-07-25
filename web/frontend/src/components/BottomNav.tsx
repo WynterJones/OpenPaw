@@ -15,6 +15,7 @@ import {
   Database,
   Heart,
   ListTodo,
+  Inbox,
   MoreHorizontal,
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ const primaryItems = [
 ];
 
 const moreItems = [
+  { to: '/inbox', icon: Inbox, label: 'Inbox' },
   { to: '/knowledge-base', icon: Database, label: 'Context' },
   { to: '/todo-lists', icon: ListTodo, label: 'Tasks' },
   { to: '/tools', icon: Wrench, label: 'Tools' },

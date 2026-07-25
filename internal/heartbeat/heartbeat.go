@@ -566,7 +566,7 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 				return llm.ToolResult{Output: "title is required", IsError: true}
 			}
 
-			notif, err := m.createNotification(params.Title, params.Body, params.Priority, slug, "heartbeat", params.Link)
+			notif, err := m.createNotification(params.Title, params.Body, params.Body, params.Priority, slug, "heartbeat", params.Link)
 			if err != nil {
 				return llm.ToolResult{Output: "Failed to create notification: " + err.Error(), IsError: true}
 			}
@@ -598,7 +598,7 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 				"agent":     slug,
 			})
 
-			notif, nErr := m.createNotification(params.Title, params.Message, "normal", slug, "heartbeat", "/chat/"+threadID)
+			notif, nErr := m.createNotification(params.Title, params.Message, params.Message, "normal", slug, "heartbeat", "/chat/"+threadID)
 			if nErr == nil {
 				m.broadcast("notification_created", notif)
 			}
@@ -665,7 +665,7 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 			})
 
 			// Create notification
-			notif, nErr := m.createNotification(threadTitle, params.Message, "normal", slug, "heartbeat", "/chat/"+params.ThreadID)
+			notif, nErr := m.createNotification(threadTitle, params.Message, params.Message, "normal", slug, "heartbeat", "/chat/"+params.ThreadID)
 			if nErr == nil {
 				m.broadcast("notification_created", notif)
 			}
@@ -887,18 +887,28 @@ func (m *Manager) finishExecution(execID, status, actionsTaken, output, errMsg s
 	)
 }
 
-func (m *Manager) createNotification(title, body, priority, sourceAgentSlug, sourceType, link string) (map[string]interface{}, error) {
+// createNotification files a heartbeat action into the Inbox. `body` is the
+// preview; `detail` is the agent's full message, so the Inbox can render the
+// whole thing without following the link.
+func (m *Manager) createNotification(title, body, detail, priority, sourceAgentSlug, sourceType, link string) (map[string]interface{}, error) {
 	id := uuid.New().String()
 	now := time.Now().UTC()
 
 	if priority == "" {
 		priority = "normal"
 	}
+	if detail == "" {
+		detail = body
+	}
+	preview := body
+	if len(preview) > 160 {
+		preview = strings.TrimSpace(preview[:160]) + "…"
+	}
 
 	_, err := m.db.Exec(
-		`INSERT INTO notifications (id, title, body, priority, source_agent_slug, source_type, link, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, title, body, priority, sourceAgentSlug, sourceType, link, now,
+		`INSERT INTO notifications (id, title, body, detail, workspace_id, priority, source_agent_slug, source_type, link, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, title, preview, detail, m.targetWorkspaceID(), priority, sourceAgentSlug, sourceType, link, now,
 	)
 	if err != nil {
 		return nil, err
@@ -907,9 +917,11 @@ func (m *Manager) createNotification(title, body, priority, sourceAgentSlug, sou
 	return map[string]interface{}{
 		"id":                id,
 		"title":             title,
-		"body":              body,
+		"body":              preview,
+		"detail":            detail,
 		"priority":          priority,
 		"source_agent_slug": sourceAgentSlug,
+		"source_type":       sourceType,
 		"link":              link,
 		"created_at":        now.Format(time.RFC3339),
 	}, nil

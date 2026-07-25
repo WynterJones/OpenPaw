@@ -207,16 +207,46 @@ type AgentRole struct {
 }
 
 type Notification struct {
-	ID              string    `json:"id"`
-	Title           string    `json:"title"`
-	Body            string    `json:"body"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Body is a short preview — it is what the bell dropdown and OS push
+	// notifications show.
+	Body string `json:"body"`
+	// Detail is the agent's full report in markdown, rendered by the Inbox.
+	Detail string `json:"detail"`
+	// Prompt is the instruction that produced the report, kept so the report can
+	// be opened as a chat later without depending on the schedule still existing.
+	Prompt          string    `json:"prompt"`
+	WorkspaceID     string    `json:"workspace_id"`
 	Priority        string    `json:"priority"`
 	SourceAgentSlug string    `json:"source_agent_slug"`
 	SourceType      string    `json:"source_type"`
-	Link            string    `json:"link"`
-	Read            bool      `json:"read"`
-	Dismissed       bool      `json:"dismissed"`
-	CreatedAt       time.Time `json:"created_at"`
+	// SourceID identifies the run that produced this — a schedule_executions id
+	// for scheduled reports.
+	SourceID string `json:"source_id"`
+	// Link is set only when the report already lives somewhere (a thread the
+	// schedule is pinned to). Threadless reports leave it empty and the Inbox
+	// offers "Open as chat" instead.
+	Link      string    `json:"link"`
+	Read      bool      `json:"read"`
+	Dismissed bool      `json:"dismissed"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// NotificationInput is the payload for creating a notification. It is a struct
+// rather than a positional argument list because nine strings in a row is an
+// easy place to silently transpose two fields.
+type NotificationInput struct {
+	Title           string
+	Body            string
+	Detail          string
+	Prompt          string
+	WorkspaceID     string
+	Priority        string
+	SourceAgentSlug string
+	SourceType      string
+	SourceID        string
+	Link            string
 }
 
 type HeartbeatExecution struct {

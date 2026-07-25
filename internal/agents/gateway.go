@@ -258,6 +258,20 @@ func (m *Manager) workspaceExtraDirs(workspaceID string) []string {
 // different workspaces would both resolve to the same (active) one. Falls
 // back to the default workspace when threadID is empty or unresolvable (e.g.
 // scheduled/sub-agent runs that don't have a chat thread).
+// workspaceCtxKey carries a workspace for runs that have no chat thread to
+// resolve one from. Unexported type so nothing else can collide with the key.
+type workspaceCtxKey struct{}
+
+// WithWorkspace tags a context with the workspace a threadless run belongs to.
+func WithWorkspace(ctx context.Context, workspaceID string) context.Context {
+	return context.WithValue(ctx, workspaceCtxKey{}, workspaceID)
+}
+
+func workspaceFromContext(ctx context.Context) string {
+	ws, _ := ctx.Value(workspaceCtxKey{}).(string)
+	return ws
+}
+
 func (m *Manager) threadWorkspaceID(threadID string) string {
 	if threadID == "" {
 		return database.DefaultWorkspaceID
@@ -307,6 +321,13 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	// active workspace, so concurrent chats in different workspaces don't
 	// cross-contaminate (files dir, tools, attached dirs, CLI cwd).
 	wsID := m.threadWorkspaceID(threadID)
+	// Threadless runs (scheduled reports) have no thread to resolve from and
+	// carry their workspace on the context instead.
+	if threadID == "" {
+		if ws := workspaceFromContext(ctx); ws != "" {
+			wsID = ws
+		}
+	}
 
 	// Build history messages for multi-turn conversation.
 	// Messages from OTHER agents are re-attributed as user-role context so the
@@ -578,41 +599,42 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 
 	now := time.Now().UTC()
 
-	// Create thread if none provided. Target the schedule's workspace when set,
-	// otherwise fall back to the currently active workspace.
-	if threadID == "" {
-		if workspaceID == "" {
-			workspaceID = m.db.ActiveWorkspaceID()
-		}
-		threadID = uuid.New().String()
-		m.db.Exec(
-			"INSERT INTO chat_threads (id, title, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-			threadID, "Scheduled: "+prompt[:min(len(prompt), 40)], workspaceID, now, now,
-		)
+	if workspaceID == "" {
+		workspaceID = m.db.ActiveWorkspaceID()
 	}
 
-	// Save the user message to the thread
-	userMsgID := uuid.New().String()
-	m.db.Exec(
-		"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, created_at) VALUES (?, ?, 'user', ?, ?, ?)",
-		userMsgID, threadID, prompt, agentSlug, now,
-	)
-	m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID)
-
-	// Load thread history for context
+	// A schedule pinned to a thread keeps writing there — the user picked that
+	// conversation deliberately. An unpinned schedule runs *threadless*: it used
+	// to spawn a new chat on every tick, burying the chat list under runs nobody
+	// asked to see. The report is filed in the Inbox instead, and a thread is
+	// created only if the user opens it as a chat.
 	var history []ThreadMessage
-	rows, err := m.db.Query(
-		"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
-		threadID,
-	)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var tm ThreadMessage
-			if rows.Scan(&tm.Role, &tm.Content) == nil {
-				history = append(history, tm)
+	if threadID != "" {
+		userMsgID := uuid.New().String()
+		m.db.Exec(
+			"INSERT INTO chat_messages (id, thread_id, role, content, agent_role_slug, created_at) VALUES (?, ?, 'user', ?, ?, ?)",
+			userMsgID, threadID, prompt, agentSlug, now,
+		)
+		m.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID)
+
+		rows, err := m.db.Query(
+			"SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+			threadID,
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var tm ThreadMessage
+				if rows.Scan(&tm.Role, &tm.Content) == nil {
+					history = append(history, tm)
+				}
 			}
 		}
+	} else {
+		// Without a thread there is nothing to resolve the workspace from, so
+		// carry the schedule's workspace explicitly — otherwise the run would
+		// silently operate on the default workspace's files and tools.
+		ctx = WithWorkspace(ctx, workspaceID)
 	}
 
 	// If identity system is initialized, assemble prompt from files and set agentDir
@@ -637,6 +659,11 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 	}
 	if chatErr != nil {
 		return "", threadID, fmt.Errorf("scheduled prompt failed: %w", chatErr)
+	}
+
+	// Threadless run — the caller files the response as a report.
+	if threadID == "" {
+		return result, "", nil
 	}
 
 	// Save the assistant response to the thread

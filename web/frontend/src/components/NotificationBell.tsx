@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bell, Check, X } from 'lucide-react';
+import { Bell, Check, X, Inbox } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useNavigate } from 'react-router';
 
@@ -35,12 +35,13 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const handleNotificationClick = (id: string, link: string, read: boolean) => {
+  // Always open the report in the Inbox rather than following `link`. A
+  // scheduled run no longer creates a chat thread, so the full report lives in
+  // the Inbox — and from there "Open as chat" creates the thread on demand.
+  const handleNotificationClick = (id: string, read: boolean) => {
     if (!read) markRead(id);
-    if (link) {
-      navigate(link);
-      setOpen(false);
-    }
+    navigate(`/inbox?id=${id}`);
+    setOpen(false);
   };
 
   return (
@@ -87,11 +88,11 @@ export function NotificationBell() {
                   key={n.id}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n.id, n.link, n.read); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n.id, n.read); } }}
                   className={`group flex items-start gap-3 px-4 py-3.5 border-b border-border-0 last:border-0 cursor-pointer transition-colors ${
                     n.read ? 'bg-transparent hover:bg-surface-2/30' : 'bg-accent-primary/5 hover:bg-accent-primary/10'
                   }`}
-                  onClick={() => handleNotificationClick(n.id, n.link, n.read)}
+                  onClick={() => handleNotificationClick(n.id, n.read)}
                 >
                   <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${n.read ? 'opacity-0' : priorityColors[n.priority] || priorityColors.normal}`} aria-hidden="true" />
                   <span className="sr-only">{n.priority || 'normal'} priority</span>
@@ -121,6 +122,16 @@ export function NotificationBell() {
                 </div>
               ))
             )}
+          </div>
+
+          <div className="border-t border-border-0">
+            <button
+              onClick={() => { navigate('/inbox'); setOpen(false); }}
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-medium text-text-2 hover:text-text-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
+            >
+              <Inbox className="w-3.5 h-3.5" aria-hidden="true" />
+              Open Inbox
+            </button>
           </div>
         </div>
       )}
