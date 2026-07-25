@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -82,46 +81,76 @@ func (h *ChatHandler) StartTmuxWatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "session is required")
 		return
 	}
-	// Clamped: below 10s this hammers tmux for no benefit, above 10 minutes it
-	// stops being a live check.
-	if req.IntervalS < 10 {
-		req.IntervalS = 30
-	}
-	if req.IntervalS > 600 {
-		req.IntervalS = 600
-	}
 	if !tmux.Exists(r.Context(), req.Session) {
 		writeError(w, http.StatusNotFound, "no tmux session named "+req.Session)
 		return
 	}
 
-	key := watchKey(threadID, req.Session)
-	if existing, loaded := tmuxWatches.Load(key); loaded {
-		writeJSON(w, http.StatusOK, existing)
+	wch, err := h.StartWatch(threadID, req.Session, req.IntervalS)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	writeJSON(w, http.StatusOK, wch)
+}
+
+// clampInterval keeps a poll useful: below 10s it hammers tmux for no benefit,
+// and beyond 15 minutes it stops being a live check. Zero means "unspecified",
+// which takes the default rather than the floor.
+func clampInterval(s int) int {
+	const (
+		min      = 10
+		max      = 900
+		fallback = 60
+	)
+	if s <= 0 {
+		return fallback
+	}
+	if s < min {
+		return min
+	}
+	if s > max {
+		return max
+	}
+	return s
+}
+
+// StartWatch begins polling a session on behalf of a thread, or returns the
+// watch already running for that pair. Exported so the agent-facing tmux_watch
+// tool can start one: an agent's turn ends when it replies, so this is the only
+// way a promise to "check back later" becomes something that actually happens.
+func (h *ChatHandler) StartWatch(threadID, session string, intervalSeconds int) (*tmuxWatch, error) {
+	if threadID == "" || session == "" {
+		return nil, fmt.Errorf("thread and session are required")
+	}
+	intervalSeconds = clampInterval(intervalSeconds)
+
+	key := watchKey(threadID, session)
+	if existing, loaded := tmuxWatches.Load(key); loaded {
+		if wch, ok := existing.(*tmuxWatch); ok {
+			return wch, nil
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now().UTC()
 	wch := &tmuxWatch{
 		ThreadID:  threadID,
-		Session:   req.Session,
-		IntervalS: req.IntervalS,
-		StartedAt: time.Now().UTC(),
-		NextCheck: time.Now().UTC().Add(time.Duration(req.IntervalS) * time.Second),
+		Session:   session,
+		IntervalS: intervalSeconds,
+		StartedAt: now,
+		NextCheck: now.Add(time.Duration(intervalSeconds) * time.Second),
 		cancel:    cancel,
 	}
 	tmuxWatches.Store(key, wch)
 
 	go h.runTmuxWatch(ctx, key, wch)
-
-	writeJSON(w, http.StatusOK, wch)
+	return wch, nil
 }
 
-// StopTmuxWatch cancels a running watch.
-func (h *ChatHandler) StopTmuxWatch(w http.ResponseWriter, r *http.Request) {
-	threadID := chi.URLParam(r, "id")
-	session := r.URL.Query().Get("session")
-
+// StopWatch cancels watches for a thread; an empty session stops all of them.
+// Returns how many were stopped.
+func (h *ChatHandler) StopWatch(threadID, session string) int {
 	stopped := 0
 	tmuxWatches.Range(func(k, v interface{}) bool {
 		wch, ok := v.(*tmuxWatch)
@@ -136,8 +165,15 @@ func (h *ChatHandler) StopTmuxWatch(w http.ResponseWriter, r *http.Request) {
 		stopped++
 		return true
 	})
+	return stopped
+}
 
-	writeJSON(w, http.StatusOK, map[string]int{"stopped": stopped})
+// StopTmuxWatch cancels a running watch.
+func (h *ChatHandler) StopTmuxWatch(w http.ResponseWriter, r *http.Request) {
+	threadID := chi.URLParam(r, "id")
+	session := r.URL.Query().Get("session")
+
+	writeJSON(w, http.StatusOK, map[string]int{"stopped": h.StopWatch(threadID, session)})
 }
 
 // runTmuxWatch polls until the session ends, the pane goes quiet, or it is
@@ -186,7 +222,7 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 		}
 
 		if unchanged >= stalledAfter {
-			summary := describeTmux(wch.Session, pane)
+			summary := tmux.Describe(wch.Session, pane)
 			h.reportTmux(wch, fmt.Sprintf(
 				"The tmux session `%s` hasn't changed in %s — it looks stalled, most likely waiting on input.\n\n%s",
 				wch.Session, (time.Duration(stalledAfter)*interval).String(), summary))
@@ -201,52 +237,4 @@ func (h *ChatHandler) reportTmux(wch *tmuxWatch, message string) {
 	h.broadcastStatus(wch.ThreadID, "message_saved", "")
 	h.broadcastStatus(wch.ThreadID, "done", "")
 	logger.Info("tmux watch on %s reported into thread %s", wch.Session, wch.ThreadID)
-}
-
-// describeTmux renders the parsed status, falling back to the raw tail.
-func describeTmux(session, pane string) string {
-	var b strings.Builder
-	if st := tmux.ParseStatus(pane); st != nil {
-		b.WriteString("Current state:\n")
-		if st.Project != "" {
-			b.WriteString(fmt.Sprintf("- Project: %s", st.Project))
-			if st.Branch != "" {
-				b.WriteString(fmt.Sprintf(" (%s)", st.Branch))
-			}
-			b.WriteString("\n")
-		}
-		if st.Model != "" {
-			b.WriteString(fmt.Sprintf("- Model: %s\n", st.Model))
-		}
-		if st.ContextPct > 0 {
-			b.WriteString(fmt.Sprintf("- Context: %d%%\n", st.ContextPct))
-		}
-		if st.Elapsed != "" {
-			b.WriteString(fmt.Sprintf("- Running for: %s\n", st.Elapsed))
-		}
-		if st.LinesAdded > 0 || st.LinesRemoved > 0 {
-			b.WriteString(fmt.Sprintf("- Changes: +%d/-%d\n", st.LinesAdded, st.LinesRemoved))
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("Last output:\n```\n")
-	for _, l := range lastLines(pane, 8) {
-		b.WriteString(l + "\n")
-	}
-	b.WriteString("```")
-	return b.String()
-}
-
-func lastLines(s string, n int) []string {
-	var out []string
-	for _, l := range strings.Split(s, "\n") {
-		if strings.TrimSpace(l) != "" {
-			out = append(out, strings.TrimRight(l, " \t"))
-		}
-	}
-	if len(out) > n {
-		out = out[len(out)-n:]
-	}
-	return out
 }

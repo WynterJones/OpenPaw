@@ -102,6 +102,12 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Firefox ignores the ::-webkit-scrollbar rules below, so it needs its own. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--op-border-1) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

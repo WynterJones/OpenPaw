@@ -13,6 +13,7 @@ import (
 	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/memory"
+	"github.com/openpaw/openpaw/internal/tmux"
 )
 
 func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID string, history []ThreadMessage, hints *GatewayRoutingHints) (*GatewayResponse, *llm.UsageInfo, error) {
@@ -454,6 +455,19 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{
 				"call_tool": m.makeCallToolHandler(),
 			}
+		}
+	}
+
+	// tmux tools: an agent's turn ends when it replies, so "I'll check back on
+	// that build" is only true if it can hand the checking to something that
+	// outlives the turn. tmux_watch does exactly that.
+	if tmux.Available() {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildTmuxToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeTmuxToolHandlers(threadID) {
+			cfg.ExtraHandlers[name] = handler
 		}
 	}
 

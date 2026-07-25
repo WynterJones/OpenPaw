@@ -49,7 +49,9 @@ const variantConfig: Record<Variant, { className: string; style?: React.CSSPrope
 };
 
 export function Button({ variant = 'primary', size = 'md', loading, icon, children, disabled, className = '', ...props }: ButtonProps) {
-  const base = 'inline-flex items-center justify-center gap-2 rounded-lg font-bold uppercase tracking-wide transition-all duration-150 focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer';
+  // whitespace-nowrap: labels are short by design, so a tight container should
+  // shrink or scroll rather than break "Run Now" across two lines.
+  const base = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-bold uppercase tracking-wide transition-all duration-150 focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer';
   const cfg = variantConfig[variant];
 
   return (

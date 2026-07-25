@@ -278,7 +278,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
           <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
             Workspaces
           </p>
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-[400px] overflow-y-auto">
             {list.length === 0 ? (
               <p className="px-3 py-1.5 text-xs text-text-3">No workspaces</p>
             ) : (
@@ -541,7 +541,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
           <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
             Dashboards
           </p>
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-[400px] overflow-y-auto">
             {dashboards.length === 0 ? (
               <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
             ) : (

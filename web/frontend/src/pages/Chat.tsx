@@ -83,6 +83,20 @@ function ToolPickerRow({ tool, selected, onSelect }: { tool: Tool; selected: boo
   );
 }
 
+/**
+ * Abbreviates a token count. The context strip sits in a cramped bar, and the
+ * exact digits of a 15-million-token total are noise — the magnitude is the
+ * only part anyone reads.
+ */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `${m >= 10 ? Math.round(m) : m.toFixed(1)}M`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
+}
+
 export function Chat() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
   const chatNavigate = useNavigate();
@@ -1445,7 +1459,13 @@ export function Chat() {
                   {!isSubscription && (
                     <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
                   )}
-                  <span className="flex items-center gap-1"><Zap className="w-3 h-3" aria-hidden="true" />{((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0)).toLocaleString()}</span>
+                  <span
+                    className="flex items-center gap-1"
+                    title="Total tokens this conversation has used, across every turn"
+                  >
+                    <Zap className="w-3 h-3" aria-hidden="true" />
+                    {formatTokens((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0))} used
+                  </span>
                   {ctxLimit > 0 && (
                   <div className="flex items-center gap-1.5">
                     <div
@@ -1467,7 +1487,10 @@ export function Chat() {
                         style={{ width: `${Math.min(100, ctxPct * 100)}%` }}
                       />
                     </div>
-                    <span className="whitespace-nowrap">{Math.round(ctxPct * 100)}%<span className="hidden sm:inline"> of {ctxLimit >= 1000000 ? `${(ctxLimit / 1000000).toFixed(ctxLimit % 1000000 === 0 ? 0 : 1)}M` : `${Math.round(ctxLimit / 1000)}k`}</span></span>
+                    <span className="whitespace-nowrap">
+                      {formatTokens(ctxUsed)}<span className="hidden sm:inline"> / {formatTokens(ctxLimit)}</span> context
+                      <span className="text-text-3/70"> ({Math.round(ctxPct * 100)}%)</span>
+                    </span>
                   </div>
                   )}
                   <div className="flex items-center gap-1 ml-auto">

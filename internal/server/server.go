@@ -127,6 +127,17 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
 	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
+
+	// Back the agent-facing tmux tools. Wired here because the watcher has to
+	// post into a chat thread (handlers) while the tools live in agents, which
+	// handlers already imports.
+	if s.AgentManager != nil {
+		s.AgentManager.TmuxWatchFn = func(threadID, session string, intervalSeconds int) error {
+			_, err := chatHandler.StartWatch(threadID, session, intervalSeconds)
+			return err
+		}
+		s.AgentManager.TmuxUnwatchFn = chatHandler.StopWatch
+	}
 	updateBroadcast := func(msgType string, payload interface{}) {
 		data, _ := json.Marshal(payload)
 		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})

@@ -56,27 +56,32 @@ type StreamTool struct {
 }
 
 type Manager struct {
-	db              *database.DB
-	toolsDir        string
-	DataDir         string
-	DashboardsDir   string
-	agents          map[string]*runningAgent
-	mu              sync.RWMutex
-	broadcast       BroadcastFunc
-	client          *llm.Client
-	Providers       *llm.ProviderRouter
-	GatewayModel    string
-	BuilderModel    string
-	MaxTurns        int
-	AgentTimeoutMin int
+	db                   *database.DB
+	toolsDir             string
+	DataDir              string
+	DashboardsDir        string
+	agents               map[string]*runningAgent
+	mu                   sync.RWMutex
+	broadcast            BroadcastFunc
+	client               *llm.Client
+	Providers            *llm.ProviderRouter
+	GatewayModel         string
+	BuilderModel         string
+	MaxTurns             int
+	AgentTimeoutMin      int
 	AutoCompactEnabled   bool
-	AutoCompactThreshold int  // percentage (0-100), default 85
-	ContextLimitOverride int  // 0 = use model default
+	AutoCompactThreshold int // percentage (0-100), default 85
+	ContextLimitOverride int // 0 = use model default
 	ToolMgr              ToolManager
 	MemoryMgr            MemoryManager
 	FrontendFS           fs.FS
 	NotifyFn             func(models.NotificationInput)
-	manifestCache        sync.Map // map[toolID][]byte
+	// TmuxWatchFn / TmuxUnwatchFn back the tmux_watch and tmux_unwatch tools.
+	// Injected because starting a watch has to post into a chat thread, which
+	// lives in handlers — and handlers already imports this package.
+	TmuxWatchFn     TmuxWatchStarter
+	TmuxUnwatchFn   TmuxWatchStopper
+	manifestCache   sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState
 	activeSubAgents int32    // atomic counter for concurrent sub-agents
 }
@@ -89,11 +94,11 @@ type runningAgent struct {
 
 func NewManager(db *database.DB, toolsDir string, broadcast BroadcastFunc, client *llm.Client) *Manager {
 	return &Manager{
-		db:                   db,
-		toolsDir:             toolsDir,
-		agents:               make(map[string]*runningAgent),
-		broadcast:            broadcast,
-		client:               client,
+		db:        db,
+		toolsDir:  toolsDir,
+		agents:    make(map[string]*runningAgent),
+		broadcast: broadcast,
+		client:    client,
 		// Sonnet is the default across the board: the Gateway does the routing
 		// and delegation reasoning for every message, and Haiku was too weak at
 		// it to be worth the saving.
