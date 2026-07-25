@@ -37,8 +37,11 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 		}
 	}
 
+	// Include tools that exist but aren't running (error/stopped/disabled), not
+	// just enabled ones — otherwise a tool the builder made but that failed to
+	// start is invisible to the agent, which then claims it "can't find it".
 	rows, err := m.db.Query(
-		"SELECT id, name, description, status, port FROM tools WHERE enabled = 1 AND deleted_at IS NULL AND (workspace_id IS NULL OR workspace_id = ?)",
+		"SELECT id, name, description, status, port FROM tools WHERE deleted_at IS NULL AND (workspace_id IS NULL OR workspace_id = ?) ORDER BY enabled DESC, name ASC",
 		m.db.ActiveWorkspaceID(),
 	)
 	if err != nil {
@@ -68,8 +71,12 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## AVAILABLE TOOLS\n\n")
-	sb.WriteString("You have custom tools installed. Use the `call_tool` tool to invoke them.\nTools must have status 'running' to be called. If a tool is not running, let the user know they need to start it from the Tools page.\n\n")
+	sb.WriteString("## AVAILABLE TOOLS (OpenPaw platform tools)\n\n")
+	sb.WriteString("These are custom OpenPaw platform tools — separate from your built-in coding tools. Use the `call_tool` tool to invoke them.\n")
+	sb.WriteString("Only tools with **status `running`** can be called. A tool with status `error`, `stopped`, or `disabled` still EXISTS — do not tell the user it doesn't exist. Instead:\n")
+	sb.WriteString("- To **start/enable** a running-capable tool, tell the user to enable it on the **Tools** page.\n")
+	sb.WriteString("- To **create a new tool, or fix/repair/update an existing one**, delegate to the **Gateway** — describe what you need built or fixed (e.g. \"fix the PrimeMoverHQ Stats Aggregator tool, it's erroring\"). The Gateway routes tool-building/updates to the builder. You do NOT build or edit platform tools yourself.\n")
+	sb.WriteString("When asked \"what tools do you have\", list the OpenPaw platform tools below — not your internal coding tools.\n\n")
 	sb.WriteString("### IMPORTANT: Tool Result Display\n\n")
 	sb.WriteString("When a tool returns data, a **visual widget component** is automatically rendered below your message showing the full data (table, chart, key-value pairs, etc.).\n")
 	sb.WriteString("**Do NOT repeat or reformat the tool data** in your text response (no markdown tables, no bullet-point lists of the same values).\n")

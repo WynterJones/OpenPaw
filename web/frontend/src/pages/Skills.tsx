@@ -9,7 +9,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { Pagination } from '../components/Pagination';
 import { SearchBar } from '../components/SearchBar';
-import { ViewToggle, type ViewMode } from '../components/ViewToggle';
+import { ViewToggle, usePersistentViewMode } from '../components/ViewToggle';
 import { FolderFilter } from '../components/FolderFilter';
 import { FolderSection } from '../components/FolderSection';
 import { FolderAssign } from '../components/FolderAssign';
@@ -79,7 +79,7 @@ export function Skills() {
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [view, setView] = useState<ViewMode>('list');
+  const [view, setView] = usePersistentViewMode('skills', 'list');
   const [page, setPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);

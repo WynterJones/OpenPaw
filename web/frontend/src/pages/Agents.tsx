@@ -10,7 +10,7 @@ import { EmptyState } from "../components/EmptyState";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { Pagination } from "../components/Pagination";
 import { SearchBar } from "../components/SearchBar";
-import { ViewToggle, type ViewMode } from "../components/ViewToggle";
+import { ViewToggle, usePersistentViewMode } from "../components/ViewToggle";
 import { FolderFilter } from "../components/FolderFilter";
 import { FolderSection } from "../components/FolderSection";
 import { useFolderGrouping } from "../hooks/useFolderGrouping";
@@ -255,7 +255,7 @@ export function Agents() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<ViewMode>("grid");
+  const [view, setView] = usePersistentViewMode("agents", "grid");
   const [page, setPage] = useState(0);
   const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({});

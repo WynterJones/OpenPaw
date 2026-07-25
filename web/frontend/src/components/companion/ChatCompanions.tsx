@@ -35,23 +35,41 @@ interface Pos {
   y: number;
 }
 
-function loadPos(id: string, index: number): Pos {
+// Position is persisted RELATIVE to the window (fractions 0..1 of the available
+// area) so a companion keeps its spot as the window resizes — it moves with the
+// UI instead of staying pinned to a stale absolute pixel.
+interface Frac {
+  fx: number;
+  fy: number;
+}
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+const availW = () => Math.max(1, window.innerWidth - COMPANION_SIZE);
+const availH = () => Math.max(1, window.innerHeight - COMPANION_SIZE);
+const fracToPos = (f: Frac): Pos => ({ x: f.fx * availW(), y: f.fy * availH() });
+const posToFrac = (p: Pos): Frac => ({ fx: clamp01(p.x / availW()), fy: clamp01(p.y / availH()) });
+
+function loadFrac(id: string, index: number): Frac {
   try {
     const raw = localStorage.getItem(`companion-pos-${id}`);
-    if (raw) return JSON.parse(raw) as Pos;
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (typeof p.fx === 'number' && typeof p.fy === 'number') return { fx: clamp01(p.fx), fy: clamp01(p.fy) };
+      // Migrate legacy absolute {x,y} storage → relative.
+      if (typeof p.x === 'number' && typeof p.y === 'number') return posToFrac(p as Pos);
+    }
   } catch {
     /* ignore */
   }
   // Stagger defaults up from the bottom-right corner.
-  return {
-    x: window.innerWidth - COMPANION_SIZE - 24 - index * (COMPANION_SIZE + 12),
-    y: window.innerHeight - COMPANION_SIZE - 24,
-  };
+  const x = window.innerWidth - COMPANION_SIZE - 24 - index * (COMPANION_SIZE + 12);
+  const y = window.innerHeight - COMPANION_SIZE - 24;
+  return posToFrac({ x, y });
 }
 
-function savePos(id: string, pos: Pos) {
+function saveFrac(id: string, frac: Frac) {
   try {
-    localStorage.setItem(`companion-pos-${id}`, JSON.stringify(pos));
+    localStorage.setItem(`companion-pos-${id}`, JSON.stringify(frac));
   } catch {
     /* ignore */
   }
@@ -66,24 +84,17 @@ function CompanionSprite({
   index: number;
   mood: CompanionMood;
 }) {
-  const [pos, setPos] = useState<Pos>(() => loadPos(character.id, index));
+  const fracRef = useRef<Frac>(loadFrac(character.id, index));
+  const [pos, setPos] = useState<Pos>(() => fracToPos(fracRef.current));
   const [hovered, setHovered] = useState(false);
   const [randomClip, setRandomClip] = useState<string | null>(null);
   const dragRef = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
-  const posRef = useRef(pos);
   const randomTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Reposition relative to the window on resize so the companion moves with the
+  // UI (fracRef holds its canonical spot; we just re-derive absolute pixels).
   useEffect(() => {
-    posRef.current = pos;
-  }, [pos]);
-
-  // Keep companions on-screen if the window shrinks.
-  useEffect(() => {
-    const onResize = () =>
-      setPos((p) => ({
-        x: Math.min(p.x, window.innerWidth - COMPANION_SIZE),
-        y: Math.min(p.y, window.innerHeight - COMPANION_SIZE),
-      }));
+    const onResize = () => setPos(fracToPos(fracRef.current));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -128,11 +139,13 @@ function CompanionSprite({
     dragRef.current.moved = true;
     const x = Math.max(0, Math.min(window.innerWidth - COMPANION_SIZE, e.clientX - dragRef.current.dx));
     const y = Math.max(0, Math.min(window.innerHeight - COMPANION_SIZE, e.clientY - dragRef.current.dy));
-    setPos({ x, y });
+    const next = { x, y };
+    fracRef.current = posToFrac(next);
+    setPos(next);
   };
 
   const onPointerUp = () => {
-    if (dragRef.current?.moved) savePos(character.id, posRef.current);
+    if (dragRef.current?.moved) saveFrac(character.id, fracRef.current);
     dragRef.current = null;
   };
 

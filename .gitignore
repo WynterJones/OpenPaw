@@ -69,3 +69,6 @@ desktop/node_modules/
 
 # Dolt database files (added by bd init)
 .dolt/
+
+# Personal setup plan (local only)
+MYPLAN.md

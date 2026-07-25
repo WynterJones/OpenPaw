@@ -69,6 +69,20 @@ func (h *ChatHandler) getThreadMemberSlugs(threadID string) []string {
 	return slugs
 }
 
+// specialistMembers returns thread member agent slugs excluding the gateway /
+// builder pseudo-agents, so callers can detect a lone specialist in the thread.
+func (h *ChatHandler) specialistMembers(threadID string) []string {
+	var out []string
+	for _, s := range h.getThreadMemberSlugs(threadID) {
+		switch s {
+		case "builder", "gateway", "pounce", "":
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func (h *ChatHandler) buildThreadMemberContext(threadID, currentAgentSlug string) string {
 	rows, err := h.db.Query(
 		`SELECT tm.agent_role_slug, ar.name, ar.description

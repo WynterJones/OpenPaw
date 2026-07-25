@@ -18,6 +18,11 @@ var (
 	ModelFable  = "anthropic/claude-fable-5"
 )
 
+// CLIContextWindow is the session context window for the CLI subscription
+// providers (Claude Code / Codex) with the 1M-context capability — matches the
+// frontend's CLI_CONTEXT_LIMIT so the usage bar and auto-compaction agree.
+const CLIContextWindow = 1_000_000
+
 // Legacy short name -> OpenRouter model ID mapping
 var legacyModels = map[string]string{
 	"haiku":  ModelHaiku,

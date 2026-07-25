@@ -20,7 +20,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Pagination } from "../components/Pagination";
 import { DataTable } from "../components/DataTable";
 import { SearchBar } from "../components/SearchBar";
-import { ViewToggle, type ViewMode } from "../components/ViewToggle";
+import { ViewToggle, usePersistentViewMode } from "../components/ViewToggle";
 import { Toggle } from "../components/Toggle";
 import {
   api,
@@ -248,7 +248,7 @@ export function Scheduler() {
   const [selected, setSelected] = useState<Schedule | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<ViewMode>("list");
+  const [view, setView] = usePersistentViewMode("scheduler", "list");
   const [page, setPage] = useState(0);
 
   const [name, setName] = useState("");

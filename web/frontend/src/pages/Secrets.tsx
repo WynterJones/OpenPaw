@@ -9,7 +9,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Pagination } from '../components/Pagination';
 import { DataTable } from '../components/DataTable';
 import { SearchBar } from '../components/SearchBar';
-import { ViewToggle, type ViewMode } from '../components/ViewToggle';
+import { ViewToggle, usePersistentViewMode } from '../components/ViewToggle';
 import { api, type Secret, type Tool } from '../lib/api';
 import { useToast } from '../components/Toast';
 
@@ -20,7 +20,7 @@ export function Secrets() {
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [search, setSearch] = useState('');
-  const [view, setView] = useState<ViewMode>('list');
+  const [view, setView] = usePersistentViewMode('secrets', 'list');
   const [page, setPage] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [addOpen, setAddOpen] = useState(false);

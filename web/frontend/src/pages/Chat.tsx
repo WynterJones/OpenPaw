@@ -764,6 +764,23 @@ export function Chat() {
     localStorage.setItem('openpaw_threads_collapsed', threadsCollapsed ? '1' : '0');
   }, [threadsCollapsed]);
 
+  // Persist the composer draft per-thread so navigating away and back (which
+  // unmounts this page) keeps whatever you'd typed. Restore on thread change,
+  // save on edit, clear on send/empty.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    draftHydratedRef.current = false; // skip the persist triggered by this restore
+    setInput(localStorage.getItem(`openpaw_chat_draft_${activeThread ?? 'new'}`) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThread]);
+  useEffect(() => {
+    if (!draftHydratedRef.current) { draftHydratedRef.current = true; return; }
+    const key = `openpaw_chat_draft_${activeThread ?? 'new'}`;
+    if (input) localStorage.setItem(key, input);
+    else localStorage.removeItem(key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
+
   const scrollTimeoutRef = useRef<number>(0);
   useEffect(() => {
     if (!scrollTimeoutRef.current) {

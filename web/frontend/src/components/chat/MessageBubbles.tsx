@@ -36,7 +36,7 @@ function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[];
   );
 }
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ label = 'Thinking…' }: { label?: string }) {
   return (
     <div className="flex items-center gap-2 px-1 py-1.5" aria-live="polite">
       <div className="flex items-center gap-1">
@@ -48,7 +48,7 @@ function ThinkingIndicator() {
           />
         ))}
       </div>
-      <span className="text-sm text-text-2 font-medium">Thinking…</span>
+      <span className="text-sm text-text-2 font-medium">{label}</span>
     </div>
   );
 }
@@ -84,7 +84,13 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
           <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
             <div className="prose-chat">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(text, tools.length > 0)}</ReactMarkdown>
-              <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />
+              {tools.some((t) => !t.done) ? (
+                // A tool is running mid-response — show activity instead of a
+                // lone blinking cursor so it doesn't look stuck.
+                <ThinkingIndicator label="Working…" />
+              ) : (
+                <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />
+              )}
             </div>
           </div>
         ) : (

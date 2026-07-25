@@ -32,7 +32,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/EmptyState";
 import { Pagination } from "../components/Pagination";
 import { SearchBar } from "../components/SearchBar";
-import { ViewToggle, type ViewMode } from "../components/ViewToggle";
+import { ViewToggle, usePersistentViewMode } from "../components/ViewToggle";
 import { FolderFilter } from "../components/FolderFilter";
 import { FolderSection } from "../components/FolderSection";
 import { FolderAssign } from "../components/FolderAssign";
@@ -73,7 +73,6 @@ function ToolCard({ tool, onClick, needsSecrets, workspaceNames }: { tool: Tool;
   return (
     <Card hover onClick={onClick}>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        {statusDot(tool.status)}
         <StatusBadge status={tool.status} />
         <AvailabilityBadge workspaceId={tool.workspace_id} workspaceNames={workspaceNames} />
         {needsSecrets && (
@@ -123,7 +122,6 @@ function ToolRow({ tool, onClick, workspaceNames }: { tool: Tool; onClick: () =>
       </td>
       <td className="px-3 md:px-4 py-3">
         <div className="flex items-center gap-2">
-          {statusDot(tool.status)}
           <StatusBadge status={tool.status} />
         </div>
       </td>
@@ -481,7 +479,6 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
             Back
           </Button>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {statusDot(tool.status)}
             <StatusBadge status={tool.status} />
           </div>
           <div className="h-5 w-px bg-border-0 mx-0.5 hidden sm:block" />
@@ -698,7 +695,7 @@ export function Tools() {
   const { toast } = useToast();
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewMode>("grid");
+  const [view, setView] = usePersistentViewMode("tools", "grid");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);

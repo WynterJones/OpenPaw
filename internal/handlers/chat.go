@@ -291,6 +291,14 @@ func (h *ChatHandler) ThreadStatus(w http.ResponseWriter, r *http.Request) {
 		status["work_order_title"] = woTitle
 	}
 
+	// A cancel func is stored for the whole routing lifecycle (analyzing →
+	// thinking → streaming → tool calls), so this marks the thread active during
+	// the early thinking phase too — before any stream state or work order exists.
+	// That lets a client that navigated away and back re-show the thinking state.
+	if _, processing := h.threadCancels.Load(threadID); processing {
+		status["active"] = true
+	}
+
 	// Include streaming state if the agent is actively streaming
 	if ss := h.agentManager.GetStreamState(threadID); ss != nil && ss.Active {
 		status["active"] = true
@@ -598,6 +606,17 @@ func (h *ChatHandler) compactThreadInternal(ctx context.Context, threadID string
 func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
 	if h.agentManager.ContextLimitOverride > 0 {
 		return h.agentManager.ContextLimitOverride
+	}
+
+	// CLI subscription providers (Claude Code / Codex) run a 1M-token session
+	// window — the per-model OpenRouter windows below don't apply to them, and
+	// using the 200k tier default would auto-compact far too early (the UI shows
+	// 1M via CLI_CONTEXT_LIMIT, so both must agree).
+	if h.agentManager != nil {
+		switch h.agentManager.Provider().Name() {
+		case llm.ProviderClaudeCode, llm.ProviderCodex:
+			return llm.CLIContextWindow
+		}
 	}
 
 	var model string

@@ -253,6 +253,23 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
+	// Priority 3.5: No mention, and exactly one specialist agent is already in
+	// this thread — route straight to it. The sole agent in a chat should answer;
+	// users don't expect to @-tag when there's only one participant. (First
+	// messages have no members yet, so those still go through the gateway below.)
+	if members := h.specialistMembers(threadID); len(members) == 1 {
+		if isFirstMsg {
+			go h.generateThreadTitle(threadID, content)
+		}
+		slug := members[0]
+		h.db.LogAudit(userID, "routing_sole_member", "agent", "agent_role", slug, slug)
+		h.beginAgentWork(threadID, slug)
+		roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+		defer roleChatCancel()
+		h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, nil)
+		return
+	}
+
 	// Priority 4: ALL other messages go through the gateway with routing hints
 	h.broadcastStatus(threadID, "analyzing", "Analyzing your request...")
 
@@ -350,6 +367,19 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 			h.handleCreateAgent(threadID, userID, resp)
 		case "create_skill":
 			h.handleCreateSkill(threadID, resp)
+		default:
+			// Unrecognized work-order action — never drop the turn silently.
+			// Fall back to a specialist agent so the user always gets a reply.
+			slug := h.getDefaultAgentSlug()
+			if slug == "" {
+				h.broadcastStatus(threadID, "done", "")
+				return
+			}
+			h.addThreadMember(threadID, slug)
+			h.beginAgentWork(threadID, slug)
+			roleChatCtx, roleChatCancel := context.WithTimeout(parentCtx, h.agentManager.AgentTimeout())
+			defer roleChatCancel()
+			h.handleRoleChatWithDepth(roleChatCtx, threadID, content, slug, 0, resp.ProjectContext, gatewayCostUSD)
 		}
 	} else if len(resp.AssignedAgents) > 1 {
 		// Gateway assigned multiple agents — sequential responses
