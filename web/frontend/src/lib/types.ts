@@ -513,6 +513,25 @@ export interface HeartbeatExecutionPage {
   total: number;
 }
 
+export interface TerminalSession {
+  id: string;
+  title: string;
+  shell: string;
+  cols: number;
+  rows: number;
+  color: string;
+  workbench_id: string;
+  created_at: string;
+}
+
+export interface Workbench {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface Project {
   id: string;
   name: string;

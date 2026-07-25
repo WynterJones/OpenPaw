@@ -164,10 +164,13 @@ function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; 
  * like just another reply in the thread.
  */
 function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: AgentRole[] }) {
+  // mb-8 gives a generous bottom gap so the summary reads as a divider between
+  // the compacted history and what follows, not as part of the next message.
   return (
-    <div className="my-2">
-      <div className="rounded-2xl border-2 border-accent-primary bg-accent-muted/20 overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-accent-muted/30">
+    <div className="mt-2 mb-8">
+      {/* Near-fully-transparent fill — the accent border carries the emphasis. */}
+      <div className="rounded-2xl border-2 border-accent-primary bg-accent-primary/[0.01] overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-accent-primary/[0.01]">
           <Minimize2 className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" aria-hidden="true" />
           <span className="text-xs font-semibold uppercase tracking-wider text-accent-primary">
             Chat Summary
@@ -176,7 +179,7 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
             Earlier messages were compacted
           </span>
         </div>
-        <div className="px-4 py-3 text-base font-medium text-text-1">
+        <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
           <div className="prose-chat">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{message.content}</ReactMarkdown>
           </div>
@@ -225,7 +228,7 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
           <ToolSummaryCardUI card={toolSummary} />
         ) : (
           <>
-            <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
+            <div className="chat-bubble rounded-2xl rounded-tl-md px-5 py-4 md:px-6 md:py-5 text-base font-medium text-text-1">
               <div className="prose-chat">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(message.content, (message.tool_calls?.length ?? 0) > 0)}</ReactMarkdown>
               </div>

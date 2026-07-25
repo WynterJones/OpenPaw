@@ -3,6 +3,7 @@ import { NavLink, Link, useLocation } from "react-router";
 import {
   MessageSquare,
   Wrench,
+  TerminalSquare,
   Bot,
   Sparkles,
   KeyRound,
@@ -54,6 +55,7 @@ const navGroups: NavGroup[] = [
 const moreItems: NavItem[] = [
   { to: "/agents", icon: Bot, label: "Agents" },
   { to: "/tools", icon: Wrench, label: "Tools" },
+  { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
   { to: "/skills", icon: Sparkles, label: "Skills" },
   { to: "/library", icon: Store, label: "Templates" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },

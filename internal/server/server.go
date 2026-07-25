@@ -23,6 +23,7 @@ import (
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
+	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	ws "github.com/openpaw/openpaw/internal/websocket"
 )
@@ -39,6 +40,7 @@ type Server struct {
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	TerminalMgr  *terminal.Manager
 	FrontendFS   fs.FS
 }
 
@@ -52,6 +54,7 @@ type Config struct {
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
 	Providers    *llm.ProviderRouter
 	MCPRegistry  *mcp.Registry
@@ -74,6 +77,7 @@ func New(cfg Config) *Server {
 		HeartbeatMgr: cfg.HeartbeatMgr,
 		BackupMgr:    cfg.BackupMgr,
 		MemoryMgr:    cfg.MemoryMgr,
+		TerminalMgr:  cfg.TerminalMgr,
 		FrontendFS:   cfg.FrontendFS,
 	}
 
@@ -123,6 +127,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
 	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
+	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
 	updateBroadcast := func(msgType string, payload interface{}) {
 		data, _ := json.Marshal(payload)
 		s.WSHub.Broadcast(ws.Message{Type: msgType, Payload: data})
@@ -185,6 +190,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// WebSocket (auth handled internally)
 		r.Get("/ws", s.WSHub.HandleWS)
+
+		// Terminal WebSocket (auth handled internally)
+		r.Get("/terminal/ws/{sessionId}", terminalHandler.HandleWS)
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
@@ -467,6 +475,22 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/{id}/directories", workspacesHandler.ListDirectories)
 				r.Post("/{id}/directories", workspacesHandler.AddDirectory)
 				r.Delete("/{id}/directories/{dirId}", workspacesHandler.RemoveDirectory)
+			})
+
+			// Terminal / Workbench
+			r.Route("/terminal", func(r chi.Router) {
+				r.Get("/sessions", terminalHandler.ListSessions)
+				r.Post("/sessions", terminalHandler.CreateSession)
+				r.Get("/sessions/{id}", terminalHandler.GetSession)
+				r.Put("/sessions/{id}", terminalHandler.UpdateSession)
+				r.Delete("/sessions/{id}", terminalHandler.DeleteSession)
+				r.Post("/upload", terminalHandler.UploadFile)
+				r.Post("/resolve-path", terminalHandler.ResolvePath)
+				r.Get("/workbenches", terminalHandler.ListWorkbenches)
+				r.Post("/workbenches", terminalHandler.CreateWorkbench)
+				r.Put("/workbenches/{id}", terminalHandler.UpdateWorkbench)
+				r.Delete("/workbenches/{id}", terminalHandler.DeleteWorkbench)
+				r.Put("/workbenches-reorder", terminalHandler.ReorderWorkbenches)
 			})
 
 			// Media Library

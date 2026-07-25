@@ -67,21 +67,35 @@ export function startWindowDrag(e: React.MouseEvent): void {
 // absolute paths via a global webview event — the browser's HTML drop event
 // can't expose filesystem paths. No-ops (returns a no-op unlisten) in a normal
 // browser, where dragging a folder can't yield a usable path anyway.
+/** Cursor position of a native drag, converted to CSS pixels. */
+export interface DropPoint {
+  x: number;
+  y: number;
+}
+
+function toCssPoint(pos: any): DropPoint | undefined {
+  if (!pos || typeof pos.x !== "number" || typeof pos.y !== "number") return undefined;
+  // Tauri reports physical pixels; the DOM works in CSS pixels.
+  const dpr = window.devicePixelRatio || 1;
+  return { x: pos.x / dpr, y: pos.y / dpr };
+}
+
 export function listenFolderDrop(handlers: {
-  onEnter?: () => void;
+  onEnter?: (pos?: DropPoint) => void;
   onLeave?: () => void;
-  onDrop?: (paths: string[]) => void;
+  onDrop?: (paths: string[], pos?: DropPoint) => void;
 }): () => void {
   if (!isTauri()) return () => {};
   const ev = (window as any).__TAURI__?.event;
   if (!ev?.listen) return () => {};
   const pending: Array<Promise<() => void>> = [
-    ev.listen("tauri://drag-enter", () => handlers.onEnter?.()),
+    ev.listen("tauri://drag-enter", (e: any) => handlers.onEnter?.(toCssPoint(e?.payload?.position))),
+    ev.listen("tauri://drag-over", (e: any) => handlers.onEnter?.(toCssPoint(e?.payload?.position))),
     ev.listen("tauri://drag-leave", () => handlers.onLeave?.()),
     ev.listen("tauri://drag-drop", (e: any) => {
       handlers.onLeave?.();
       const paths: string[] = e?.payload?.paths ?? [];
-      if (paths.length > 0) handlers.onDrop?.(paths);
+      if (paths.length > 0) handlers.onDrop?.(paths, toCssPoint(e?.payload?.position));
     }),
   ];
   return () => {

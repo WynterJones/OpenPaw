@@ -34,6 +34,8 @@ import type {
   WorkspaceFileNode,
   WorkspaceFilesResponse,
   WorkspaceDirectory,
+  TerminalSession,
+  Workbench,
 } from './types';
 
 const BASE_URL = '/api/v1';
@@ -413,3 +415,44 @@ export const workspaces = {
     return res.json();
   },
 };
+// Terminal API helpers
+export const terminalApi = {
+  list: (workbenchId?: string) => {
+    const qs = workbenchId ? `?workbench_id=${encodeURIComponent(workbenchId)}` : '';
+    return api.get<TerminalSession[]>(`/terminal/sessions${qs}`);
+  },
+  create: (body: { title?: string; cols?: number; rows?: number; color?: string; workbench_id?: string; cwd?: string; initial_command?: string }) =>
+    api.post<TerminalSession>('/terminal/sessions', body),
+  get: (id: string) => api.get<TerminalSession>(`/terminal/sessions/${id}`),
+  update: (id: string, data: { title?: string; color?: string }) =>
+    api.put<TerminalSession>(`/terminal/sessions/${id}`, data),
+  delete: (id: string) => api.delete<void>(`/terminal/sessions/${id}`),
+  listWorkbenches: () => api.get<Workbench[]>('/terminal/workbenches'),
+  createWorkbench: (name: string) => api.post<Workbench>('/terminal/workbenches', { name }),
+  updateWorkbench: (id: string, data: { name: string; color?: string }) => api.put<{ status: string }>(`/terminal/workbenches/${id}`, data),
+  deleteWorkbench: (id: string) => api.delete<{ status: string }>(`/terminal/workbenches/${id}`),
+  reorderWorkbenches: (ids: string[]) => api.put<{ status: string }>('/terminal/workbenches-reorder', { ids }),
+  resolvePath: (name: string, isDir: boolean) =>
+    api.post<{ path: string }>('/terminal/resolve-path', { name, is_dir: isDir }),
+  upload: async (file: File): Promise<{ path: string; filename: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const headers: Record<string, string> = {};
+    const csrf = getCSRFToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const res = await fetch(`${BASE_URL}/terminal/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'same-origin',
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      let message = `Upload failed: ${res.status}`;
+      try { const json = JSON.parse(body); message = json.error || message; } catch { /* ignore */ }
+      throw new ApiError(res.status, message);
+    }
+    return res.json();
+  },
+};
+

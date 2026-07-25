@@ -12,6 +12,7 @@ const Chat = lazy(() => import('./pages/Chat').then(m => ({ default: m.Chat })))
 const Tools = lazy(() => import('./pages/Tools').then(m => ({ default: m.Tools })));
 const Secrets = lazy(() => import('./pages/Secrets').then(m => ({ default: m.Secrets })));
 const Dashboards = lazy(() => import('./pages/Dashboards').then(m => ({ default: m.Dashboards })));
+const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Scheduler = lazy(() => import('./pages/Scheduler').then(m => ({ default: m.Scheduler })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agents })));
@@ -41,6 +42,7 @@ const pageTitles: Record<string, string> = {
   '/skills': 'Skills',
   '/secrets': 'Secrets',
   '/dashboards': 'Dashboards',
+  '/workbench': 'Workbench',
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
   '/knowledge-base': 'Context',
@@ -117,6 +119,7 @@ function AppRoutes() {
         <Route path="/skills" element={<Skills />} />
         <Route path="/secrets" element={<Secrets />} />
         <Route path="/dashboards" element={<Dashboards />} />
+        <Route path="/workbench" element={<Workbench />} />
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />

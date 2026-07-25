@@ -30,6 +30,7 @@ import (
 	"github.com/openpaw/openpaw/internal/scheduler"
 	"github.com/openpaw/openpaw/internal/secrets"
 	"github.com/openpaw/openpaw/internal/server"
+	"github.com/openpaw/openpaw/internal/terminal"
 	"github.com/openpaw/openpaw/internal/toolmgr"
 	"github.com/openpaw/openpaw/internal/updater"
 	ws "github.com/openpaw/openpaw/internal/websocket"
@@ -288,6 +289,22 @@ func main() {
 	memoryMgr := memory.NewManager(cfg.DataDir)
 	agentMgr.MemoryMgr = memoryMgr
 
+	// Create terminal manager. New sessions open in the active workspace's files
+	// directory so a terminal lands where the user's work actually is, matching
+	// the cwd the CLI agents get. Per-session cwd still overrides this.
+	terminalWorkDir, _ := os.Getwd()
+	if wsID := db.ActiveWorkspaceID(); wsID != "" {
+		wsFiles := filepath.Join(cfg.DataDir, "workspaces", wsID, "files")
+		// Created here rather than merely probed: the server's
+		// EnsureDefaultWorkspaceDir runs later during route setup, so on a first
+		// launch the directory would not exist yet and every terminal would fall
+		// back to the process working directory.
+		if err := os.MkdirAll(wsFiles, 0755); err == nil {
+			terminalWorkDir = wsFiles
+		}
+	}
+	terminalMgr := terminal.NewManager(db, terminalWorkDir)
+
 	// Create heartbeat manager (broadcast will be wired after wsHub is available)
 	heartbeatMgr := heartbeat.New(db, agentMgr, broadcastFn, cfg.DataDir)
 	heartbeatMgr.LoadConfig()
@@ -355,6 +372,7 @@ func main() {
 		HeartbeatMgr: heartbeatMgr,
 		BackupMgr:    backupMgr,
 		MemoryMgr:    memoryMgr,
+		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
 		Providers:    providerRouter,
 		MCPRegistry:  mcpRegistry,
@@ -436,6 +454,9 @@ func main() {
 
 	// Close memory databases
 	memoryMgr.Close()
+
+	// Shut down terminal sessions
+	terminalMgr.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

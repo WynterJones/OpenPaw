@@ -12,3 +12,5 @@ require (
 	golang.org/x/crypto v0.48.0
 	rsc.io/qr v0.2.0
 )
+
+require github.com/creack/pty v1.1.24 // indirect
