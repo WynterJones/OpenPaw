@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,10 +29,11 @@ type AgentRolesHandler struct {
 	dataDir    string
 	llmClient  *llm.Client
 	frontendFS fs.FS
+	agentMgr   *agents.Manager
 }
 
-func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client, frontendFS fs.FS) *AgentRolesHandler {
-	return &AgentRolesHandler{db: db, dataDir: dataDir, llmClient: llmClient, frontendFS: frontendFS}
+func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client, frontendFS fs.FS, agentMgr *agents.Manager) *AgentRolesHandler {
+	return &AgentRolesHandler{db: db, dataDir: dataDir, llmClient: llmClient, frontendFS: frontendFS, agentMgr: agentMgr}
 }
 
 var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -543,12 +546,9 @@ func (h *AgentRolesHandler) GetGatewayMemory(w http.ResponseWriter, r *http.Requ
 }
 
 // DescribeAvatar uses a vision model to analyze an avatar image and generate a visual description.
-func (h *AgentRolesHandler) DescribeAvatar(w http.ResponseWriter, r *http.Request) {
-	if h.llmClient == nil || !h.llmClient.IsConfigured() {
-		writeError(w, http.StatusServiceUnavailable, "API key not configured")
-		return
-	}
+const describeAvatarPrompt = "Describe this character's visual appearance in 2-3 sentences for use as a reference in AI image generation. Focus on species/form, colors, clothing, distinctive features, and art style. Be specific and concise."
 
+func (h *AgentRolesHandler) DescribeAvatar(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AvatarPath string `json:"avatar_path"`
 	}
@@ -567,17 +567,99 @@ func (h *AgentRolesHandler) DescribeAvatar(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	prompt := "Describe this character's visual appearance in 2-3 sentences for use as a reference in AI image generation. Focus on species/form, colors, clothing, distinctive features, and art style. Be specific and concise."
-	description, err := h.llmClient.DescribeImage(ctx, "", imageDataURI, prompt)
+	// OpenRouter path: a real vision call, and the best result when available.
+	if h.llmClient != nil && h.llmClient.IsConfigured() {
+		description, err := h.llmClient.DescribeImage(ctx, "", imageDataURI, describeAvatarPrompt)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to describe avatar: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"description": description})
+		return
+	}
+
+	// CLI providers (Claude Code / Codex) have no image argument, but they can
+	// read an image file from disk. Preset avatars live in the embedded frontend
+	// FS rather than on disk, so materialise whatever was resolved to a temp file
+	// and point the CLI at it.
+	if h.agentMgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "no AI provider configured")
+		return
+	}
+	provider := h.agentMgr.Provider()
+	if provider == nil {
+		writeError(w, http.StatusServiceUnavailable, "no AI provider configured")
+		return
+	}
+
+	imgPath, cleanup, err := writeTempImage(imageDataURI)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to stage avatar image: "+err.Error())
+		return
+	}
+	defer cleanup()
+
+	prompt := fmt.Sprintf(
+		"Read the image file at %s and %s\n\nReply with ONLY the description — no preamble, no file path, no commentary.",
+		imgPath, describeAvatarPrompt,
+	)
+	description, _, err := provider.RunOneShot(ctx, provider.ResolveModel(h.agentMgr.GatewayModel, llm.ModelSonnet), "", prompt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to describe avatar: "+err.Error())
 		return
 	}
+	description = strings.TrimSpace(description)
+	if description == "" {
+		writeError(w, http.StatusInternalServerError, "the provider returned an empty description")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"description": description})
+}
+
+// writeTempImage decodes a data: URI to a temp file and returns its path plus a
+// cleanup func. A non-data URI (an http URL) is passed through unchanged with a
+// no-op cleanup.
+func writeTempImage(dataURI string) (string, func(), error) {
+	noop := func() {}
+	if !strings.HasPrefix(dataURI, "data:") {
+		return dataURI, noop, nil
+	}
+	comma := strings.Index(dataURI, ",")
+	if comma < 0 {
+		return "", noop, fmt.Errorf("malformed data URI")
+	}
+	meta, payload := dataURI[5:comma], dataURI[comma+1:]
+	if !strings.Contains(meta, ";base64") {
+		return "", noop, fmt.Errorf("unsupported data URI encoding")
+	}
+
+	ext := ".png"
+	if mimeType := strings.SplitN(meta, ";", 2)[0]; mimeType != "" {
+		if exts, err := mime.ExtensionsByType(mimeType); err == nil && len(exts) > 0 {
+			ext = exts[0]
+		}
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return "", noop, fmt.Errorf("decode image: %w", err)
+	}
+	f, err := os.CreateTemp("", "openpaw-avatar-*"+ext)
+	if err != nil {
+		return "", noop, err
+	}
+	path := f.Name()
+	if _, err := f.Write(raw); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", noop, err
+	}
+	f.Close()
+	return path, func() { os.Remove(path) }, nil
 }
 
 // Tool access management

@@ -24,6 +24,7 @@ import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbl
 import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
+import { useViewToggles } from '../contexts/ViewTogglesContext';
 
 type ContextItem =
   | { kind: 'file'; file: ContextFile }
@@ -123,7 +124,14 @@ export function Chat() {
   const [input, setInput] = useState('');
   const [agent] = useState('');
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
-  const [threadsCollapsed, setThreadsCollapsed] = useState(() => localStorage.getItem('openpaw_threads_collapsed') === '1');
+  // Chat list + right panel visibility come from the header's view-options
+  // menu so all three layout toggles live in one place.
+  const { chatList, chatPanel, set: setViewToggle } = useViewToggles();
+  const threadsCollapsed = !chatList;
+  const setThreadsCollapsed = (next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(threadsCollapsed) : next;
+    setViewToggle('chatList', !value);
+  };
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [streamActive, setStreamActive] = useState(false);
@@ -501,7 +509,11 @@ export function Chat() {
   const [compacting, setCompacting] = useState(false);
   const [showCompactConfirm, setShowCompactConfirm] = useState(false);
   const [members, setMembers] = useState<ThreadMember[]>([]);
-  const [showRightPanel, setShowRightPanel] = useState(() => window.innerWidth >= 768);
+  const showRightPanel = chatPanel;
+  const setShowRightPanel = (next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(showRightPanel) : next;
+    setViewToggle('chatPanel', value);
+  };
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [sectionAgents, setSectionAgents] = useState(true);
   const [sectionContext, setSectionContext] = useState(true);
@@ -892,7 +904,6 @@ export function Chat() {
   }, [activeThread, resetStreaming, setStreamingText, setStreamingTools]);
 
   useEffect(() => {
-    localStorage.setItem('openpaw_threads_collapsed', threadsCollapsed ? '1' : '0');
   }, [threadsCollapsed]);
 
   // Persist the composer draft per-thread so navigating away and back (which

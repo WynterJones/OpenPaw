@@ -15,12 +15,10 @@ import {
   Database,
   Heart,
   ListTodo,
-  ChevronRight,
   ChevronDown,
   ChevronsUpDown,
   Check,
   Plus,
-  PanelLeftClose,
   MoreHorizontal,
   ImagePlus,
   Settings2,
@@ -603,7 +601,7 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed }: SidebarProps) {
   const balance = useOpenRouterBalance();
   const [version, setVersion] = useState("");
   useEffect(() => {
@@ -670,23 +668,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <MoreNav collapsed={collapsed} />
       </nav>
 
+      {/* The show/hide control lives in the header's view-options menu, so the
+          sidebar no longer carries its own toggle button. */}
       <div className="border-t border-border-0">
-        <button
-          onClick={onToggle}
-          className={`w-full flex items-center gap-2 p-3 text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer ${collapsed ? "justify-center" : "px-4"}`}
-          title={collapsed ? "Expand Sidebar" : undefined}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" aria-hidden="true" />
-          ) : (
-            <>
-              <PanelLeftClose className="w-4 h-4" aria-hidden="true" />
-              <span className="text-xs">Hide Sidebar</span>
-            </>
-          )}
-        </button>
-
         {!collapsed && (
           <div className="px-4 pb-3 pt-0">
             <p className="text-[11px] font-medium text-text-3 mb-1">

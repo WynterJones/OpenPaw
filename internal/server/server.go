@@ -105,7 +105,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
-	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS)
+	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS, s.AgentManager)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	skillsHandler := handlers.NewSkillsHandler(dataDir, s.DB)

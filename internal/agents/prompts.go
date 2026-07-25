@@ -495,6 +495,7 @@ Pin versions for stability. esm.sh handles tree-shaking and TypeScript.
 1. Use --op-* CSS custom properties for ALL colors, fonts, spacing, radii. Never hardcode colors.
 2. Default theme is dark. Your dashboard auto-inherits the parent app's theme.
 3. The dashboard runs in an iframe with a transparent background. The parent app provides the background (solid color or image). DO NOT set background-color on html or body — keep them transparent. Use semi-transparent backgrounds on cards/panels (e.g. rgba or --op-surface-1 with opacity) so the parent background shows through.
+   DO NOT declare ` + "`color-scheme`" + ` anywhere. It makes the browser paint an opaque canvas backdrop that hides the parent's background image entirely, even when html and body are transparent. To get dark scrollbars, set explicit ` + "`::-webkit-scrollbar-*`" + ` colours and ` + "`scrollbar-color`" + ` instead — those need no color-scheme.
 4. Make it responsive — test at mobile (320px) and desktop widths.
 5. Use CSS Grid or Flexbox for layouts.
 6. Add loading states and error handling for API calls.

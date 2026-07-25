@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router";
-import { User, LogOut, Camera } from "lucide-react";
+import { User, LogOut, Camera, Settings2, Check } from "lucide-react";
 
 import { useConnectionStatus } from "../hooks/useConnectionStatus";
 import {
@@ -11,6 +11,7 @@ import {
 import { useDesign } from "../contexts/DesignContext";
 import { NotificationBell } from "./NotificationBell";
 import { startWindowDrag } from "../lib/tauri";
+import { useViewToggles } from "../contexts/ViewTogglesContext";
 
 function fmt(n: number): string {
   if (n < 0.01 && n > 0) return `$${n.toFixed(4)}`;
@@ -137,6 +138,65 @@ interface HeaderProps {
   hideTitleOnMobile?: boolean;
 }
 
+/**
+ * One menu for showing/hiding the layout panes. Replaces the three separate
+ * toggle buttons that used to sit in the sidebar footer and the chat header,
+ * which were easy to miss and gave no hint of what they controlled.
+ */
+function ViewTogglesMenu() {
+  const { sidebar, chatList, chatPanel, toggle } = useViewToggles();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const items: { key: 'sidebar' | 'chatList' | 'chatPanel'; label: string; checked: boolean }[] = [
+    { key: 'sidebar', label: 'Toggle Sidebar', checked: sidebar },
+    { key: 'chatList', label: 'Toggle Chat List', checked: chatList },
+    { key: 'chatPanel', label: 'Toggle Chat Panel', checked: chatPanel },
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        aria-label="View options"
+        aria-expanded={open}
+        aria-haspopup="true"
+        title="View options"
+        className="p-2 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2/50 transition-colors cursor-pointer"
+      >
+        <Settings2 className="w-4 h-4" aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-52 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/30 overflow-hidden z-50 py-1">
+          {items.map(item => (
+            <button
+              key={item.key}
+              onClick={() => toggle(item.key)}
+              role="menuitemcheckbox"
+              aria-checked={item.checked}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+            >
+              <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                {item.checked && <Check className="w-3.5 h-3.5 text-accent-primary" aria-hidden="true" />}
+              </span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps) {
   const connected = useConnectionStatus();
   const balance = useOpenRouterBalance();
@@ -242,6 +302,8 @@ export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps
           <BalanceBadge balance={balance} />
 
           <NotificationBell />
+
+          <ViewTogglesMenu />
 
           <div className="relative" ref={menuRef}>
             <button
