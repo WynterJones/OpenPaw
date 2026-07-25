@@ -20,8 +20,25 @@ const SPLASH_EXIT_MS: u64 = 420;
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        // Remembers the main window's size and position across launches.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                // The splash is transient and centred on every launch; saving
+                // its geometry would restore a stale position next time.
+                .with_denylist(&["splash"])
+                .build(),
+        )
         .setup(|app| {
             let handle = app.handle().clone();
+            // Whether this is a first run has to be answered before the window
+            // is shown, because the plugin has already restored any saved
+            // geometry by then.
+            let first_run = !window_state_saved(app);
 
             // The splash is created before anything slow happens, so it is on
             // screen while the sidecar boots rather than after.
@@ -100,6 +117,14 @@ fn main() {
 
                                 hold_splash(started).await;
 
+                                // Full size on a first run only. After that the
+                                // window-state plugin has already restored
+                                // whatever size the user last chose, and
+                                // maximizing would throw it away every launch.
+                                if first_run {
+                                    let _ = window.maximize();
+                                }
+
                                 // Main is revealed behind the always-on-top
                                 // splash first, so the handoff never exposes an
                                 // empty desktop between the two windows.
@@ -144,6 +169,15 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running OpenPaw desktop");
+}
+
+/// Reports whether the window-state plugin has a saved layout yet, i.e. whether
+/// the user has ever sized this window themselves.
+fn window_state_saved(app: &tauri::App) -> bool {
+    app.path()
+        .app_config_dir()
+        .map(|dir| dir.join(tauri_plugin_window_state::DEFAULT_FILENAME).exists())
+        .unwrap_or(false)
 }
 
 /// Keeps the splash on screen for at least SPLASH_MIN_MS from launch.
