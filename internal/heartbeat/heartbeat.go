@@ -2,6 +2,7 @@ package heartbeat
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -51,10 +52,10 @@ type Manager struct {
 	config Config
 	mu     sync.RWMutex
 
-	running  atomic.Bool
-	stopCh   chan struct{}
-	stopped  chan struct{}
-	started  bool
+	running atomic.Bool
+	stopCh  chan struct{}
+	stopped chan struct{}
+	started bool
 }
 
 func New(db *database.DB, agentMgr *agents.Manager, broadcast BroadcastFunc, dataDir string) *Manager {
@@ -219,18 +220,58 @@ func (m *Manager) RunNow() {
 func (m *Manager) tickLoop() {
 	defer close(m.stopped)
 
-	for {
-		m.mu.RLock()
-		interval := time.Duration(m.config.IntervalSec) * time.Second
-		m.mu.RUnlock()
+	m.mu.RLock()
+	wait := m.firstDelay(time.Duration(m.config.IntervalSec) * time.Second)
+	m.mu.RUnlock()
 
+	for {
 		select {
 		case <-m.stopCh:
 			return
-		case <-time.After(interval):
+		case <-time.After(wait):
 			m.runCycle()
 		}
+
+		m.mu.RLock()
+		wait = time.Duration(m.config.IntervalSec) * time.Second
+		m.mu.RUnlock()
 	}
+}
+
+// settleDelay gives the app a moment to finish starting before the first cycle,
+// so a heartbeat doesn't contend with boot.
+const settleDelay = 45 * time.Second
+
+// firstDelay decides how long to wait before the *first* cycle of this process.
+//
+// The loop used to wait a full interval before its first run, with no memory of
+// previous runs. With the default hourly interval that means a process
+// restarted more often than once an hour never runs a heartbeat at all — and a
+// desktop app gets restarted constantly. Anchoring the first wait to the last
+// recorded execution makes the schedule survive restarts.
+func (m *Manager) firstDelay(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		interval = time.Hour
+	}
+
+	// Selected as a plain column rather than MAX(...): an aggregate loses the
+	// column's type affinity, so the driver hands back a string and the time
+	// scan fails — which would silently reduce this to "45s after every boot".
+	var last sql.NullTime
+	err := m.db.QueryRow(
+		"SELECT started_at FROM heartbeat_executions ORDER BY started_at DESC LIMIT 1",
+	).Scan(&last)
+	if err != nil || !last.Valid {
+		// Never run before — go shortly after startup rather than in an hour.
+		return settleDelay
+	}
+
+	remaining := interval - time.Since(last.Time)
+	if remaining < settleDelay {
+		// Due, or overdue while the app was closed.
+		return settleDelay
+	}
+	return remaining
 }
 
 func (m *Manager) runCycle() {
