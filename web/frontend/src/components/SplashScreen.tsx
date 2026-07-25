@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { isTauri } from '../lib/tauri';
 
 const BG_SRC = '/preset-bg/bg-8.webp';
 const LOGO_SRC = '/logo-transparent.png';
@@ -20,6 +21,10 @@ const DECODE_CAP_MS = 500;
 const SEEN_KEY = 'openpaw:splash-seen';
 
 function alreadyPlayed(): boolean {
+  // The desktop app shows a real splash *window* before this document exists,
+  // so replaying it here would splash twice. This overlay is for the browser
+  // (npx) case, which has no window to show.
+  if (isTauri()) return true;
   try {
     return sessionStorage.getItem(SEEN_KEY) === '1';
   } catch {
