@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowLeft, Save, Upload, BookOpen, Shield, Search } from 'lucide-react';
+import { ArrowLeft, Save, Upload, BookOpen, Shield, Search, Sparkles } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
@@ -37,6 +37,8 @@ export function GatewayEdit() {
 
   const [name, setName] = useState('');
   const [model, setModel] = useState('');
+  const [avatarDescription, setAvatarDescription] = useState('');
+  const [describing, setDescribing] = useState(false);
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [modelSearch, setModelSearch] = useState('');
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -77,6 +79,7 @@ export function GatewayEdit() {
           setName(builder.name);
           setModel(builder.model);
           setAvatarPath(builder.avatar_path || '/gateway-avatar.png');
+          setAvatarDescription(builder.avatar_description || '');
         }
       }),
       api.get<{ id: string; name: string }[]>('/settings/available-models')
@@ -122,6 +125,25 @@ export function GatewayEdit() {
     }
   };
 
+  // Same endpoint the agent editor uses, so the Gateway can describe its own
+  // avatar for image generation.
+  const handleAutoDescribe = async () => {
+    if (!avatarPath) {
+      toast('error', 'Select an avatar first');
+      return;
+    }
+    setDescribing(true);
+    try {
+      const result = await api.post<{ description: string }>('/agent-roles/describe-avatar', { avatar_path: avatarPath });
+      setAvatarDescription(result.description);
+      toast('success', 'Description generated');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Failed to describe avatar');
+    } finally {
+      setDescribing(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       toast('error', 'Name is required');
@@ -133,6 +155,7 @@ export function GatewayEdit() {
         name: name.trim(),
         model,
         avatar_path: avatarPath,
+        avatar_description: avatarDescription.trim(),
       });
       setGatewayRole(updated);
       toast('success', 'Gateway saved');
@@ -273,7 +296,7 @@ export function GatewayEdit() {
                     </label>
                   </div>
                   <div className="w-full max-h-48 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2">
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-8 md:grid-cols-10 gap-1.5">
                       {PRESET_AVATARS.map((path, i) => (
                         <button
                           key={path}
@@ -290,6 +313,34 @@ export function GatewayEdit() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  {/* Matches the agent editor: lets the Gateway describe its own
+                      appearance so it can generate images of itself. */}
+                  <div className="w-full mt-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label htmlFor="gateway-avatar-description" className="block text-xs font-medium text-text-2">Visual Description</label>
+                      <button
+                        onClick={handleAutoDescribe}
+                        disabled={describing || !avatarPath}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-accent-primary hover:bg-accent-muted transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {describing ? (
+                          <div className="w-3 h-3 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3 h-3" />
+                        )}
+                        Auto-describe
+                      </button>
+                    </div>
+                    <textarea
+                      id="gateway-avatar-description"
+                      value={avatarDescription}
+                      onChange={e => setAvatarDescription(e.target.value)}
+                      placeholder="Describe what the Gateway looks like for image generation (e.g. 'A black cat in a hard hat holding a wrench')"
+                      rows={3}
+                      className="block w-full rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 text-sm placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
+                    />
+                    <p className="text-[11px] text-text-3 mt-1">Used when the Gateway generates images of itself.</p>
                   </div>
                 </div>
               </Card>

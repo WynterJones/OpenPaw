@@ -94,7 +94,10 @@ func NewManager(db *database.DB, toolsDir string, broadcast BroadcastFunc, clien
 		agents:               make(map[string]*runningAgent),
 		broadcast:            broadcast,
 		client:               client,
-		GatewayModel:         llm.ModelHaiku,
+		// Sonnet is the default across the board: the Gateway does the routing
+		// and delegation reasoning for every message, and Haiku was too weak at
+		// it to be worth the saving.
+		GatewayModel:         llm.ModelSonnet,
 		BuilderModel:         llm.ModelSonnet,
 		MaxTurns:             300,
 		AgentTimeoutMin:      60,

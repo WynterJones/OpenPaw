@@ -165,7 +165,7 @@ func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 	if req.GatewayModel != "" {
 		model := req.GatewayModel
 		if onOpenRouter {
-			model = agents.ParseModel(req.GatewayModel, llm.ModelHaiku)
+			model = agents.ParseModel(req.GatewayModel, llm.ModelSonnet)
 		}
 		h.agentMgr.GatewayModel = model
 		h.upsertSetting("gateway_model", model)

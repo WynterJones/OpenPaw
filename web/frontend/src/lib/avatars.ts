@@ -12,7 +12,7 @@
  *
  * To add avatars: drop the files in and raise AVATAR_COUNT.
  */
-export const AVATAR_COUNT = 177;
+export const AVATAR_COUNT = 225;
 
 export const PRESET_AVATARS: string[] = Array.from(
   { length: AVATAR_COUNT },
