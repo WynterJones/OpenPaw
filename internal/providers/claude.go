@@ -68,10 +68,18 @@ func mergeUnique(lists ...[]string) []string {
 // SetWorkspaceDirFunc injects a resolver for the active workspace's files dir.
 func (p *ClaudeProvider) SetWorkspaceDirFunc(fn func() string) { p.workspaceDir = fn }
 
-// resolveWorkDir picks the cwd for the shelled-out CLI: the active workspace's
-// files dir (created if missing) when a resolver is wired, otherwise the
-// caller-provided cfg.WorkDir. Returns "" only if neither is available.
-func (p *ClaudeProvider) resolveWorkDir(fallback string) string {
+// resolveWorkDir picks the cwd for the shelled-out CLI, preferring the
+// thread's own workspace dir (threadWorkspaceDir, created if missing) so
+// concurrent chats in different workspaces don't share a cwd; then the
+// global active-workspace resolver; then the caller-provided fallback.
+// Returns "" only if none are available.
+func (p *ClaudeProvider) resolveWorkDir(threadWorkspaceDir, fallback string) string {
+	if threadWorkspaceDir != "" {
+		if err := os.MkdirAll(threadWorkspaceDir, 0755); err != nil {
+			logger.Warn("claude-code: failed to create workspace dir %s: %v", threadWorkspaceDir, err)
+		}
+		return threadWorkspaceDir
+	}
 	if p.workspaceDir != nil {
 		if dir := p.workspaceDir(); dir != "" {
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -195,7 +203,7 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 	}
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
-	if dir := p.resolveWorkDir(cfg.WorkDir); dir != "" {
+	if dir := p.resolveWorkDir(cfg.WorkspaceDir, cfg.WorkDir); dir != "" {
 		cmd.Dir = dir
 	}
 

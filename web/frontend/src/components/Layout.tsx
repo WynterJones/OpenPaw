@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { BackgroundImage } from './BackgroundImage';
 import { ChatCompanions } from './companion/ChatCompanions';
+import { ActiveChatsIndicator } from './ActiveChatsIndicator';
 
 export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -23,6 +24,7 @@ export function Layout() {
       </main>
       <BottomNav />
       {onChat && <ChatCompanions />}
+      <ActiveChatsIndicator />
     </div>
   );
 }

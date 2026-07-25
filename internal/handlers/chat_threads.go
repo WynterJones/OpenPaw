@@ -131,11 +131,23 @@ func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, curren
 	}
 
 	var gatewayCostUSD float64
+	var gatewayInTok, gatewayOutTok int
 	if usage != nil {
 		gatewayCostUSD = usage.CostUSD
+		gatewayInTok = int(usage.InputTokens)
+		gatewayOutTok = int(usage.OutputTokens)
 	}
 
-	// If gateway decided the mentioned agent should respond, hand off to them
+	// If the gateway wants to BUILD/FIX something (tool, dashboard, agent, skill)
+	// — e.g. an agent mentioned @builder to repair an erroring tool — run the
+	// full gateway action so the builder actually does the work. Without this the
+	// builder was only ever routed as a chat agent and never built anything.
+	if resp.WorkOrder != nil {
+		h.handleGatewayAction(ctx, threadID, agentResponse, "system", resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
+		return
+	}
+
+	// Otherwise, if the gateway decided the mentioned agent should respond, hand off.
 	if resp.AssignedAgent == mentionedSlug {
 		h.addThreadMember(threadID, mentionedSlug)
 		h.broadcastRoutingIndicator(threadID, mentionedSlug)

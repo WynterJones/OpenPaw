@@ -84,9 +84,10 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
           <div className="chat-bubble rounded-2xl rounded-tl-md px-4 py-2.5 text-base font-medium text-text-1">
             <div className="prose-chat">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(text, tools.length > 0)}</ReactMarkdown>
-              {tools.some((t) => !t.done) ? (
-                // A tool is running mid-response — show activity instead of a
-                // lone blinking cursor so it doesn't look stuck.
+              {tools.length > 0 ? (
+                // This turn is using tools — keep "Working…" visible through the
+                // gaps between tool calls (when all are done but the model is
+                // still working) instead of dropping to a lone blinking cursor.
                 <ThinkingIndicator label="Working…" />
               ) : (
                 <span className="inline-block w-0.5 h-4 bg-accent-primary animate-pulse ml-0.5 align-text-bottom" />

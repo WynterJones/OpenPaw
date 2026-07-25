@@ -49,10 +49,10 @@ type delegateTaskResult struct {
 
 // getAvailableAgentsForDelegation returns enabled agents that can be delegated to,
 // excluding the parent agent itself.
-func (m *Manager) getAvailableAgentsForDelegation(parentSlug string) []delegateAgentInfo {
+func (m *Manager) getAvailableAgentsForDelegation(parentSlug, workspaceID string) []delegateAgentInfo {
 	rows, err := m.db.Query(
-		"SELECT slug, name, description FROM agent_roles WHERE enabled = 1 AND slug != ? AND remote_provider = '' ORDER BY sort_order ASC",
-		parentSlug,
+		"SELECT slug, name, description FROM agent_roles WHERE enabled = 1 AND slug != ? AND remote_provider = '' AND (workspace_id IS NULL OR workspace_id = ?) ORDER BY sort_order ASC",
+		parentSlug, workspaceID,
 	)
 	if err != nil {
 		return nil
@@ -119,8 +119,8 @@ func (m *Manager) makeDelegateTaskHandler(threadID, parentSlug string) llm.ToolH
 			}
 		}
 
-		// Validate all agent slugs exist and are enabled
-		availableAgents := m.getAvailableAgentsForDelegation(parentSlug)
+		// Validate all agent slugs exist and are enabled (scoped to the thread's workspace)
+		availableAgents := m.getAvailableAgentsForDelegation(parentSlug, m.threadWorkspaceID(threadID))
 		agentMap := make(map[string]delegateAgentInfo)
 		for _, a := range availableAgents {
 			agentMap[a.Slug] = a
@@ -299,7 +299,7 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 
 	// Sub-agents get call_tool (for HTTP tools) but NOT delegate_task (no recursion)
 	if m.ToolMgr != nil {
-		toolsSection := m.buildToolsPromptSection(agentSlug)
+		toolsSection := m.buildToolsPromptSection(agentSlug, m.db.ActiveWorkspaceID())
 		if toolsSection != "" {
 			cfg.System += "\n\n---\n\n" + toolsSection
 			cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildCallToolDef())

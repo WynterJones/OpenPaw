@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/memory"
 )
 
 func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID string, history []ThreadMessage, hints *GatewayRoutingHints) (*GatewayResponse, *llm.UsageInfo, error) {
 	// Build dynamic agent list for gateway
-	agentList := m.buildAgentList()
+	agentList := m.buildAgentList(m.threadWorkspaceID(threadID))
 	gatewayPrompt := GatewayRoutingPromptFor(m.GatewayName())
 
 	// Inject gateway identity (SOUL, USER, GOAL, memory)
@@ -34,7 +35,7 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 
 	// Inject available tools info so gateway knows what tools exist for routing decisions
 	if m.ToolMgr != nil {
-		toolsSection := m.buildToolsPromptSection("")
+		toolsSection := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if toolsSection != "" {
 			gatewayPrompt += "\n\n## SYSTEM TOOLS (read-only info for routing decisions)\n\n" + toolsSection
 			gatewayPrompt += "\nWhen a user's request requires a tool (e.g. weather data, API calls), route to an agent that can use the tool — do NOT try to answer directly.\n"
@@ -251,14 +252,32 @@ func (m *Manager) workspaceExtraDirs(workspaceID string) []string {
 	return dirs
 }
 
+// threadWorkspaceID resolves the workspace a chat thread belongs to, so a
+// running agent operates on the thread's own workspace rather than whichever
+// workspace happens to be globally active — otherwise two concurrent chats in
+// different workspaces would both resolve to the same (active) one. Falls
+// back to the default workspace when threadID is empty or unresolvable (e.g.
+// scheduled/sub-agent runs that don't have a chat thread).
+func (m *Manager) threadWorkspaceID(threadID string) string {
+	if threadID == "" {
+		return database.DefaultWorkspaceID
+	}
+	var id string
+	if err := m.db.QueryRow("SELECT workspace_id FROM chat_threads WHERE id = ?", threadID).Scan(&id); err != nil || id == "" {
+		return database.DefaultWorkspaceID
+	}
+	return id
+}
+
 // buildWorkspacePromptSection tells the agent which workspace it's operating in.
-// Resolved per run (from the active workspace) so switching workspaces changes
-// what the agent is told. The working-directory guidance is only included for
+// Resolved per run (from the thread's own workspace) so switching workspaces
+// changes what the agent is told and concurrent chats in different workspaces
+// don't cross-contaminate. The working-directory guidance is only included for
 // CLI providers (Claude Code / Codex), whose process cwd is the workspace files
 // dir; for the OpenRouter loop (sandboxed to the identity dir) only the name is
 // stated, to avoid implying it writes into the workspace.
-func (m *Manager) buildWorkspacePromptSection(providerName string) string {
-	id := m.db.ActiveWorkspaceID()
+func (m *Manager) buildWorkspacePromptSection(providerName, workspaceID string) string {
+	id := workspaceID
 	var name string
 	if err := m.db.QueryRow("SELECT name FROM workspaces WHERE id = ?", id).Scan(&name); err != nil || name == "" {
 		name = "Default"
@@ -283,6 +302,11 @@ func (m *Manager) buildWorkspacePromptSection(providerName string) string {
 func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, string, string, error) {
 	provider := m.Provider()
 	resolvedModel := provider.ResolveModel(model, llm.ModelSonnet)
+
+	// Resolve the workspace from the thread being answered, not the global
+	// active workspace, so concurrent chats in different workspaces don't
+	// cross-contaminate (files dir, tools, attached dirs, CLI cwd).
+	wsID := m.threadWorkspaceID(threadID)
 
 	// Build history messages for multi-turn conversation.
 	// Messages from OTHER agents are re-attributed as user-role context so the
@@ -334,8 +358,8 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	// Append current date/time to system prompt
 	systemPrompt += fmt.Sprintf("\n\nCurrent time: %s", time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"))
 
-	// Tell the agent which workspace it's in (resolved per run).
-	systemPrompt += "\n\n---\n\n" + m.buildWorkspacePromptSection(provider.Name())
+	// Tell the agent which workspace it's in (resolved per run, from the thread).
+	systemPrompt += "\n\n---\n\n" + m.buildWorkspacePromptSection(provider.Name(), wsID)
 
 	cfg := llm.AgentConfig{
 		Model:   resolvedModel,
@@ -381,7 +405,15 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.SandboxPaths = []string{agentDir}
 		cfg.MaxTurns = m.MaxTurns
 		if provider.Name() != llm.ProviderOpenRouter {
-			cfg.ExtraDirs = m.workspaceExtraDirs(m.db.ActiveWorkspaceID())
+			cfg.ExtraDirs = m.workspaceExtraDirs(wsID)
+			// CLI providers (Claude Code / Codex) shell out with their cwd set
+			// to the workspace files dir — resolve it from the thread's own
+			// workspace so concurrent chats in different workspaces don't
+			// clobber each other's cwd.
+			wsDir := filepath.Join(m.DataDir, "workspaces", wsID, "files")
+			if err := os.MkdirAll(wsDir, 0755); err == nil {
+				cfg.WorkspaceDir = wsDir
+			}
 		}
 	} else {
 		cfg.MaxTurns = 1
@@ -389,7 +421,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 
 	// Inject available tools into system prompt and add call_tool capability
 	if m.ToolMgr != nil {
-		toolsSection := m.buildToolsPromptSection(agentRoleSlug)
+		toolsSection := m.buildToolsPromptSection(agentRoleSlug, wsID)
 		if toolsSection != "" {
 			cfg.System += "\n\n---\n\n" + toolsSection
 			cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildCallToolDef())
@@ -466,7 +498,7 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	cfg.System += "\n\n" + buildAvatarPromptSection(m.db, agentName)
 
 	// Inject delegate_task if other agents are available for delegation
-	availableAgents := m.getAvailableAgentsForDelegation(agentRoleSlug)
+	availableAgents := m.getAvailableAgentsForDelegation(agentRoleSlug, wsID)
 	if len(availableAgents) > 0 {
 		cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildDelegateTaskDef())
 		if cfg.ExtraHandlers == nil {

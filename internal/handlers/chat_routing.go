@@ -75,6 +75,28 @@ func (h *ChatHandler) extractMention(content string) string {
 	return ""
 }
 
+// isGatewaySlug reports whether a slug refers to the gateway/builder pseudo-agent
+// (which routes/builds) rather than a directly-chattable specialist agent.
+func isGatewaySlug(slug string) bool {
+	switch slug {
+	case "builder", "gateway", "pounce":
+		return true
+	}
+	return false
+}
+
+// filterOutGatewaySlugs drops gateway/builder slugs so those mentions fall
+// through to the gateway routing flow instead of a plain role-chat.
+func filterOutGatewaySlugs(slugs []string) []string {
+	out := slugs[:0:0]
+	for _, s := range slugs {
+		if !isGatewaySlug(s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // extractMentions returns all valid @mentioned agent slugs in order of appearance.
 func (h *ChatHandler) extractMentions(content string) []string {
 	allMatches := mentionRegex.FindAllStringSubmatch(content, -1)
@@ -182,8 +204,11 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 		return
 	}
 
-	// Priority 2: User @mentioned agent(s) — route directly, skip gateway
-	if mentionSlugs := h.extractMentions(content); len(mentionSlugs) > 0 {
+	// Priority 2: User @mentioned specialist agent(s) — route directly, skip
+	// gateway. Gateway/builder mentions are dropped here so they fall through to
+	// the gateway flow below (a plain role-chat to "builder" just chats and never
+	// builds; the gateway is what actually spawns the builder to do work).
+	if mentionSlugs := filterOutGatewaySlugs(h.extractMentions(content)); len(mentionSlugs) > 0 {
 		if isFirstMsg {
 			go h.generateThreadTitle(threadID, content)
 		}

@@ -51,9 +51,17 @@ func (p *CodexProvider) SetMCPBaseURL(url string) { p.mcpBaseURL = url }
 // SetWorkspaceDirFunc injects a resolver for the active workspace's files dir.
 func (p *CodexProvider) SetWorkspaceDirFunc(fn func() string) { p.workspaceDir = fn }
 
-// resolveWorkDir picks the cwd for the shelled-out CLI: the active workspace's
-// files dir (created if missing) when a resolver is wired, otherwise cfg.WorkDir.
-func (p *CodexProvider) resolveWorkDir(fallback string) string {
+// resolveWorkDir picks the cwd for the shelled-out CLI, preferring the
+// thread's own workspace dir (threadWorkspaceDir, created if missing) so
+// concurrent chats in different workspaces don't share a cwd; then the
+// global active-workspace resolver; then cfg.WorkDir (fallback).
+func (p *CodexProvider) resolveWorkDir(threadWorkspaceDir, fallback string) string {
+	if threadWorkspaceDir != "" {
+		if err := os.MkdirAll(threadWorkspaceDir, 0755); err != nil {
+			logger.Warn("codex: failed to create workspace dir %s: %v", threadWorkspaceDir, err)
+		}
+		return threadWorkspaceDir
+	}
 	if p.workspaceDir != nil {
 		if dir := p.workspaceDir(); dir != "" {
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -185,7 +193,7 @@ func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMe
 	args = append(args, "-")
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
-	if dir := p.resolveWorkDir(cfg.WorkDir); dir != "" {
+	if dir := p.resolveWorkDir(cfg.WorkspaceDir, cfg.WorkDir); dir != "" {
 		cmd.Dir = dir
 	}
 

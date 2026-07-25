@@ -22,6 +22,8 @@ import {
   PanelLeftClose,
   MoreHorizontal,
   ImagePlus,
+  Settings2,
+  Trash2,
 } from "lucide-react";
 import { api, type Dashboard } from "../lib/api";
 import { workspaces } from "../lib/api-helpers";
@@ -72,6 +74,8 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   const [genPrompt, setGenPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -121,6 +125,39 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       const ws = await workspaces.create(name);
       await workspaces.setActive(ws.id);
       window.location.reload();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const startEdit = (ws: Workspace) => {
+    setEditingId(ws.id);
+    setEditName(ws.name);
+  };
+
+  const saveEdit = async (id: string) => {
+    const name = editName.trim();
+    if (!name) return;
+    try {
+      await workspaces.rename(id, name);
+      setEditingId(null);
+      await load();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const deleteWorkspace = async (ws: Workspace) => {
+    if (!window.confirm(`Delete workspace "${ws.name}"? Its chats, dashboards, context and tasks move to Default.`)) return;
+    try {
+      await workspaces.remove(ws.id);
+      // If the active workspace was deleted the server switched to Default — reload to re-scope.
+      if (active?.id === ws.id) {
+        window.location.reload();
+        return;
+      }
+      setEditingId(null);
+      await load();
     } catch {
       /* ignore */
     }
@@ -206,18 +243,62 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               <p className="px-3 py-1.5 text-xs text-text-3">No workspaces</p>
             ) : (
               list.map((ws) => (
-                <button
-                  key={ws.id}
-                  role="menuitem"
-                  onClick={() => switchTo(ws.id)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
-                >
-                  {badge(ws, "w-5 h-5")}
-                  <span className="flex-1 min-w-0 text-left truncate">{ws.name}</span>
-                  {active?.id === ws.id && (
-                    <Check className="w-3.5 h-3.5 text-accent-text flex-shrink-0" aria-hidden="true" />
+                <div key={ws.id}>
+                  <div className="group w-full flex items-center gap-2 pl-3 pr-1.5 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors">
+                    <button
+                      role="menuitem"
+                      onClick={() => switchTo(ws.id)}
+                      className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer"
+                    >
+                      {badge(ws, "w-5 h-5")}
+                      <span className="flex-1 min-w-0 text-left truncate">{ws.name}</span>
+                    </button>
+                    {active?.id === ws.id && (
+                      <Check className="w-3.5 h-3.5 text-accent-text flex-shrink-0" aria-hidden="true" />
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (editingId === ws.id) { setEditingId(null); } else { startEdit(ws); } }}
+                      title="Rename or delete workspace"
+                      aria-label={`Edit ${ws.name}`}
+                      className={`p-1 rounded-md flex-shrink-0 transition-colors cursor-pointer ${editingId === ws.id ? "text-accent-text bg-surface-3" : "text-text-3 opacity-0 group-hover:opacity-100 hover:text-text-1 hover:bg-surface-3"}`}
+                    >
+                      <Settings2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  {editingId === ws.id && (
+                    <div className="px-2 py-1.5 space-y-1.5 bg-surface-2/50">
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEdit(ws.id);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        className="w-full rounded-md border border-border-1 bg-surface-0 text-text-1 px-2.5 py-1.5 text-sm focus:border-accent-primary focus:ring-1 focus:ring-accent-primary outline-none"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button onClick={() => saveEdit(ws.id)} disabled={!editName.trim()} size="sm" className="flex-1">
+                          Save
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => setEditingId(null)}>
+                          Cancel
+                        </Button>
+                        {!ws.is_default && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => deleteWorkspace(ws)}
+                            className="!text-danger hover:!bg-danger/10"
+                            aria-label="Delete workspace"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
               ))
             )}
           </div>

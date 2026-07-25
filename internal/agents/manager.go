@@ -143,15 +143,19 @@ func (m *Manager) GatewayName() string {
 	return "Gateway"
 }
 
-func (m *Manager) buildAgentList() string {
+// buildAgentList lists the specialist agents the gateway may route to. Scoped to
+// workspaceID — the gateway (and therefore its routing) only knows agents that
+// live in that workspace or are global (workspace_id IS NULL).
+func (m *Manager) buildAgentList(workspaceID string) string {
 	rows, err := m.db.Query(
 		`SELECT ar.slug, ar.name, ar.description, COALESCE(GROUP_CONCAT(t.name), '')
 		 FROM agent_roles ar
 		 LEFT JOIN agent_tool_access ata ON ata.agent_role_slug = ar.slug
 		 LEFT JOIN tools t ON t.id = ata.tool_id
-		 WHERE ar.enabled = 1
+		 WHERE ar.enabled = 1 AND (ar.workspace_id IS NULL OR ar.workspace_id = ?)
 		 GROUP BY ar.slug, ar.name, ar.description
 		 ORDER BY ar.sort_order ASC`,
+		workspaceID,
 	)
 	if err != nil {
 		return ""

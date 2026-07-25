@@ -260,7 +260,7 @@ func (m *Manager) SpawnDashboardBuilder(ctx context.Context, workOrder *models.W
 	// Build available tools section for the prompt
 	toolsSection := ""
 	if m.ToolMgr != nil {
-		ts := m.buildToolsPromptSection("")
+		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if ts != "" {
 			toolsSection = "## Available Tools\n\n" + ts + "\nUse the tool IDs and endpoints above in your widget dataSource configurations.\n"
 		}
@@ -309,7 +309,7 @@ func (m *Manager) SpawnCustomDashboardBuilder(ctx context.Context, workOrder *mo
 	// Build available tools section for the prompt
 	toolsSection := ""
 	if m.ToolMgr != nil {
-		ts := m.buildToolsPromptSection("")
+		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if ts != "" {
 			toolsSection = "## Available Tools\n\n" + ts + "\nUse the tool IDs and endpoints above with OpenPaw.callTool(toolId, endpoint).\n"
 		}

@@ -351,6 +351,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 			// Chat
 			r.Route("/chat", func(r chi.Router) {
+				r.Get("/active", chatHandler.ActiveThreads)
 				r.Get("/threads", chatHandler.ListThreads)
 				r.Get("/threads/active", chatHandler.ActiveThreadIds)
 				r.Post("/threads", chatHandler.CreateThread)

@@ -14,7 +14,10 @@ import (
 
 // buildToolsPromptSection queries the DB for enabled tools and builds a system prompt section.
 // If agentRoleSlug is provided, it filters to only tools granted to that agent (if grants exist).
-func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
+// workspaceID scopes the tool list to that workspace (plus workspace-agnostic
+// tools) — callers with a chat thread should pass its own workspace so
+// concurrent chats in different workspaces see the right tools.
+func (m *Manager) buildToolsPromptSection(agentRoleSlug, workspaceID string) string {
 	// Check if this agent has explicit tool grants
 	var grantedToolIDs map[string]bool
 	if agentRoleSlug != "" {
@@ -42,7 +45,7 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug string) string {
 	// start is invisible to the agent, which then claims it "can't find it".
 	rows, err := m.db.Query(
 		"SELECT id, name, description, status, port FROM tools WHERE deleted_at IS NULL AND (workspace_id IS NULL OR workspace_id = ?) ORDER BY enabled DESC, name ASC",
-		m.db.ActiveWorkspaceID(),
+		workspaceID,
 	)
 	if err != nil {
 		return ""

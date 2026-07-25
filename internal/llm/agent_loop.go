@@ -21,6 +21,13 @@ type AgentConfig struct {
 	MaxTurns     int
 	Tools        []string
 	WorkDir      string
+	// WorkspaceDir is the resolved files dir of the chat thread's own
+	// workspace (data/workspaces/<threadWorkspaceID>/files). CLI providers
+	// (Claude Code / Codex) prefer this for their shelled-out process cwd over
+	// their global active-workspace resolver, so concurrent chats in
+	// different workspaces don't share a cwd. Empty = fall back to the
+	// provider's global resolver, then WorkDir. Ignored by the OpenRouter loop.
+	WorkspaceDir string
 	SandboxPaths []string
 	// ExtraDirs are additional absolute paths (beyond WorkDir) a CLI provider
 	// should grant the agent access to — e.g. Claude Code's --add-dir. Ignored

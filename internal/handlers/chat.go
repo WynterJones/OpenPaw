@@ -308,6 +308,47 @@ func (h *ChatHandler) ThreadStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, status)
 }
 
+// ActiveThreads lists every thread currently being processed (thinking /
+// streaming), across all workspaces, so the UI can show a global "active chats"
+// indicator. Source of truth is the per-thread cancel funcs stored for the whole
+// routing lifecycle.
+func (h *ChatHandler) ActiveThreads(w http.ResponseWriter, r *http.Request) {
+	type activeThread struct {
+		ThreadID    string `json:"thread_id"`
+		Title       string `json:"title"`
+		WorkspaceID string `json:"workspace_id,omitempty"`
+		AgentSlug   string `json:"agent_slug,omitempty"`
+		Streaming   bool   `json:"streaming"`
+	}
+
+	var ids []string
+	h.threadCancels.Range(func(k, _ interface{}) bool {
+		if id, ok := k.(string); ok {
+			ids = append(ids, id)
+		}
+		return true
+	})
+
+	out := []activeThread{}
+	for _, id := range ids {
+		at := activeThread{ThreadID: id, Title: "New chat"}
+		var title, wsID string
+		if err := h.db.QueryRow("SELECT COALESCE(title, ''), COALESCE(workspace_id, '') FROM chat_threads WHERE id = ?", id).Scan(&title, &wsID); err == nil {
+			if title != "" {
+				at.Title = title
+			}
+			at.WorkspaceID = wsID
+		}
+		if ss := h.agentManager.GetStreamState(id); ss != nil && ss.Active {
+			at.Streaming = true
+			at.AgentSlug = ss.AgentSlug
+		}
+		out = append(out, at)
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	threadID := chi.URLParam(r, "id")
 
@@ -619,22 +660,36 @@ func (h *ChatHandler) getEffectiveContextLimit(threadID string) int {
 		}
 	}
 
-	var model string
+	// OpenRouter: use the LARGEST context window among the models the thread's
+	// agents actually use, so a single small-model turn (e.g. the Gateway on
+	// Haiku, 200k) doesn't collapse the limit and trigger early auto-compaction
+	// on a thread that's really running a 1M-window model.
+	best := 0
 	if threadID != "" {
-		h.db.QueryRow(
-			`SELECT COALESCE(ar.model, '') FROM chat_messages cm
+		rows, err := h.db.Query(
+			`SELECT DISTINCT COALESCE(ar.model, '') FROM chat_messages cm
 			 JOIN agent_roles ar ON ar.slug = cm.agent_role_slug
-			 WHERE cm.thread_id = ? AND cm.role = 'assistant' AND cm.agent_role_slug != ''
-			 ORDER BY cm.created_at DESC LIMIT 1`, threadID,
-		).Scan(&model)
+			 WHERE cm.thread_id = ? AND cm.role = 'assistant' AND cm.agent_role_slug != ''`, threadID,
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var m string
+				if rows.Scan(&m) == nil && m != "" && h.agentManager != nil {
+					if w := llm.ContextWindowForModel(h.agentManager.Provider().ResolveModel(m, llm.ModelSonnet)); w > best {
+						best = w
+					}
+				}
+			}
+		}
 	}
-	if model == "" && h.agentManager != nil {
-		model = h.agentManager.BuilderModel
+	if best == 0 && h.agentManager != nil {
+		best = llm.ContextWindowForModel(h.agentManager.Provider().ResolveModel(h.agentManager.BuilderModel, llm.ModelSonnet))
 	}
-	if h.agentManager != nil {
-		model = h.agentManager.Provider().ResolveModel(model, llm.ModelSonnet)
+	if best == 0 {
+		best = llm.ContextWindowForModel(llm.ModelSonnet)
 	}
-	return llm.ContextWindowForModel(model)
+	return best
 }
 
 // shouldAutoCompact checks whether auto-compaction should trigger for the given thread.
