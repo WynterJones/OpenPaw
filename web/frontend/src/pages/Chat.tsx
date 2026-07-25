@@ -128,10 +128,6 @@ export function Chat() {
   // menu so all three layout toggles live in one place.
   const { chatList, chatPanel, set: setViewToggle } = useViewToggles();
   const threadsCollapsed = !chatList;
-  const setThreadsCollapsed = (next: boolean | ((v: boolean) => boolean)) => {
-    const value = typeof next === 'function' ? next(threadsCollapsed) : next;
-    setViewToggle('chatList', !value);
-  };
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [streamActive, setStreamActive] = useState(false);
@@ -1248,14 +1244,8 @@ export function Chat() {
       <Header title="Chat"
         actions={
           <>
-            {/* Collapsing now lives beside "New Chat" inside the sidebar. That
-                row is unreachable once the sidebar is collapsed to zero width,
-                so the header keeps a re-open affordance for that state only. */}
-            {threadsCollapsed && (
-              <button onClick={() => setThreadsCollapsed(false)} className="hidden md:inline-flex p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label="Show chat threads" aria-pressed={false} title="Show chats">
-                <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />
-              </button>
-            )}
+            {/* Desktop pane visibility is driven by the header's view-options
+                menu. The buttons below are the mobile-only drawer controls. */}
             <button onClick={() => setShowThreads(!showThreads)} className="md:hidden p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer" aria-label={showThreads ? 'Hide chat threads' : 'Show chat threads'}>
               {showThreads ? <PanelLeftClose className="w-5 h-5" aria-hidden="true" /> : <PanelLeftOpen className="w-5 h-5" aria-hidden="true" />}
             </button>
@@ -1270,18 +1260,7 @@ export function Chat() {
       <div className="flex flex-1 overflow-hidden relative">
         <div className={`${showThreads ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${threadsCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-72 md:border-r'} absolute md:relative z-30 w-[85vw] max-w-72 h-full flex flex-col overflow-hidden border-r border-border-0 bg-surface-1 transition-all duration-200`}>
           <div className="p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="flex-1" size="sm">New Chat</Button>
-              <button
-                onClick={() => setThreadsCollapsed(c => !c)}
-                className="hidden md:inline-flex items-center justify-center p-2 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
-                aria-label={threadsCollapsed ? 'Show chat threads' : 'Hide chat threads'}
-                aria-pressed={!threadsCollapsed}
-                title={threadsCollapsed ? 'Show chats' : 'Hide chats'}
-              >
-                {threadsCollapsed ? <PanelLeftOpen className="w-5 h-5" aria-hidden="true" /> : <PanelLeftClose className="w-5 h-5" aria-hidden="true" />}
-              </button>
-            </div>
+            <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
@@ -1415,15 +1394,6 @@ export function Chat() {
                     >
                       {compacting ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Minimize2 className="w-3 h-3" aria-hidden="true" />}
                       <span className="hidden sm:inline">Compact</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowRightPanel(p => !p); setRightPanelCollapsed(false); }}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${showRightPanel && !rightPanelCollapsed ? 'text-accent-primary bg-accent-muted' : 'text-text-2 hover:text-text-1 hover:bg-surface-2'}`}
-                      title={showRightPanel ? 'Hide panel' : 'Show panel'}
-                      aria-label={showRightPanel ? 'Hide panel' : 'Show panel'}
-                      aria-pressed={showRightPanel && !rightPanelCollapsed}
-                    >
-                      <PanelRightOpen className="w-3 h-3" aria-hidden="true" />
                     </button>
                   </div>
                 </div>

@@ -23,6 +23,7 @@ import {
   ImagePlus,
   Settings2,
   Trash2,
+  Brain,
 } from "lucide-react";
 import { api, type Dashboard } from "../lib/api";
 import { workspaces } from "../lib/api-helpers";
@@ -423,8 +424,21 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 function DashboardsNav({ collapsed }: { collapsed: boolean }) {
   const [open, setOpen] = useState(false);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const activeId = new URLSearchParams(location.search).get("id");
+  const activeDashboard =
+    location.pathname === "/dashboards"
+      ? dashboards.find((d) => d.id === activeId) ?? null
+      : null;
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
 
   const loadDashboards = async () => {
     try {
@@ -459,61 +473,75 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
   }
 
   return (
-    <div>
-      <div className="flex items-center">
-        <NavLink
-          to="/dashboards"
-          className={({ isActive }) =>
-            `flex flex-1 items-center gap-3 pl-3 pr-2 py-3 rounded-lg text-sm font-semibold transition-all duration-150 ${
-              isActive
-                ? "bg-accent-primary/15 text-accent-text"
-                : "text-text-2 hover:text-text-1 hover:bg-surface-2"
-            }`
-          }
-        >
-          <LayoutDashboard className="flex-shrink-0 w-5 h-5" />
-          <span>Dashboards</span>
-        </NavLink>
-        <button
-          onClick={() => {
-            setOpen((o) => !o);
-            if (!open) loadDashboards();
-          }}
-          aria-expanded={open}
-          aria-label={open ? "Collapse dashboards list" : "Expand dashboards list"}
-          className="ml-1 px-2 py-3 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
-        >
-          <ChevronDown
-            className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
-            aria-hidden="true"
-          />
-        </button>
-      </div>
+    <div ref={ref} className="relative">
+      {/* Presented like the workspace switcher: one control showing the current
+          dashboard, opening a floating list — rather than an inline accordion
+          that pushed the rest of the nav down. */}
+      <button
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!open) loadDashboards();
+        }}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="Switch dashboard"
+        className="w-full flex items-center gap-3 rounded-lg border border-border-0 bg-surface-2 hover:bg-surface-3 transition-colors cursor-pointer px-2.5 py-2"
+      >
+        <LayoutDashboard className="flex-shrink-0 w-5 h-5 text-accent-text" aria-hidden="true" />
+        <span className="flex-1 min-w-0 text-left text-sm font-medium text-text-1 truncate">
+          {activeDashboard ? activeDashboard.name : "Dashboards"}
+        </span>
+        <ChevronsUpDown className="w-4 h-4 text-text-3 flex-shrink-0" aria-hidden="true" />
+      </button>
 
       {open && (
-        <div className="mt-0.5 space-y-0.5">
-          {dashboards.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
-          ) : (
-            dashboards.map((d) => {
-              const isActive =
-                location.pathname === "/dashboards" && activeId === d.id;
-              return (
-                <Link
-                  key={d.id}
-                  to={`/dashboards?id=${d.id}`}
-                  title={d.name}
-                  className={`block px-3 py-2 rounded-lg text-sm truncate transition-colors ${
-                    isActive
-                      ? "bg-accent-muted text-accent-text"
-                      : "text-text-2 hover:text-text-1 hover:bg-surface-2"
-                  }`}
-                >
-                  {d.name}
-                </Link>
-              );
-            })
-          )}
+        <div
+          className="absolute z-50 left-0 right-0 top-full mt-1 rounded-lg border border-border-0 bg-surface-1 shadow-xl py-1"
+          role="menu"
+        >
+          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
+            Dashboards
+          </p>
+          <div className="max-h-64 overflow-y-auto">
+            {dashboards.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
+            ) : (
+              dashboards.map((d) => {
+                const isActive =
+                  location.pathname === "/dashboards" && activeId === d.id;
+                return (
+                  <Link
+                    key={d.id}
+                    to={`/dashboards?id=${d.id}`}
+                    title={d.name}
+                    onClick={() => setOpen(false)}
+                    role="menuitem"
+                    className={`flex items-center gap-2 px-3 py-2 text-sm truncate transition-colors ${
+                      isActive
+                        ? "bg-accent-muted text-accent-text"
+                        : "text-text-2 hover:text-text-1 hover:bg-surface-2"
+                    }`}
+                  >
+                    <span className="w-4 flex-shrink-0">
+                      {isActive && <Check className="w-3.5 h-3.5" aria-hidden="true" />}
+                    </span>
+                    <span className="truncate">{d.name}</span>
+                  </Link>
+                );
+              })
+            )}
+          </div>
+          <div className="border-t border-border-0 mt-1 pt-1">
+            <Link
+              to="/dashboards"
+              onClick={() => setOpen(false)}
+              role="menuitem"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors"
+            >
+              <span className="w-4 flex-shrink-0" />
+              All dashboards
+            </Link>
+          </div>
         </div>
       )}
     </div>
@@ -672,9 +700,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
           sidebar no longer carries its own toggle button. */}
       <div className="border-t border-border-0">
         {!collapsed && (
-          <div className="px-4 pb-3 pt-0">
-            <p className="text-[11px] font-medium text-text-3 mb-1">
-              Currently using {providerName(balance)}
+          <div className="px-4 pb-4 pt-3">
+            <p className="text-[11px] font-medium text-text-3 mb-1.5 flex items-center gap-1.5">
+              <Brain className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+              {providerName(balance)}
             </p>
             <p className="text-[10px] text-text-3 mb-2" aria-hidden="true">
               &copy; OpenPaw{version ? ` - v${version}` : ""}

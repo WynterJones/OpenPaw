@@ -139,8 +139,8 @@ function CreateAgentModal({
           </label>
           {/* Full preset set in a scrolling grid — the same control the edit page
               uses. A flex-wrap row of every avatar would overflow the modal. */}
-          <div className="w-full max-h-48 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2 mb-3">
-            <div className="grid grid-cols-8 md:grid-cols-10 gap-1.5">
+          <div className="w-full max-h-64 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2.5 mb-3">
+            <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
               {PRESET_AVATARS.map((path, i) => (
                 <button
                   key={path}

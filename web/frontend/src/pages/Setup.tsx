@@ -272,7 +272,7 @@ export function Setup() {
           <div>
             <label className="block text-xs font-medium text-text-2 mb-1.5">Avatar</label>
             <div className="max-h-36 overflow-y-auto rounded-lg border border-border-1 bg-surface-0 p-2">
-              <div className="grid grid-cols-9 gap-1.5">
+              <div className="grid grid-cols-5 md:grid-cols-6 gap-2">
                 {PRESET_AVATARS.map((path, i) => (
                   <button
                     key={path}

@@ -168,9 +168,10 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
   // the compacted history and what follows, not as part of the next message.
   return (
     <div className="mt-2 mb-8">
-      {/* Near-fully-transparent fill — the accent border carries the emphasis. */}
-      <div className="rounded-2xl border-2 border-accent-primary bg-accent-primary/[0.01] overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-accent-primary/[0.01]">
+      {/* Dark, near-opaque fill: the page background art shows through a
+          transparent card and makes the summary text hard to read. */}
+      <div className="rounded-2xl border-2 border-accent-primary bg-surface-0/95 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-black/30">
           <Minimize2 className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" aria-hidden="true" />
           <span className="text-xs font-semibold uppercase tracking-wider text-accent-primary">
             Chat Summary
