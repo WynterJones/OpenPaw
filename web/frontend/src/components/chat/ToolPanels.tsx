@@ -16,7 +16,7 @@ export function ToolActivityPanel({ tools, isStreaming, defaultExpanded }: {
   const total = tools.length;
 
   return (
-    <div className={`rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
+    <div className={`tool-panel-entrance rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"
@@ -84,7 +84,7 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
   const total = tools.length;
 
   return (
-    <div className={`rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
+    <div className={`tool-panel-entrance rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"

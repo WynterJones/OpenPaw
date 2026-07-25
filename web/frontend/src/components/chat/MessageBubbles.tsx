@@ -36,9 +36,40 @@ function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[];
   );
 }
 
+/** Minimum time a status label stays on screen before it may be replaced. */
+const STATUS_LABEL_HOLD_MS = 600;
+
+/**
+ * Holds a label for a short minimum before letting the next one through.
+ *
+ * The activity line can flip between "Thinking…", "Working…" and tool activity
+ * several times a second while a turn runs. Rendering every change reads as a
+ * flicker, so a new label waits out the remainder of the hold and only the
+ * latest pending value is applied — a burst of changes settles on the final
+ * one rather than replaying the whole sequence.
+ */
+function useHeldLabel(label: string): string {
+  const [shown, setShown] = useState(label);
+  const shownAtRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (label === shown) return;
+    const elapsed = Date.now() - shownAtRef.current;
+    const wait = Math.max(0, STATUS_LABEL_HOLD_MS - elapsed);
+    const timer = setTimeout(() => {
+      shownAtRef.current = Date.now();
+      setShown(label);
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [label, shown]);
+
+  return shown;
+}
+
 function ThinkingIndicator({ label = 'Thinking…' }: { label?: string }) {
+  const shown = useHeldLabel(label);
   return (
-    <div className="flex items-center gap-2 px-1 py-1.5" aria-live="polite">
+    <div className="status-row flex items-center gap-2 px-1 py-1.5" aria-live="polite">
       <div className="flex items-center gap-1">
         {[0, 150, 300].map((d) => (
           <span
@@ -48,7 +79,10 @@ function ThinkingIndicator({ label = 'Thinking…' }: { label?: string }) {
           />
         ))}
       </div>
-      <span className="text-sm text-text-2 font-medium">{label}</span>
+      {/* Keyed on the text so React remounts it and the fade replays. */}
+      <span key={shown} className="status-label-swap text-sm text-text-2 font-medium">
+        {shown}
+      </span>
     </div>
   );
 }

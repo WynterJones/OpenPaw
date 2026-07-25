@@ -589,6 +589,28 @@ body {
   animation: stream-fade-in 0.2s ease-out;
 }
 
+/* Status label crossfade.
+   The activity line flips between "Thinking…", "Working…" and the tool panel,
+   sometimes within a few hundred ms. Swapping the text instantly reads as a
+   flicker, so each label fades in and the row animates its own height. */
+@keyframes status-label-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.status-label-swap {
+  animation: status-label-in 0.28s ease-out;
+}
+
+.status-row {
+  transition: opacity 0.25s ease-out;
+}
+
+/* Tool panel appearing under the label shouldn't pop in. */
+.tool-panel-entrance {
+  animation: stream-fade-in 0.25s ease-out;
+}
+
 /* Reduced motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
