@@ -1,0 +1,11 @@
+-- Attachments on a todo item.
+--
+-- A task is increasingly a prompt an agent will pick up and act on, and a
+-- prompt without its material ("this screenshot", "that directory") is
+-- guesswork. Stored as a JSON array rather than a join table because the list
+-- is small, always read whole with its item, and never queried across items:
+--   [{"kind":"image|file|directory|media","path":"...","name":"..."}]
+--
+-- `path` is what the agent is given, so it must be something the agent can
+-- actually open — an absolute path on disk, not a browser URL.
+ALTER TABLE todo_items ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';

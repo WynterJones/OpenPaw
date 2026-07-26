@@ -29,6 +29,7 @@ import type {
   Project,
   TodoList,
   TodoItem,
+  TodoAttachment,
   MediaItem,
   MediaListResponse,
   Workspace,
@@ -368,9 +369,9 @@ export const todoApi = {
     const params = completed !== undefined ? `?completed=${completed}` : '';
     return api.get<TodoItem[]>(`/todo-lists/${id}/items${params}`);
   },
-  createItem: (listId: string, data: { title: string; notes?: string; due_date?: string }) =>
+  createItem: (listId: string, data: { title: string; notes?: string; due_date?: string; attachments?: TodoAttachment[] }) =>
     api.post<TodoItem>(`/todo-lists/${listId}/items`, data),
-  updateItem: (listId: string, itemId: string, data: { title?: string; notes?: string; due_date?: string }) =>
+  updateItem: (listId: string, itemId: string, data: { title?: string; notes?: string; due_date?: string; attachments?: TodoAttachment[] }) =>
     api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}`, data),
   toggleItem: (listId: string, itemId: string, body?: { agent_slug?: string; agent_note?: string }) =>
     api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}/toggle`, body || {}),

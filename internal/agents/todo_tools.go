@@ -310,7 +310,7 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 			return llm.ToolResult{Output: "list_id is required", IsError: true}
 		}
 
-		query := `SELECT id, title, notes, completed, due_date, last_actor_agent_slug, last_actor_note, created_at, completed_at
+		query := `SELECT id, title, notes, attachments, completed, due_date, last_actor_agent_slug, last_actor_note, created_at, completed_at
 			FROM todo_items WHERE list_id = ?`
 		args := []interface{}{params.ListID}
 
@@ -327,13 +327,13 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 
 		var items []map[string]interface{}
 		for rows.Next() {
-			var id, title, notes, lastActorNote string
+			var id, title, notes, attachments, lastActorNote string
 			var completed int
 			var dueDate, agentSlug sql.NullString
 			var createdAt time.Time
 			var completedAt sql.NullTime
 
-			if rows.Scan(&id, &title, &notes, &completed, &dueDate, &agentSlug, &lastActorNote, &createdAt, &completedAt) != nil {
+			if rows.Scan(&id, &title, &notes, &attachments, &completed, &dueDate, &agentSlug, &lastActorNote, &createdAt, &completedAt) != nil {
 				continue
 			}
 
@@ -342,6 +342,11 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 				"title":     title,
 				"notes":     notes,
 				"completed": completed == 1,
+			}
+			// Real on-disk paths, so "the screenshot" in a task body resolves
+			// to something the agent can actually open.
+			if paths := todoAttachmentPaths(attachments); len(paths) > 0 {
+				item["attachments"] = paths
 			}
 			if dueDate.Valid {
 				item["due_date"] = dueDate.String
@@ -626,4 +631,30 @@ func handleTodoCreateList(db *database.DB, agentSlug string, broadcast func(stri
 		})
 		return llm.ToolResult{Output: string(result)}
 	}
+}
+
+// todoAttachmentPaths flattens a task's stored attachments into the shape an
+// agent needs: what it is, and where to open it. Unparseable JSON yields
+// nothing rather than an error — a malformed attachment list should not stop
+// an agent reading the task itself.
+func todoAttachmentPaths(raw string) []map[string]string {
+	var stored []struct {
+		Kind string `json:"kind"`
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	if json.Unmarshal([]byte(raw), &stored) != nil {
+		return nil
+	}
+	out := make([]map[string]string, 0, len(stored))
+	for _, a := range stored {
+		if a.Path == "" {
+			continue
+		}
+		out = append(out, map[string]string{"kind": a.Kind, "name": a.Name, "path": a.Path})
+	}
+	return out
 }

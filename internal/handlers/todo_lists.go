@@ -7,15 +7,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/database"
 )
 
 type TodoListsHandler struct {
-	db *database.DB
+	db      *database.DB
+	dataDir string
+	// agentMgr is only needed by the Enhance endpoint; nil disables it rather
+	// than breaking the rest of the todo API.
+	agentMgr *agents.Manager
 }
 
-func NewTodoListsHandler(db *database.DB) *TodoListsHandler {
-	return &TodoListsHandler{db: db}
+func NewTodoListsHandler(db *database.DB, dataDir string, agentMgr *agents.Manager) *TodoListsHandler {
+	return &TodoListsHandler{db: db, dataDir: dataDir, agentMgr: agentMgr}
 }
 
 // ListLists returns all todo lists with item counts.
@@ -279,11 +284,12 @@ func (h *TodoListsHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 	listID := chi.URLParam(r, "id")
 
 	var req struct {
-		Title     string `json:"title"`
-		Notes     string `json:"notes"`
-		DueDate   string `json:"due_date"`
-		AgentSlug string `json:"agent_slug"`
-		AgentNote string `json:"agent_note"`
+		Title       string           `json:"title"`
+		Notes       string           `json:"notes"`
+		DueDate     string           `json:"due_date"`
+		AgentSlug   string           `json:"agent_slug"`
+		AgentNote   string           `json:"agent_note"`
+		Attachments []TodoAttachment `json:"attachments"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -317,10 +323,12 @@ func (h *TodoListsHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		agentSlug = sql.NullString{String: req.AgentSlug, Valid: true}
 	}
 
+	attachmentsJSON := h.encodeAttachments(req.Attachments)
+
 	_, err := h.db.Exec(
-		`INSERT INTO todo_items (id, list_id, title, notes, completed, sort_order, due_date, last_actor_agent_slug, last_actor_note, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
-		id, listID, req.Title, req.Notes, maxOrder+1, dueDate, agentSlug, req.AgentNote, now, now,
+		`INSERT INTO todo_items (id, list_id, title, notes, completed, sort_order, due_date, last_actor_agent_slug, last_actor_note, attachments, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
+		id, listID, req.Title, req.Notes, maxOrder+1, dueDate, agentSlug, req.AgentNote, attachmentsJSON, now, now,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create todo item")
@@ -339,6 +347,7 @@ func (h *TodoListsHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		"due_date":              req.DueDate,
 		"last_actor_agent_slug": req.AgentSlug,
 		"last_actor_note":       req.AgentNote,
+		"attachments":           decodeAttachments(attachmentsJSON),
 		"created_at":            now.Format(time.RFC3339),
 		"updated_at":            now.Format(time.RFC3339),
 		"completed_at":          nil,
@@ -351,11 +360,12 @@ func (h *TodoListsHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	itemID := chi.URLParam(r, "itemId")
 
 	var req struct {
-		Title     *string `json:"title"`
-		Notes     *string `json:"notes"`
-		DueDate   *string `json:"due_date"`
-		AgentSlug *string `json:"agent_slug"`
-		AgentNote *string `json:"agent_note"`
+		Title       *string           `json:"title"`
+		Notes       *string           `json:"notes"`
+		DueDate     *string           `json:"due_date"`
+		AgentSlug   *string           `json:"agent_slug"`
+		AgentNote   *string           `json:"agent_note"`
+		Attachments *[]TodoAttachment `json:"attachments"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -386,6 +396,10 @@ func (h *TodoListsHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AgentNote != nil {
 		h.db.Exec("UPDATE todo_items SET last_actor_note = ?, updated_at = ? WHERE id = ? AND list_id = ?", *req.AgentNote, now, itemID, listID)
+	}
+	if req.Attachments != nil {
+		h.db.Exec("UPDATE todo_items SET attachments = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+			h.encodeAttachments(*req.Attachments), now, itemID, listID)
 	}
 
 	h.db.LogAudit("system", "todo_item_updated", "todo", "todo_list", listID, "item="+itemID)
@@ -506,7 +520,7 @@ func (h *TodoListsHandler) ReorderItems(w http.ResponseWriter, r *http.Request) 
 
 // fetchItem returns a single item with agent info, or nil if not found.
 func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface{} {
-	var id, listIDVal, title, notes, lastActorNote string
+	var id, listIDVal, title, notes, lastActorNote, attachments string
 	var completed, sortOrder int
 	var dueDate, agentSlug, agentName, agentAvatar sql.NullString
 	var createdAt, updatedAt time.Time
@@ -514,7 +528,7 @@ func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface
 
 	err := h.db.QueryRow(`
 		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.sort_order,
-		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note,
+		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note, ti.attachments,
 		       ti.created_at, ti.updated_at, ti.completed_at,
 		       ar.name as agent_name, ar.avatar_path as agent_avatar
 		FROM todo_items ti
@@ -523,7 +537,7 @@ func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface
 		itemID, listID,
 	).Scan(
 		&id, &listIDVal, &title, &notes, &completed, &sortOrder,
-		&dueDate, &agentSlug, &lastActorNote,
+		&dueDate, &agentSlug, &lastActorNote, &attachments,
 		&createdAt, &updatedAt, &completedAt,
 		&agentName, &agentAvatar,
 	)
@@ -541,6 +555,7 @@ func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface
 		"due_date":                nullStr(dueDate),
 		"last_actor_agent_slug":   nullStr(agentSlug),
 		"last_actor_note":         lastActorNote,
+		"attachments":             decodeAttachments(attachments),
 		"created_at":              createdAt.Format(time.RFC3339),
 		"updated_at":              updatedAt.Format(time.RFC3339),
 		"completed_at":            nullTime(completedAt),
@@ -553,7 +568,7 @@ func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface
 func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []map[string]interface{} {
 	query := `
 		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.sort_order,
-		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note,
+		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note, ti.attachments,
 		       ti.created_at, ti.updated_at, ti.completed_at,
 		       ar.name as agent_name, ar.avatar_path as agent_avatar
 		FROM todo_items ti
@@ -580,7 +595,7 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 
 	items := []map[string]interface{}{}
 	for rows.Next() {
-		var id, listIDVal, title, notes, lastActorNote string
+		var id, listIDVal, title, notes, lastActorNote, attachments string
 		var completed, sortOrder int
 		var dueDate, agentSlug, agentName, agentAvatar sql.NullString
 		var createdAt, updatedAt time.Time
@@ -588,7 +603,7 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 
 		if rows.Scan(
 			&id, &listIDVal, &title, &notes, &completed, &sortOrder,
-			&dueDate, &agentSlug, &lastActorNote,
+			&dueDate, &agentSlug, &lastActorNote, &attachments,
 			&createdAt, &updatedAt, &completedAt,
 			&agentName, &agentAvatar,
 		) != nil {
@@ -602,6 +617,7 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 			"notes":                   notes,
 			"completed":               completed == 1,
 			"sort_order":              sortOrder,
+			"attachments":             decodeAttachments(attachments),
 			"due_date":                nullStr(dueDate),
 			"last_actor_agent_slug":   nullStr(agentSlug),
 			"last_actor_note":         lastActorNote,

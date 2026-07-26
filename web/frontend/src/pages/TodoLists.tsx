@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ListTodo, Plus, Trash2, Check, X, Eye, EyeOff, ArrowLeft, Pencil, GripVertical } from 'lucide-react';
+import { ListTodo, Plus, Trash2, Check, X, Eye, EyeOff, ArrowLeft, Pencil, GripVertical, ChevronDown, ChevronRight, ImageIcon, FolderOpen, Film, FileText } from 'lucide-react';
 import { todoApi } from '../lib/api-helpers';
-import type { TodoList, TodoItem } from '../lib/types';
+import type { TodoList, TodoItem, TodoAttachment } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
 import { Header } from '../components/Header';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
+import { TaskComposer } from '../components/todo/TaskComposer';
 
 const colorPresets = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'];
 
@@ -125,6 +126,57 @@ function InlineEdit({
   );
 }
 
+/** A row is worth expanding only when there is something under the title. */
+function hasDetail(item: TodoItem): boolean {
+  return Boolean(item.notes?.trim()) || (item.attachments?.length ?? 0) > 0;
+}
+
+function attachmentIcon(kind: string) {
+  switch (kind) {
+    case 'image': return ImageIcon;
+    case 'directory': return FolderOpen;
+    case 'media': return Film;
+    default: return FileText;
+  }
+}
+
+/**
+ * The expanded body of an advanced task.
+ *
+ * whitespace-pre-wrap because an enhanced task comes back as formatted prose
+ * with real line breaks, and collapsing them would undo the point of it.
+ */
+function TaskDetail({ item }: { item: TodoItem }) {
+  return (
+    <div className="px-4 md:px-6 pb-3 pl-[52px] md:pl-[68px] space-y-2">
+      {item.notes?.trim() && (
+        <p className="text-[13px] leading-relaxed text-text-2 whitespace-pre-wrap">
+          {item.notes}
+        </p>
+      )}
+      {(item.attachments?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {item.attachments.map((a) => {
+            const Icon = attachmentIcon(a.kind);
+            return (
+              <span
+                key={a.path}
+                // The path is the tooltip because that is what the agent sees;
+                // if a task misbehaves this is the first thing to check.
+                title={a.path}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-2 text-text-3 text-[11px] max-w-[260px]"
+              >
+                <Icon className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">{a.name}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TodoLists() {
   const { toast } = useToast();
 
@@ -135,7 +187,7 @@ export function TodoLists() {
   const [items, setItems] = useState<TodoItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
-  const [newItemTitle, setNewItemTitle] = useState('');
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
   const [listModalOpen, setListModalOpen] = useState(false);
@@ -220,13 +272,15 @@ export function TodoLists() {
   };
 
   // --- Item CRUD ---
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemTitle.trim() || !selectedListId) return;
+  const handleAddItem = async (draft: { title: string; notes: string; attachments: TodoAttachment[] }) => {
+    if (!draft.title.trim() || !selectedListId) return;
     try {
-      const item = await todoApi.createItem(selectedListId, { title: newItemTitle.trim() });
+      const item = await todoApi.createItem(selectedListId, {
+        title: draft.title,
+        notes: draft.notes || undefined,
+        attachments: draft.attachments.length > 0 ? draft.attachments : undefined,
+      });
       setItems((prev) => [...prev, item]);
-      setNewItemTitle('');
       setLists((prev) =>
         prev.map((l) =>
           l.id === selectedListId ? { ...l, total_items: (l.total_items ?? 0) + 1 } : l
@@ -549,19 +603,7 @@ export function TodoLists() {
                 </div>
               </div>
 
-              {/* Quick add */}
-              <form onSubmit={handleAddItem} className="flex items-center gap-2 px-4 md:px-6 py-3 border-b border-border-0">
-                <input
-                  type="text"
-                  value={newItemTitle}
-                  onChange={(e) => setNewItemTitle(e.target.value)}
-                  placeholder="Add a new item..."
-                  className="flex-1 px-3 py-2 rounded-lg bg-surface-2 border border-border-0 text-text-1 text-sm placeholder:text-text-3 focus:outline-none focus:ring-2 focus:ring-accent-primary"
-                />
-                <Button variant="primary" size="sm" type="submit" disabled={!newItemTitle.trim()} icon={<Plus className="w-4 h-4" />}>
-                  Add
-                </Button>
-              </form>
+              <TaskComposer onAdd={handleAddItem} />
 
               {/* Items list */}
               <div className="flex-1 overflow-y-auto">
@@ -586,12 +628,30 @@ export function TodoLists() {
                             onDragEnd={handleDragEnd}
                             onDragOver={(e) => handleDragOver(e, item.id)}
                             onDrop={(e) => handleDrop(e, item.id)}
-                            className={`group flex items-center gap-2 px-4 md:px-6 py-2.5 border-b border-border-0/50 transition-colors ${
+                            className={`group border-b border-border-0/50 transition-colors ${
                               dragOverItemId === item.id && dragItemId !== item.id
                                 ? 'border-t-2 border-t-accent-primary'
                                 : ''
                             } ${dragItemId === item.id ? 'opacity-50' : ''} hover:bg-surface-1/50`}
                           >
+                            <div className="flex items-center gap-2 px-4 md:px-6 py-2.5">
+                            {/* Expand — only for items with more to show */}
+                            {hasDetail(item) ? (
+                              <button
+                                onClick={() => setExpandedItemId(id => (id === item.id ? null : item.id))}
+                                className="flex-shrink-0 p-0.5 rounded text-text-3 hover:text-text-1 transition-colors cursor-pointer"
+                                aria-expanded={expandedItemId === item.id}
+                                aria-label={expandedItemId === item.id ? 'Collapse task' : 'Expand task'}
+                              >
+                                {expandedItemId === item.id
+                                  ? <ChevronDown className="w-3.5 h-3.5" />
+                                  : <ChevronRight className="w-3.5 h-3.5" />}
+                              </button>
+                            ) : (
+                              // Keeps titles aligned whether or not a row expands.
+                              <span className="flex-shrink-0 w-[18px]" aria-hidden="true" />
+                            )}
+
                             {/* Drag handle */}
                             <span className="flex-shrink-0 cursor-grab active:cursor-grabbing text-text-3 opacity-0 group-hover:opacity-60 transition-opacity">
                               <GripVertical className="w-4 h-4" />
@@ -654,6 +714,8 @@ export function TodoLists() {
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
+                            </div>
+                            {expandedItemId === item.id && <TaskDetail item={item} />}
                           </li>
                         ))}
                       </ul>

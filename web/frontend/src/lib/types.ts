@@ -620,11 +620,21 @@ export interface TodoList {
   updated_at: string;
 }
 
+/** Material attached to a task. `path` is a real on-disk path the agent opens. */
+export interface TodoAttachment {
+  kind: 'image' | 'file' | 'directory' | 'media';
+  path: string;
+  name: string;
+  /** Write-only: a context-file or media id the server resolves into `path`. */
+  ref?: string;
+}
+
 export interface TodoItem {
   id: string;
   list_id: string;
   title: string;
   notes: string;
+  attachments: TodoAttachment[];
   completed: boolean;
   sort_order: number;
   due_date: string | null;

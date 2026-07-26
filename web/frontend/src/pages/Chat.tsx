@@ -208,6 +208,28 @@ export function Chat() {
     return name.toLowerCase().includes(contextFilter.toLowerCase());
   }), [contextItems, contextFilter]);
 
+  // Which folder each context file lives in.
+  //
+  // The chat panel is ~200px wide, and rendering folders as their own header
+  // rows spent a whole line on a label while pushing the files you actually
+  // click further down. The folder becomes an icon on the file's own row
+  // instead, named in its tooltip.
+  const contextFileFolder = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of contextItems) {
+      if (item.kind === 'folder') {
+        for (const f of item.files) map.set(f.id, item.folder.name);
+      }
+    }
+    return map;
+  }, [contextItems]);
+
+  // Files only — folder rows are represented by the per-row icon above.
+  const contextPanelFiles = useMemo(
+    () => filteredContextItems.flatMap(i => (i.kind === 'file' ? [i.file] : [])),
+    [filteredContextItems],
+  );
+
   const filteredMediaItems = useMemo(() => mediaItems.filter(item =>
     item.prompt.toLowerCase().includes(mediaFilter.toLowerCase()) ||
     item.source_model.toLowerCase().includes(mediaFilter.toLowerCase())
@@ -2278,21 +2300,15 @@ export function Chat() {
                         )}
                       </button>
                       {sectionContext && (
-                        <div className="px-2 pb-2 space-y-0.5">
-                          {filteredContextItems.length === 0 ? (
+                        // Capped: a large library would otherwise push Tasks
+                        // off the bottom of the panel entirely.
+                        <div className="px-2 pb-2 space-y-0.5 max-h-[300px] overflow-y-auto">
+                          {contextPanelFiles.length === 0 ? (
                             <p className="text-[11px] text-text-3 px-2 py-1">No context files</p>
                           ) : (
-                            filteredContextItems.map((item, i) => {
-                              if (item.kind === 'folder') {
-                                return (
-                                  <div key={`folder-${i}`} className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold text-text-2 uppercase tracking-wider">
-                                    <FolderOpen className="w-3 h-3" />
-                                    {item.folder.name}
-                                  </div>
-                                );
-                              }
-                              const file = item.file;
+                            contextPanelFiles.map(file => {
                               const isAttached = attachedContextFiles.some(f => f.id === file.id);
+                              const folderName = contextFileFolder.get(file.id);
                               return (
                                 <button
                                   key={file.id}
@@ -2303,13 +2319,26 @@ export function Chat() {
                                       setAttachedContextFiles(prev => [...prev, file]);
                                     }
                                   }}
-                                  className={`w-full text-left px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer truncate ${
+                                  className={`w-full flex items-center gap-1.5 text-left px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
                                     isAttached ? 'bg-accent-muted text-accent-text' : 'text-text-2 hover:bg-surface-2'
                                   }`}
                                   title={file.name}
                                 >
-                                  <FileText className="w-3 h-3 inline mr-1.5 flex-shrink-0" />
-                                  {file.name}
+                                  <FileText className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                                  <span className="truncate flex-1 min-w-0">{file.name}</span>
+                                  {/* A span carries the tooltip rather than the
+                                      icon: a title on the wrapper reliably
+                                      overrides the row's own title, where an
+                                      SVG <title> child does not everywhere. */}
+                                  {folderName && (
+                                    <span
+                                      className="flex-shrink-0 text-text-3"
+                                      title={folderName}
+                                      aria-label={`In folder ${folderName}`}
+                                    >
+                                      <FolderOpen className="w-3 h-3" aria-hidden="true" />
+                                    </span>
+                                  )}
                                 </button>
                               );
                             })

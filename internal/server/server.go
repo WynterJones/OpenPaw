@@ -124,7 +124,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	skillsShHandler := handlers.NewSkillsShHandler(s.DB, dataDir)
 	projectsHandler := handlers.NewProjectsHandler(s.DB)
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
-	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
+	todoListsHandler := handlers.NewTodoListsHandler(s.DB, dataDir, s.AgentManager)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
 	studioHandler := handlers.NewStudioHandler(s.DB, dataDir, mediaRegistry)
 	backgroundsHandler := handlers.NewBackgroundsHandler(s.DB, dataDir, mediaRegistry, s.FrontendFS)
@@ -483,6 +483,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/{id}", todoListsHandler.DeleteList)
 				r.Get("/{id}/items", todoListsHandler.ListItems)
 				r.Post("/{id}/items", todoListsHandler.CreateItem)
+				// Stateless: rewrites a draft before the item exists.
+				r.Post("/enhance", todoListsHandler.EnhanceItem)
 				r.Put("/{id}/items/reorder", todoListsHandler.ReorderItems)
 				r.Put("/{id}/items/{itemId}", todoListsHandler.UpdateItem)
 				r.Put("/{id}/items/{itemId}/toggle", todoListsHandler.ToggleItem)
