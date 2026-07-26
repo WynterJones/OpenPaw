@@ -126,7 +126,7 @@ Chat features include:
 - **Multi-agent threads** with automatic routing and member tracking
 - **File attachments** for sharing context with agents
 - **Thread compaction** to summarize long conversations
-- **Stop button** to halt an agent mid-response
+- **Stop button** to halt an agent mid-response — the half-written reply is kept and badged, not discarded
 
 <p>
   <img src="assets/headlines/manage-agents.webp" alt="Manage Agents" width="333" />
@@ -152,10 +152,12 @@ The **Agents** page lets you create and configure specialist AI agents:
 The **Skills** page manages reusable skill definitions:
 
 - Create global skills as structured markdown documents with YAML frontmatter
+- A skill is a **folder**, not a single file — add `scripts/`, `references/` or `assets/` alongside `SKILL.md` and browse, edit and delete them in place. Agents are given the folder's real path, so a `SKILL.md` that says *"run `scripts/deploy.sh`"* works as written
+- Scripts are saved executable automatically
 - Install skills to individual agents from the global library
 - Agents can publish their skills back to the global library
 - Skills appear in agent system prompts as available capabilities
-- Browse and install from **[Skills.sh](https://skills.sh)** — Vercel's open agent skills directory with 70k+ community skills — directly from the Library page
+- Browse and install from **[Skills.sh](https://skills.sh)** — Vercel's open agent skills directory with 70k+ community skills — directly from the Library page. Bundled files come down with the skill, not just its `SKILL.md`
 
 <p>
   <img src="assets/headlines/manage-tools.webp" alt="Manage Tools" width="333" />
@@ -452,6 +454,10 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/skills/{name}` | Get skill content |
 | PUT | `/api/v1/skills/{name}` | Update a skill |
 | DELETE | `/api/v1/skills/{name}` | Delete a skill |
+| GET | `/api/v1/skills/{name}/files` | List every file in the skill folder |
+| GET | `/api/v1/skills/{name}/files/*` | Read a bundled file |
+| PUT | `/api/v1/skills/{name}/files/*` | Create or update a bundled file |
+| DELETE | `/api/v1/skills/{name}/files/*` | Delete a bundled file |
 
 #### Chat
 | Method | Endpoint | Description |
