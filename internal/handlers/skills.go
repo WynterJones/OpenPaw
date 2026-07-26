@@ -294,3 +294,62 @@ func (h *SkillsHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(userID, "skill_file_deleted", "skills", "skill", name, path)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "file deleted"})
 }
+
+// --- Agent skill file endpoints ---
+//
+// The same four operations against an agent's own copy of a skill. Without
+// these the UI could only show the global library, while the agent read and
+// wrote its copy — so a skill full of sub-skills and references still appeared
+// as one short document.
+
+func (h *SkillsHandler) ListAgentSkillFiles(w http.ResponseWriter, r *http.Request) {
+	files, err := agents.ListAgentSkillFiles(h.dataDir, chi.URLParam(r, "slug"), chi.URLParam(r, "name"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, files)
+}
+
+func (h *SkillsHandler) GetAgentSkillFile(w http.ResponseWriter, r *http.Request) {
+	content, err := agents.ReadAgentSkillFile(h.dataDir, chi.URLParam(r, "slug"), chi.URLParam(r, "name"), filePathParam(r))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"path":    filePathParam(r),
+		"content": content,
+	})
+}
+
+func (h *SkillsHandler) PutAgentSkillFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	slug := chi.URLParam(r, "slug")
+	name := chi.URLParam(r, "name")
+	path := filePathParam(r)
+	if err := agents.WriteAgentSkillFile(h.dataDir, slug, name, path, req.Content); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.db.LogAudit(middleware.GetUserID(r.Context()), "agent_skill_file_saved", "skills", "agent_role", slug, name+"/"+path)
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
+}
+
+func (h *SkillsHandler) DeleteAgentSkillFile(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	name := chi.URLParam(r, "name")
+	path := filePathParam(r)
+	if err := agents.DeleteAgentSkillFile(h.dataDir, slug, name, path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.db.LogAudit(middleware.GetUserID(r.Context()), "agent_skill_file_deleted", "skills", "agent_role", slug, name+"/"+path)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "file deleted"})
+}

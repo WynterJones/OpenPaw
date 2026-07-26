@@ -879,19 +879,16 @@ export function Scheduler() {
                         key: "name",
                         header: "Name",
                         render: (s: Schedule) => (
-                          <div className="flex items-center gap-2">
-                            <Bot className="w-4 h-4 text-accent-primary flex-shrink-0" />
-                            <div>
-                              <p className="text-sm font-medium text-text-0">
-                                {s.name}
-                              </p>
-                              <p className="text-xs text-text-3">
-                                {getAgentName(s.agent_role_slug)}
-                              </p>
-                              <p className="text-xs text-text-2 md:hidden mt-0.5">
-                                {getCronLabel(s.cron_expr)}
-                              </p>
-                            </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-0">
+                              {s.name}
+                            </p>
+                            <p className="text-xs text-text-3">
+                              {getAgentName(s.agent_role_slug)}
+                            </p>
+                            <p className="text-xs text-text-2 md:hidden mt-0.5">
+                              {getCronLabel(s.cron_expr)}
+                            </p>
                           </div>
                         ),
                       },

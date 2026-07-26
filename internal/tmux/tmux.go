@@ -212,6 +212,28 @@ func Start(ctx context.Context, name, workDir, command string) error {
 	return nil
 }
 
+// Kill ends a session and everything running inside it.
+//
+// The counterpart to Start: sessions deliberately outlive their command so the
+// output stays readable, which means something has to clear them away. Killing
+// the last session also stops the tmux server itself, which is tmux's own
+// behaviour and the point — nothing is left running in the background.
+func Kill(ctx context.Context, name string) error {
+	if !Available() {
+		return errors.New("tmux is not installed")
+	}
+	if strings.TrimSpace(name) == "" {
+		return errors.New("session name is required")
+	}
+	if !Exists(ctx, name) {
+		return fmt.Errorf("no tmux session named %q", name)
+	}
+	if _, err := run(ctx, "kill-session", "-t", name); err != nil {
+		return fmt.Errorf("tmux kill-session failed: %w", err)
+	}
+	return nil
+}
+
 // SessionName turns an agent's requested label into a tmux-safe session name.
 // tmux treats "." and ":" as window/pane separators, so a name containing them
 // cannot be targeted afterwards.

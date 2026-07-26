@@ -11,7 +11,7 @@ import {
 import { useDesign } from "../contexts/DesignContext";
 import { NotificationBell } from "./NotificationBell";
 import { startWindowDrag } from "../lib/tauri";
-import { useViewToggles } from "../contexts/viewToggles";
+import { useViewToggles, type ViewToggleKey } from "../contexts/viewToggles";
 
 function fmt(n: number): string {
   if (n < 0.01 && n > 0) return `$${n.toFixed(4)}`;
@@ -144,7 +144,7 @@ interface HeaderProps {
  * which were easy to miss and gave no hint of what they controlled.
  */
 function ViewTogglesMenu() {
-  const { sidebar, chatList, chatPanel, toggle } = useViewToggles();
+  const { sidebar, chatList, chatPanel, canvas, toggle } = useViewToggles();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -157,10 +157,13 @@ function ViewTogglesMenu() {
     return () => document.removeEventListener('mousedown', onClick);
   }, [open]);
 
-  const items: { key: 'sidebar' | 'chatList' | 'chatPanel'; label: string; checked: boolean }[] = [
+  // Canvas is listed here as well as in the chat itself, because turning it on
+  // hides the chat list its own button lives in.
+  const items: { key: ViewToggleKey; label: string; checked: boolean }[] = [
     { key: 'sidebar', label: 'Toggle Sidebar', checked: sidebar },
     { key: 'chatList', label: 'Toggle Chat List', checked: chatList },
     { key: 'chatPanel', label: 'Toggle Chat Panel', checked: chatPanel },
+    { key: 'canvas', label: 'Toggle Canvas', checked: canvas },
   ];
 
   return (

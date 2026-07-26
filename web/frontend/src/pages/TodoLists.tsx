@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ListTodo, Plus, Trash2, Check, X, Eye, EyeOff, ArrowLeft, Pencil, GripVertical, ChevronDown, ChevronRight, ImageIcon, FolderOpen, Film, FileText } from 'lucide-react';
+import { useDragReorder } from '../hooks/useDragReorder';
+import { ListTodo, Plus, Trash2, Check, X, Eye, EyeOff, ArrowLeft, Pencil, GripVertical, ChevronDown, ChevronRight, ImageIcon, FolderOpen, Film, FileText, Play, Pause } from 'lucide-react';
 import { todoApi } from '../lib/api-helpers';
 import type { TodoList, TodoItem, TodoAttachment } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
@@ -195,8 +196,6 @@ export function TodoLists() {
   const [editingList, setEditingList] = useState<TodoList | null>(null);
 
   // Drag state
-  const [dragItemId, setDragItemId] = useState<string | null>(null);
-  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
   // Deleting a list takes every task in it with it, and neither delete is
   // undoable — both go through a themed confirm rather than firing on click.
@@ -361,6 +360,20 @@ export function TodoLists() {
     }
   };
 
+  // Starting an item is a claim, not a completion: it is what stops the next
+  // scheduled run picking up something already underway.
+  const handleToggleProgress = async (item: TodoItem) => {
+    if (!selectedListId) return;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, in_progress: !i.in_progress } : i)));
+    try {
+      const updated = await todoApi.toggleItemProgress(selectedListId, item.id);
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, ...updated } : i)));
+    } catch {
+      toast('error', 'Failed to update item');
+      setItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+    }
+  };
+
   const handleUpdateItemTitle = async (item: TodoItem, newTitle: string) => {
     if (!selectedListId || newTitle === item.title) {
       setEditingItemId(null);
@@ -414,78 +427,30 @@ export function TodoLists() {
   };
 
   // --- Drag and drop ---
-  const handleDragStart = (e: React.DragEvent, itemId: string) => {
-    setDragItemId(itemId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', itemId);
-    // Make the drag image slightly transparent
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '0.5';
-    }
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '1';
-    }
-    setDragItemId(null);
-    setDragOverItemId(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent, itemId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragItemId && itemId !== dragItemId) {
-      setDragOverItemId(itemId);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!dragItemId || !selectedListId || dragItemId === targetId) {
-      setDragItemId(null);
-      setDragOverItemId(null);
-      return;
-    }
-
-    // Only allow reorder within incomplete items
-    const dragItem = incompleteItems.find((i) => i.id === dragItemId);
-    const targetItem = incompleteItems.find((i) => i.id === targetId);
-    if (!dragItem || !targetItem) {
-      setDragItemId(null);
-      setDragOverItemId(null);
-      return;
-    }
-
-    // Reorder incomplete items locally
-    const oldList = [...incompleteItems];
-    const dragIdx = oldList.findIndex((i) => i.id === dragItemId);
-    const targetIdx = oldList.findIndex((i) => i.id === targetId);
-    const [moved] = oldList.splice(dragIdx, 1);
-    oldList.splice(targetIdx, 0, moved);
-
-    // Apply new sort_order values and update items state
-    const reordered = oldList.map((item, idx) => ({ ...item, sort_order: idx }));
-    setItems((prev) => {
-      const completedItems = prev.filter((i) => i.completed);
-      return [...reordered, ...completedItems];
-    });
-
-    setDragItemId(null);
-    setDragOverItemId(null);
-
+  //
+  // Pointer-driven rather than the HTML5 drag API, which started a drag but
+  // never completed a drop here. Its "drop zone" was also just a border colour
+  // on the row under the cursor — nothing said where the task would land. This
+  // is the same mechanism the workbench tab bar reorders with.
+  const applyReorder = useCallback(async (ordered: TodoItem[]) => {
+    if (!selectedListId) return;
+    const renumbered = ordered.map((item, idx) => ({ ...item, sort_order: idx }));
+    setItems((prev) => [...renumbered, ...prev.filter((i) => i.completed)]);
     try {
       await todoApi.reorderItems(
         selectedListId,
-        reordered.map((item, idx) => ({ id: item.id, sort_order: idx }))
+        renumbered.map((item) => ({ id: item.id, sort_order: item.sort_order })),
       );
     } catch {
       toast('error', 'Failed to reorder items');
-      if (selectedListId) fetchItems(selectedListId);
+      fetchItems(selectedListId);
     }
-  };
+  }, [selectedListId, toast, fetchItems]);
 
   // --- Sort items ---
+  // Kept in the user's own order rather than floating in-progress items to the
+  // top: this list is drag-reorderable, and a re-sort on status change would
+  // yank a row out from under the cursor. The badge marks what is underway.
   const incompleteItems = [...items]
     .filter((i) => !i.completed)
     .sort((a, b) => a.sort_order - b.sort_order);
@@ -493,6 +458,20 @@ export function TodoLists() {
     .filter((i) => i.completed)
     .sort((a, b) => a.sort_order - b.sort_order);
   const completedCount = completedItems.length;
+
+  const { dragId, overId, handleDragStart, isDragging } = useDragReorder({
+    items: incompleteItems,
+    getId: (item: TodoItem) => item.id,
+    onReorder: applyReorder,
+    direction: 'vertical',
+  });
+  // Which edge of the hovered row the task would land on. Dragging upward it
+  // goes above that row, downward it goes below — so the line is drawn on the
+  // side it will actually end up.
+  const dropAbove =
+    dragId && overId
+      ? incompleteItems.findIndex((i) => i.id === dragId) > incompleteItems.findIndex((i) => i.id === overId)
+      : false;
 
   // --- Loading ---
   if (loading) {
@@ -671,21 +650,23 @@ export function TodoLists() {
                   <div>
                     {/* Incomplete items - draggable */}
                     {incompleteItems.length > 0 && (
-                      <ul>
+                      <ul className={isDragging ? 'select-none' : ''}>
                         {incompleteItems.map((item) => (
                           <li
                             key={item.id}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, item.id)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) => handleDragOver(e, item.id)}
-                            onDrop={(e) => handleDrop(e, item.id)}
-                            className={`group border-b border-border-0/50 transition-colors ${
-                              dragOverItemId === item.id && dragItemId !== item.id
-                                ? 'border-t-2 border-t-accent-primary'
-                                : ''
-                            } ${dragItemId === item.id ? 'opacity-50' : ''} hover:bg-surface-1/50`}
+                            data-drag-id={item.id}
+                            className={`group relative border-b border-border-0/50 transition-colors ${
+                              dragId === item.id ? 'opacity-40' : ''
+                            } hover:bg-surface-1/50`}
                           >
+                            {overId === item.id && dragId !== item.id && (
+                              <div
+                                className={`absolute left-0 right-0 h-0.5 bg-accent-primary z-10 ${
+                                  dropAbove ? '-top-px' : '-bottom-px'
+                                }`}
+                                aria-hidden="true"
+                              />
+                            )}
                             <div className="flex items-center gap-2 px-4 md:px-6 py-2.5">
                             {/* Expand — only for items with more to show */}
                             {hasDetail(item) ? (
@@ -705,7 +686,11 @@ export function TodoLists() {
                             )}
 
                             {/* Drag handle */}
-                            <span className="flex-shrink-0 cursor-grab active:cursor-grabbing text-text-3 opacity-0 group-hover:opacity-60 transition-opacity">
+                            <span
+                              onMouseDown={(e) => handleDragStart(item.id, e)}
+                              className="flex-shrink-0 cursor-grab active:cursor-grabbing text-text-3 opacity-0 group-hover:opacity-60 transition-opacity"
+                              title="Drag to reorder"
+                            >
                               <GripVertical className="w-4 h-4" />
                             </span>
 
@@ -736,6 +721,12 @@ export function TodoLists() {
                                 </span>
                               )}
 
+                              {item.in_progress && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md bg-accent-muted text-accent-primary text-[10px] font-semibold uppercase tracking-wider">
+                                  In progress
+                                </span>
+                              )}
+
                               {item.last_actor_agent_slug && item.last_actor_avatar && (
                                 <span
                                   className="inline-flex items-center flex-shrink-0"
@@ -756,6 +747,25 @@ export function TodoLists() {
                                 {new Date(item.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                               </span>
                             )}
+
+                            {/* Start / stop. Stays visible while in progress —
+                                the claim is the point, so it should not need a
+                                hover to find. */}
+                            <button
+                              onClick={() => handleToggleProgress(item)}
+                              className={`flex-shrink-0 p-1 rounded transition-all cursor-pointer ${
+                                item.in_progress
+                                  ? 'text-accent-primary hover:bg-accent-muted'
+                                  : 'text-text-3 opacity-0 group-hover:opacity-100 hover:text-text-1 hover:bg-surface-2'
+                              }`}
+                              aria-pressed={item.in_progress}
+                              aria-label={item.in_progress ? 'Stop working on this' : 'Start working on this'}
+                              title={item.in_progress
+                                ? 'Stop — hands it back so someone else can pick it up'
+                                : 'Start — marks it in progress so nothing else picks it up'}
+                            >
+                              {item.in_progress ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                            </button>
 
                             {/* Delete */}
                             <button

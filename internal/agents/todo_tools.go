@@ -20,6 +20,8 @@ func BuildTodoToolDefs() []llm.ToolDef {
 		buildTodoListItemsDef(),
 		buildTodoAddItemDef(),
 		buildTodoUpdateItemDef(),
+		buildTodoNextItemDef(),
+		buildTodoStartItemDef(),
 		buildTodoCheckItemDef(),
 		buildTodoUncheckItemDef(),
 		buildTodoCreateListDef(),
@@ -34,6 +36,8 @@ func MakeTodoToolHandlers(db *database.DB, agentSlug string, broadcast func(stri
 		"todo_list_items":   handleTodoListItems(db),
 		"todo_add_item":     handleTodoAddItem(db, agentSlug, broadcast),
 		"todo_update_item":  handleTodoUpdateItem(db, agentSlug, broadcast),
+		"todo_next_item":    handleTodoNextItem(db, agentSlug, broadcast),
+		"todo_start_item":   handleTodoStartItem(db, agentSlug, broadcast),
 		"todo_check_item":   handleTodoCheckItem(db, agentSlug, broadcast),
 		"todo_uncheck_item": handleTodoUncheckItem(db, agentSlug, broadcast),
 		"todo_create_list":  handleTodoCreateList(db, agentSlug, broadcast),
@@ -45,7 +49,8 @@ func buildTodoPromptSection(db *database.DB) string {
 	rows, err := db.Query(`
 		SELECT tl.name,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id) as total,
-			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as done
+			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as done,
+			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 0 AND in_progress = 1) as doing
 		FROM todo_lists tl ORDER BY tl.sort_order ASC`)
 	if err != nil {
 		return ""
@@ -55,16 +60,36 @@ func buildTodoPromptSection(db *database.DB) string {
 	var lines []string
 	for rows.Next() {
 		var name string
-		var total, done int
-		if rows.Scan(&name, &total, &done) != nil {
+		var total, done, doing int
+		if rows.Scan(&name, &total, &done, &doing) != nil {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("- %s (%d items, %d done)", name, total, done))
+		line := fmt.Sprintf("- %s (%d items, %d done", name, total, done)
+		if doing > 0 {
+			line += fmt.Sprintf(", %d in progress", doing)
+		}
+		lines = append(lines, line+")")
 	}
 	if len(lines) == 0 {
 		return ""
 	}
-	return "## TODO LISTS\nThe user has todo lists. Use todo_* tools to view and manage them.\n" + strings.Join(lines, "\n")
+	return "## TODO LISTS\nThe user has todo lists. Use todo_* tools to view and manage them.\n" +
+		strings.Join(lines, "\n") + "\n\n" + todoWorkflowGuidance()
+}
+
+// todoWorkflowGuidance is the three-state convention, spelled out because the
+// failure it prevents is invisible: an item someone is already working on looks
+// exactly like an untouched one until it is ticked off, so "do the next task"
+// picks it up a second time.
+func todoWorkflowGuidance() string {
+	return `### Picking up work
+
+An item is one of three things: **not started**, **in progress**, or **done**.
+
+- Asked for "the next task"? Call ` + "`todo_next_item`" + `. It returns the first item that is neither done nor already in progress, and claims it for you. Never pick an in-progress item because it looks like the next one — someone else is on it.
+- Already know which item you want? ` + "`todo_start_item`" + ` claims it. It refuses if the item is already claimed, and tells you by whom.
+- Finished? ` + "`todo_check_item`" + `, which also clears the claim.
+- Stopped without finishing? ` + "`todo_uncheck_item`" + ` releases it so someone else can take it. Do this rather than leaving a claim behind — a stale claim makes work invisible to every later run.`
 }
 
 // --- Tool Definitions ---
@@ -176,6 +201,62 @@ func buildTodoUpdateItemDef() llm.ToolDef {
 			Name:        "todo_update_item",
 			Description: "Update an existing todo item's title, notes, or due date.",
 			Parameters:  params,
+		},
+	}
+}
+
+func buildTodoNextItemDef() llm.ToolDef {
+	params, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"list_id": map[string]interface{}{
+				"type":        "string",
+				"description": "The ID of the todo list. Omit to take the next item from any list.",
+			},
+			"claim": map[string]interface{}{
+				"type": "boolean",
+				"description": "Mark the item as in progress so nobody else picks it up (default true). " +
+					"Set false only to look ahead without taking the work.",
+				"default": true,
+			},
+		},
+	})
+	return llm.ToolDef{
+		Type: "function",
+		Function: llm.FunctionDef{
+			Name: "todo_next_item",
+			Description: "Get the next todo item to work on, and claim it. Skips anything already done or " +
+				"already in progress, so two runs never pick up the same task. USE THIS whenever the user " +
+				"says \"work on the next task\", \"pick up the next item\" or similar, rather than reading " +
+				"the list and choosing yourself.",
+			Parameters: params,
+		},
+	}
+}
+
+func buildTodoStartItemDef() llm.ToolDef {
+	params, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"item_id": map[string]interface{}{
+				"type":        "string",
+				"description": "The ID of the todo item you are starting work on",
+			},
+			"note": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional note about what you are doing",
+			},
+		},
+		"required": []string{"item_id"},
+	})
+	return llm.ToolDef{
+		Type: "function",
+		Function: llm.FunctionDef{
+			Name: "todo_start_item",
+			Description: "Mark a todo item as in progress — you are working on it now. Do this before you " +
+				"start, not after: an unclaimed item looks available to every other run. Refuses if someone " +
+				"else already claimed it.",
+			Parameters: params,
 		},
 	}
 }
@@ -310,14 +391,16 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 			return llm.ToolResult{Output: "list_id is required", IsError: true}
 		}
 
-		query := `SELECT id, title, notes, attachments, completed, due_date, last_actor_agent_slug, last_actor_note, created_at, completed_at
+		query := `SELECT id, title, notes, attachments, completed, in_progress, started_by_agent_slug, started_at, due_date, last_actor_agent_slug, last_actor_note, created_at, completed_at
 			FROM todo_items WHERE list_id = ?`
 		args := []interface{}{params.ListID}
 
 		if !params.IncludeCompleted {
 			query += " AND completed = 0"
 		}
-		query += " ORDER BY completed ASC, sort_order ASC, created_at ASC"
+		// In-progress first: they are the ones not to touch, so they should be
+		// the ones read first rather than buried.
+		query += " ORDER BY completed ASC, in_progress DESC, sort_order ASC, created_at ASC"
 
 		rows, err := db.Query(query, args...)
 		if err != nil {
@@ -328,20 +411,40 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 		var items []map[string]interface{}
 		for rows.Next() {
 			var id, title, notes, attachments, lastActorNote string
-			var completed int
-			var dueDate, agentSlug sql.NullString
+			var completed, inProgress int
+			var dueDate, agentSlug, startedBy sql.NullString
 			var createdAt time.Time
-			var completedAt sql.NullTime
+			var completedAt, startedAt sql.NullTime
 
-			if rows.Scan(&id, &title, &notes, &attachments, &completed, &dueDate, &agentSlug, &lastActorNote, &createdAt, &completedAt) != nil {
+			if rows.Scan(&id, &title, &notes, &attachments, &completed, &inProgress, &startedBy, &startedAt, &dueDate, &agentSlug, &lastActorNote, &createdAt, &completedAt) != nil {
 				continue
 			}
 
+			// status is spelled out alongside the booleans because "completed:
+			// false" on its own reads as "available", which is the mistake this
+			// whole thing exists to stop.
+			status := "not_started"
+			if completed == 1 {
+				status = "done"
+			} else if inProgress == 1 {
+				status = "in_progress"
+			}
+
 			item := map[string]interface{}{
-				"id":        id,
-				"title":     title,
-				"notes":     notes,
-				"completed": completed == 1,
+				"id":          id,
+				"title":       title,
+				"notes":       notes,
+				"completed":   completed == 1,
+				"in_progress": inProgress == 1,
+				"status":      status,
+			}
+			if inProgress == 1 {
+				if startedBy.Valid && startedBy.String != "" {
+					item["started_by"] = startedBy.String
+				}
+				if startedAt.Valid {
+					item["started_at"] = startedAt.Time.Format(time.RFC3339)
+				}
 			}
 			// Real on-disk paths, so "the screenshot" in a task body resolves
 			// to something the agent can actually open.
@@ -501,6 +604,178 @@ func handleTodoUpdateItem(db *database.DB, agentSlug string, broadcast func(stri
 	}
 }
 
+// handleTodoNextItem hands out the next unclaimed item and claims it in one
+// step.
+//
+// One step on purpose: "read the list, then start the first one" is two calls
+// with a gap between them, and the gap is exactly where a second run picks the
+// same task. It is also the thing agents skip — they read the list, choose, and
+// never claim anything.
+func handleTodoNextItem(db *database.DB, agentSlug string, broadcast func(string, interface{})) llm.ToolHandler {
+	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+		var params struct {
+			ListID string `json:"list_id"`
+			Claim  *bool  `json:"claim"`
+		}
+		json.Unmarshal(input, &params)
+		claim := params.Claim == nil || *params.Claim
+
+		query := `SELECT ti.id, ti.list_id, tl.name, ti.title, ti.notes, ti.attachments, ti.due_date
+			FROM todo_items ti
+			JOIN todo_lists tl ON tl.id = ti.list_id
+			WHERE ti.completed = 0 AND ti.in_progress = 0`
+		args := []interface{}{}
+		if params.ListID != "" {
+			query += " AND ti.list_id = ?"
+			args = append(args, params.ListID)
+		}
+		query += " ORDER BY tl.sort_order ASC, ti.sort_order ASC, ti.created_at ASC LIMIT 1"
+
+		var id, listID, listName, title, notes, attachments string
+		var dueDate sql.NullString
+		if err := db.QueryRow(query, args...).Scan(&id, &listID, &listName, &title, &notes, &attachments, &dueDate); err != nil {
+			// Nothing available is a real answer, not a failure — but say which
+			// kind, because "all done" and "all claimed" call for opposite
+			// responses.
+			var doing int
+			countQuery := "SELECT COUNT(*) FROM todo_items WHERE completed = 0 AND in_progress = 1"
+			countArgs := []interface{}{}
+			if params.ListID != "" {
+				countQuery += " AND list_id = ?"
+				countArgs = append(countArgs, params.ListID)
+			}
+			db.QueryRow(countQuery, countArgs...).Scan(&doing)
+
+			msg := "Nothing left to pick up — everything is done."
+			if doing > 0 {
+				msg = fmt.Sprintf("Nothing available: the %d remaining item(s) are already in progress. Do not start them.", doing)
+			}
+			resp, _ := json.Marshal(map[string]interface{}{"item": nil, "reason": msg})
+			return llm.ToolResult{Output: string(resp)}
+		}
+
+		if claim {
+			now := time.Now().UTC()
+			// Guarded on in_progress = 0 so two runs racing here cannot both
+			// walk away believing they own the item.
+			res, err := db.Exec(
+				"UPDATE todo_items SET in_progress = 1, started_at = ?, started_by_agent_slug = ?, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ? AND in_progress = 0 AND completed = 0",
+				now, agentSlug, agentSlug, fmt.Sprintf("Started by agent %s", agentSlug), now, id,
+			)
+			if err != nil {
+				return llm.ToolResult{Output: "Failed to claim item: " + err.Error(), IsError: true}
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				resp, _ := json.Marshal(map[string]interface{}{
+					"item":   nil,
+					"reason": "Someone claimed that item first. Call todo_next_item again for the one after it.",
+				})
+				return llm.ToolResult{Output: string(resp)}
+			}
+			db.LogAudit("system", "todo_item_started", "todo", "todo_item", id, "agent="+agentSlug)
+			if broadcast != nil {
+				broadcast("todo_updated", map[string]interface{}{"type": "item_started", "item_id": id, "list_id": listID})
+			}
+		}
+
+		item := map[string]interface{}{
+			"id":          id,
+			"list_id":     listID,
+			"list_name":   listName,
+			"title":       title,
+			"notes":       notes,
+			"in_progress": claim,
+		}
+		if paths := todoAttachmentPaths(attachments); len(paths) > 0 {
+			item["attachments"] = paths
+		}
+		if dueDate.Valid {
+			item["due_date"] = dueDate.String
+		}
+
+		note := "Claimed — it is now in progress and no other run will pick it up. Call todo_check_item when it is done, or todo_uncheck_item to hand it back."
+		if !claim {
+			note = "Not claimed — call todo_start_item before you begin working on it."
+		}
+		resp, _ := json.Marshal(map[string]interface{}{"item": item, "note": note})
+		return llm.ToolResult{Output: string(resp)}
+	}
+}
+
+func handleTodoStartItem(db *database.DB, agentSlug string, broadcast func(string, interface{})) llm.ToolHandler {
+	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+		var params struct {
+			ItemID string `json:"item_id"`
+			Note   string `json:"note"`
+		}
+		if err := json.Unmarshal(input, &params); err != nil {
+			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+		}
+		if params.ItemID == "" {
+			return llm.ToolResult{Output: "item_id is required", IsError: true}
+		}
+
+		var title string
+		var completed, inProgress int
+		var startedBy sql.NullString
+		var startedAt sql.NullTime
+		err := db.QueryRow(
+			"SELECT title, completed, in_progress, started_by_agent_slug, started_at FROM todo_items WHERE id = ?",
+			params.ItemID,
+		).Scan(&title, &completed, &inProgress, &startedBy, &startedAt)
+		if err != nil {
+			return llm.ToolResult{Output: "Todo item not found: " + params.ItemID, IsError: true}
+		}
+		if completed == 1 {
+			return llm.ToolResult{Output: fmt.Sprintf("%q is already done — nothing to start.", title), IsError: true}
+		}
+		if inProgress == 1 {
+			// Not an error when it is already yours: re-running the same
+			// scheduled job should be a no-op, not a failure.
+			if startedBy.Valid && startedBy.String == agentSlug {
+				resp, _ := json.Marshal(map[string]interface{}{"id": params.ItemID, "in_progress": true, "note": "Already yours — carry on."})
+				return llm.ToolResult{Output: string(resp)}
+			}
+			who := "another agent"
+			if startedBy.Valid && startedBy.String != "" {
+				who = startedBy.String
+			}
+			when := ""
+			if startedAt.Valid {
+				when = " (since " + startedAt.Time.Format(time.RFC3339) + ")"
+			}
+			return llm.ToolResult{
+				Output:  fmt.Sprintf("%q is already in progress, claimed by %s%s. Pick something else — call todo_next_item.", title, who, when),
+				IsError: true,
+			}
+		}
+
+		now := time.Now().UTC()
+		actorNote := fmt.Sprintf("Started by agent %s", agentSlug)
+		if params.Note != "" {
+			actorNote = params.Note
+		}
+		if _, err := db.Exec(
+			"UPDATE todo_items SET in_progress = 1, started_at = ?, started_by_agent_slug = ?, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ?",
+			now, agentSlug, agentSlug, actorNote, now, params.ItemID,
+		); err != nil {
+			return llm.ToolResult{Output: "Failed to start item: " + err.Error(), IsError: true}
+		}
+
+		db.LogAudit("system", "todo_item_started", "todo", "todo_item", params.ItemID, "agent="+agentSlug)
+		if broadcast != nil {
+			broadcast("todo_updated", map[string]interface{}{"type": "item_started", "item_id": params.ItemID})
+		}
+
+		resp, _ := json.Marshal(map[string]interface{}{
+			"id":          params.ItemID,
+			"title":       title,
+			"in_progress": true,
+		})
+		return llm.ToolResult{Output: string(resp)}
+	}
+}
+
 func handleTodoCheckItem(db *database.DB, agentSlug string, broadcast func(string, interface{})) llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var params struct {
@@ -520,8 +795,10 @@ func handleTodoCheckItem(db *database.DB, agentSlug string, broadcast func(strin
 			actorNote = params.Note
 		}
 
+		// Completing releases the claim: an item both done and in progress would
+		// be a contradiction, and the claim is what other runs read to skip it.
 		result, err := db.Exec(
-			"UPDATE todo_items SET completed = 1, completed_at = ?, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ?",
+			"UPDATE todo_items SET completed = 1, completed_at = ?, in_progress = 0, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ?",
 			now, agentSlug, actorNote, now, params.ItemID,
 		)
 		if err != nil {
@@ -565,8 +842,10 @@ func handleTodoUncheckItem(db *database.DB, agentSlug string, broadcast func(str
 			actorNote = params.Note
 		}
 
+		// Unchecking is also how work is handed back, so it clears the claim too
+		// — otherwise an abandoned item stays invisible to todo_next_item.
 		result, err := db.Exec(
-			"UPDATE todo_items SET completed = 0, completed_at = NULL, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ?",
+			"UPDATE todo_items SET completed = 0, completed_at = NULL, in_progress = 0, started_at = NULL, started_by_agent_slug = NULL, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ?",
 			agentSlug, actorNote, now, params.ItemID,
 		)
 		if err != nil {

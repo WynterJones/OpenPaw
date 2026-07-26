@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/tmux"
 )
 
@@ -57,6 +58,48 @@ func (h *ChatHandler) ListTmuxSessions(w http.ResponseWriter, r *http.Request) {
 		"sessions":  sessions,
 		"watches":   watches,
 	})
+}
+
+// KillTmuxSession ends a session and everything running in it.
+//
+// Watches are cancelled first, for every thread and not just the caller's: the
+// session is about to vanish, and a watcher left running would report it as
+// "finished" on its next tick, which reads as a build completing rather than a
+// session the user closed.
+func (h *ChatHandler) KillTmuxSession(w http.ResponseWriter, r *http.Request) {
+	session := r.URL.Query().Get("session")
+	if session == "" {
+		writeError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+
+	stopped := h.stopWatchesForSession(session)
+
+	if err := tmux.Kill(r.Context(), session); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	h.db.LogAudit(middleware.GetUserID(r.Context()), "tmux_session_killed", "chat", "tmux_session", session, "")
+	logger.Info("tmux session %s killed (%d watches stopped)", session, stopped)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"killed": session, "watches_stopped": stopped})
+}
+
+// stopWatchesForSession cancels every watch on a session, whichever thread
+// started it. Returns how many were stopped.
+func (h *ChatHandler) stopWatchesForSession(session string) int {
+	stopped := 0
+	tmuxWatches.Range(func(k, v interface{}) bool {
+		wch, ok := v.(*tmuxWatch)
+		if !ok || wch.Session != session {
+			return true
+		}
+		wch.cancel()
+		tmuxWatches.Delete(k)
+		stopped++
+		return true
+	})
+	return stopped
 }
 
 // StartTmuxWatch polls a tmux session on a fixed interval and reports back into

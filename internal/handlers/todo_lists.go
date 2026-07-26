@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/database"
+	"github.com/openpaw/openpaw/internal/middleware"
 )
 
 type TodoListsHandler struct {
@@ -343,6 +344,9 @@ func (h *TodoListsHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		"title":                 req.Title,
 		"notes":                 req.Notes,
 		"completed":             false,
+		"in_progress":           false,
+		"started_at":            nil,
+		"started_by_agent_slug": nil,
 		"sort_order":            maxOrder + 1,
 		"due_date":              req.DueDate,
 		"last_actor_agent_slug": req.AgentSlug,
@@ -445,8 +449,10 @@ func (h *TodoListsHandler) ToggleItem(w http.ResponseWriter, r *http.Request) {
 		agentSlug = sql.NullString{String: req.AgentSlug, Valid: true}
 	}
 
+	// Either direction clears the in-progress claim: finished work is not still
+	// in progress, and reopening an item hands it back to whoever picks up next.
 	_, err = h.db.Exec(
-		"UPDATE todo_items SET completed = ?, completed_at = ?, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+		"UPDATE todo_items SET completed = ?, completed_at = ?, in_progress = 0, started_at = NULL, started_by_agent_slug = NULL, last_actor_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ? AND list_id = ?",
 		newCompleted, completedAt, agentSlug, req.AgentNote, now, itemID, listID,
 	)
 	if err != nil {
@@ -463,6 +469,69 @@ func (h *TodoListsHandler) ToggleItem(w http.ResponseWriter, r *http.Request) {
 	item := h.fetchItem(listID, itemID)
 	if item == nil {
 		writeError(w, http.StatusNotFound, "todo item not found after toggle")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+// ToggleItemProgress starts or stops work on an item.
+//
+// The UI's counterpart to the agents' todo_start_item: a person picking
+// something up needs to mark it the same way an agent does, or the two views of
+// "who is on what" drift apart.
+func (h *TodoListsHandler) ToggleItemProgress(w http.ResponseWriter, r *http.Request) {
+	listID := chi.URLParam(r, "id")
+	itemID := chi.URLParam(r, "itemId")
+
+	var req struct {
+		AgentSlug string `json:"agent_slug"`
+		AgentNote string `json:"agent_note"`
+	}
+	decodeJSON(r, &req)
+
+	var completed, inProgress int
+	if err := h.db.QueryRow("SELECT completed, in_progress FROM todo_items WHERE id = ? AND list_id = ?", itemID, listID).Scan(&completed, &inProgress); err != nil {
+		writeError(w, http.StatusNotFound, "todo item not found")
+		return
+	}
+	if completed == 1 {
+		writeError(w, http.StatusBadRequest, "that item is already done")
+		return
+	}
+
+	now := time.Now().UTC()
+	starting := inProgress == 0
+
+	var err error
+	if starting {
+		actor := sql.NullString{}
+		if req.AgentSlug != "" {
+			actor = sql.NullString{String: req.AgentSlug, Valid: true}
+		}
+		_, err = h.db.Exec(
+			"UPDATE todo_items SET in_progress = 1, started_at = ?, started_by_agent_slug = ?, last_actor_note = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+			now, actor, req.AgentNote, now, itemID, listID,
+		)
+	} else {
+		_, err = h.db.Exec(
+			"UPDATE todo_items SET in_progress = 0, started_at = NULL, started_by_agent_slug = NULL, last_actor_note = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+			req.AgentNote, now, itemID, listID,
+		)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update todo item")
+		return
+	}
+
+	action := "todo_item_stopped"
+	if starting {
+		action = "todo_item_started"
+	}
+	h.db.LogAudit(middleware.GetUserID(r.Context()), action, "todo", "todo_list", listID, "item="+itemID)
+
+	item := h.fetchItem(listID, itemID)
+	if item == nil {
+		writeError(w, http.StatusNotFound, "todo item not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
@@ -521,24 +590,24 @@ func (h *TodoListsHandler) ReorderItems(w http.ResponseWriter, r *http.Request) 
 // fetchItem returns a single item with agent info, or nil if not found.
 func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface{} {
 	var id, listIDVal, title, notes, lastActorNote, attachments string
-	var completed, sortOrder int
-	var dueDate, agentSlug, agentName, agentAvatar sql.NullString
+	var completed, inProgress, sortOrder int
+	var dueDate, agentSlug, agentName, agentAvatar, startedBy sql.NullString
 	var createdAt, updatedAt time.Time
-	var completedAt sql.NullTime
+	var completedAt, startedAt sql.NullTime
 
 	err := h.db.QueryRow(`
-		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.sort_order,
+		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.in_progress, ti.sort_order,
 		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note, ti.attachments,
-		       ti.created_at, ti.updated_at, ti.completed_at,
+		       ti.created_at, ti.updated_at, ti.completed_at, ti.started_at, ti.started_by_agent_slug,
 		       ar.name as agent_name, ar.avatar_path as agent_avatar
 		FROM todo_items ti
 		LEFT JOIN agent_roles ar ON ar.slug = ti.last_actor_agent_slug
 		WHERE ti.id = ? AND ti.list_id = ?`,
 		itemID, listID,
 	).Scan(
-		&id, &listIDVal, &title, &notes, &completed, &sortOrder,
+		&id, &listIDVal, &title, &notes, &completed, &inProgress, &sortOrder,
 		&dueDate, &agentSlug, &lastActorNote, &attachments,
-		&createdAt, &updatedAt, &completedAt,
+		&createdAt, &updatedAt, &completedAt, &startedAt, &startedBy,
 		&agentName, &agentAvatar,
 	)
 	if err != nil {
@@ -546,30 +615,33 @@ func (h *TodoListsHandler) fetchItem(listID, itemID string) map[string]interface
 	}
 
 	return map[string]interface{}{
-		"id":                      id,
-		"list_id":                 listIDVal,
-		"title":                   title,
-		"notes":                   notes,
-		"completed":               completed == 1,
-		"sort_order":              sortOrder,
-		"due_date":                nullStr(dueDate),
-		"last_actor_agent_slug":   nullStr(agentSlug),
-		"last_actor_note":         lastActorNote,
-		"attachments":             decodeAttachments(attachments),
-		"created_at":              createdAt.Format(time.RFC3339),
-		"updated_at":              updatedAt.Format(time.RFC3339),
-		"completed_at":            nullTime(completedAt),
-		"last_actor_agent_name":   nullStr(agentName),
-		"last_actor_avatar":       nullStr(agentAvatar),
+		"id":                    id,
+		"list_id":               listIDVal,
+		"title":                 title,
+		"notes":                 notes,
+		"completed":             completed == 1,
+		"in_progress":           inProgress == 1,
+		"started_at":            nullTime(startedAt),
+		"started_by_agent_slug": nullStr(startedBy),
+		"sort_order":            sortOrder,
+		"due_date":              nullStr(dueDate),
+		"last_actor_agent_slug": nullStr(agentSlug),
+		"last_actor_note":       lastActorNote,
+		"attachments":           decodeAttachments(attachments),
+		"created_at":            createdAt.Format(time.RFC3339),
+		"updated_at":            updatedAt.Format(time.RFC3339),
+		"completed_at":          nullTime(completedAt),
+		"last_actor_agent_name": nullStr(agentName),
+		"last_actor_avatar":     nullStr(agentAvatar),
 	}
 }
 
 // fetchItems is a helper that fetches items for a list with optional completed filter.
 func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []map[string]interface{} {
 	query := `
-		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.sort_order,
+		SELECT ti.id, ti.list_id, ti.title, ti.notes, ti.completed, ti.in_progress, ti.sort_order,
 		       ti.due_date, ti.last_actor_agent_slug, ti.last_actor_note, ti.attachments,
-		       ti.created_at, ti.updated_at, ti.completed_at,
+		       ti.created_at, ti.updated_at, ti.completed_at, ti.started_at, ti.started_by_agent_slug,
 		       ar.name as agent_name, ar.avatar_path as agent_avatar
 		FROM todo_items ti
 		LEFT JOIN agent_roles ar ON ar.slug = ti.last_actor_agent_slug
@@ -585,7 +657,7 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 		}
 	}
 
-	query += " ORDER BY ti.completed ASC, ti.sort_order ASC, ti.created_at ASC"
+	query += " ORDER BY ti.completed ASC, ti.in_progress DESC, ti.sort_order ASC, ti.created_at ASC"
 
 	rows, err := h.db.Query(query, args...)
 	if err != nil {
@@ -596,36 +668,39 @@ func (h *TodoListsHandler) fetchItems(listID string, completedFilter *bool) []ma
 	items := []map[string]interface{}{}
 	for rows.Next() {
 		var id, listIDVal, title, notes, lastActorNote, attachments string
-		var completed, sortOrder int
-		var dueDate, agentSlug, agentName, agentAvatar sql.NullString
+		var completed, inProgress, sortOrder int
+		var dueDate, agentSlug, agentName, agentAvatar, startedBy sql.NullString
 		var createdAt, updatedAt time.Time
-		var completedAt sql.NullTime
+		var completedAt, startedAt sql.NullTime
 
 		if rows.Scan(
-			&id, &listIDVal, &title, &notes, &completed, &sortOrder,
+			&id, &listIDVal, &title, &notes, &completed, &inProgress, &sortOrder,
 			&dueDate, &agentSlug, &lastActorNote, &attachments,
-			&createdAt, &updatedAt, &completedAt,
+			&createdAt, &updatedAt, &completedAt, &startedAt, &startedBy,
 			&agentName, &agentAvatar,
 		) != nil {
 			continue
 		}
 
 		item := map[string]interface{}{
-			"id":                      id,
-			"list_id":                 listIDVal,
-			"title":                   title,
-			"notes":                   notes,
-			"completed":               completed == 1,
-			"sort_order":              sortOrder,
-			"attachments":             decodeAttachments(attachments),
-			"due_date":                nullStr(dueDate),
-			"last_actor_agent_slug":   nullStr(agentSlug),
-			"last_actor_note":         lastActorNote,
-			"created_at":              createdAt.Format(time.RFC3339),
-			"updated_at":              updatedAt.Format(time.RFC3339),
-			"completed_at":            nullTime(completedAt),
-			"last_actor_agent_name":   nullStr(agentName),
-			"last_actor_avatar":       nullStr(agentAvatar),
+			"id":                    id,
+			"list_id":               listIDVal,
+			"title":                 title,
+			"notes":                 notes,
+			"completed":             completed == 1,
+			"in_progress":           inProgress == 1,
+			"started_at":            nullTime(startedAt),
+			"started_by_agent_slug": nullStr(startedBy),
+			"sort_order":            sortOrder,
+			"attachments":           decodeAttachments(attachments),
+			"due_date":              nullStr(dueDate),
+			"last_actor_agent_slug": nullStr(agentSlug),
+			"last_actor_note":       lastActorNote,
+			"created_at":            createdAt.Format(time.RFC3339),
+			"updated_at":            updatedAt.Format(time.RFC3339),
+			"completed_at":          nullTime(completedAt),
+			"last_actor_agent_name": nullStr(agentName),
+			"last_actor_avatar":     nullStr(agentAvatar),
 		}
 
 		items = append(items, item)

@@ -523,6 +523,19 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		}
 	}
 
+	// Canvas: show a running dev server or a built page in the preview pane
+	// beside the chat, so local work can be looked at without leaving it.
+	if threadID != "" {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildCanvasToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeCanvasToolHandlers(threadID, agentRoleSlug) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + buildCanvasPromptSection()
+	}
+
 	// Inject memory tools so agents can save/search memories across conversations
 	if m.MemoryMgr != nil {
 		m.MemoryMgr.EnsureMigrated(agentRoleSlug)

@@ -56,6 +56,15 @@ type WSMessageReacted struct {
 	Reactions []Reaction `json:"reactions"`
 }
 
+// WSCanvasOpen is the payload for "canvas_open" broadcasts — an agent putting
+// something on the chat's preview canvas.
+type WSCanvasOpen struct {
+	ThreadID      string `json:"thread_id"`
+	URL           string `json:"url"`
+	Title         string `json:"title,omitempty"`
+	AgentRoleSlug string `json:"agent_role_slug,omitempty"`
+}
+
 // WSAgentAvatarUpdated is the payload for "agent_avatar_updated" broadcasts.
 type WSAgentAvatarUpdated struct {
 	AgentRoleSlug     string `json:"agent_role_slug"`

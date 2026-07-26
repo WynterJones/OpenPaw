@@ -154,6 +154,26 @@ func (p *ClaudeProvider) RunAgentLoop(ctx context.Context, cfg llm.AgentConfig, 
 	return result, nil
 }
 
+// reportMCPStatus logs whether the OpenPaw bridge actually came up for this
+// run.
+//
+// When it does not, every OpenPaw tool is simply absent — the agent cannot mark
+// a todo done, save a memory or file a report, and has no way to know why. It
+// then explains the gap in its reply, plausibly and wrongly. This is the one
+// moment the truth is available, so it goes in the log.
+func reportMCPStatus(bin string, servers []claudeMCPServer, baseURL string) {
+	for _, s := range servers {
+		if s.Name != "openpaw" {
+			continue
+		}
+		if s.Status != "connected" {
+			logger.Warn("%s: the openpaw MCP bridge reported status %q — OpenPaw tools (todo_*, memory, delegation) are NOT available to this run. Bridge URL base: %s", bin, s.Status, baseURL)
+		}
+		return
+	}
+	logger.Warn("%s: the openpaw MCP bridge was not listed by the CLI at all — OpenPaw tools are NOT available to this run. Bridge URL base: %s", bin, baseURL)
+}
+
 func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMessage, resumeID string) (*llm.AgentResult, string, error) {
 	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"}
 
@@ -233,6 +253,9 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 			if cl.Subtype == "init" {
 				if cl.SessionID != "" {
 					sessionID = cl.SessionID
+				}
+				if mcpSession != nil {
+					reportMCPStatus(p.binName, cl.MCPServers, p.mcpBaseURL)
 				}
 				emit(llm.StreamEvent{Type: llm.EventInit, SessionID: cl.SessionID})
 			}
@@ -395,6 +418,16 @@ type claudeLine struct {
 	IsError   bool            `json:"is_error"`
 	NumTurns  int             `json:"num_turns"`
 	Usage     *claudeUsage    `json:"usage"`
+	// MCPServers appears on the init line: the CLI's own verdict on every MCP
+	// server it was handed. It is the only place a failed bridge is reported —
+	// without it a run whose OpenPaw tools never arrived looks like a run where
+	// the agent simply chose not to use them.
+	MCPServers []claudeMCPServer `json:"mcp_servers"`
+}
+
+type claudeMCPServer struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 type claudeUsage struct {

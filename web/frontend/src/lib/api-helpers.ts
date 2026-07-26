@@ -228,6 +228,18 @@ export const agentSkills = {
   update: (slug: string, skillName: string, content: string) => api.put(`/agent-roles/${slug}/skills/${skillName}`, { content }),
   remove: (slug: string, skillName: string) => api.delete(`/agent-roles/${slug}/skills/${skillName}`),
   publish: (slug: string, skillName: string) => api.post(`/agent-roles/${slug}/skills/${skillName}/publish`),
+
+  // An agent's copy of a skill is a directory too, and it is the copy the agent
+  // actually reads and edits — so it needs the same file access the global
+  // library has, or the UI shows a stub of something the agent sees in full.
+  files: (slug: string, skillName: string) =>
+    api.get<SkillFile[]>(`/agent-roles/${slug}/skills/${skillName}/files`),
+  readFile: (slug: string, skillName: string, path: string) =>
+    api.get<{ path: string; content: string }>(`/agent-roles/${slug}/skills/${skillName}/files/${encodePath(path)}`),
+  writeFile: (slug: string, skillName: string, path: string, content: string) =>
+    api.put<{ path: string }>(`/agent-roles/${slug}/skills/${skillName}/files/${encodePath(path)}`, { content }),
+  deleteFile: (slug: string, skillName: string, path: string) =>
+    api.delete(`/agent-roles/${slug}/skills/${skillName}/files/${encodePath(path)}`),
 };
 
 // Notification API helpers
@@ -392,6 +404,8 @@ export const todoApi = {
     api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}`, data),
   toggleItem: (listId: string, itemId: string, body?: { agent_slug?: string; agent_note?: string }) =>
     api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}/toggle`, body || {}),
+  toggleItemProgress: (listId: string, itemId: string, body?: { agent_slug?: string; agent_note?: string }) =>
+    api.put<TodoItem>(`/todo-lists/${listId}/items/${itemId}/progress`, body || {}),
   deleteItem: (listId: string, itemId: string) =>
     api.delete(`/todo-lists/${listId}/items/${itemId}`),
   reorderItems: (listId: string, items: { id: string; sort_order: number }[]) =>

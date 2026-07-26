@@ -12,8 +12,10 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { TerminalSquare, Eye, EyeOff, GitBranch, Gauge, Clock, Loader2 } from 'lucide-react';
+import { TerminalSquare, Eye, EyeOff, GitBranch, Gauge, Clock, Loader2, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { Modal } from '../Modal';
+import { Button } from '../Button';
 
 interface TmuxStatus {
   project?: string;
@@ -70,6 +72,8 @@ function Countdown({ target }: { target: string }) {
 export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
   const [data, setData] = useState<TmuxResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [killTarget, setKillTarget] = useState<TmuxSession | null>(null);
+  const [killing, setKilling] = useState(false);
 
   const load = useCallback(async () => {
     if (!threadId) return;
@@ -112,6 +116,22 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
       /* leave the card as-is; the next poll re-syncs */
     } finally {
       setBusy(false);
+    }
+  };
+
+  const killSession = async (session: string) => {
+    setKilling(true);
+    try {
+      await api.delete(`/chat/tmux?session=${encodeURIComponent(session)}`);
+      // Drop it locally rather than waiting on the 10s poll, so the bar goes
+      // away the moment the session does.
+      setData(prev => prev ? { ...prev, sessions: prev.sessions.filter(s => s.name !== session) } : prev);
+      setKillTarget(null);
+      await load();
+    } catch {
+      /* the next poll re-syncs whatever actually happened */
+    } finally {
+      setKilling(false);
     }
   };
 
@@ -162,6 +182,15 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
                 )}
                 {watch ? <>checking in <Countdown target={watch.next_check} /></> : 'Watch'}
               </button>
+
+              <button
+                onClick={() => setKillTarget(s)}
+                className="p-0.5 rounded-md text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer flex-shrink-0"
+                title="Close this session — stops whatever is running in it"
+                aria-label={`Close tmux session ${s.name}`}
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
             </div>
 
             {st && (
@@ -193,6 +222,32 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
           </div>
         );
       })}
+
+      <Modal open={!!killTarget} onClose={() => !killing && setKillTarget(null)} title="Close this session?" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-2">
+            This kills the tmux session{' '}
+            <span className="font-medium text-text-1">
+              {killTarget?.status?.project || killTarget?.name}
+            </span>{' '}
+            and stops whatever is running inside it — unsaved work in that session is lost.
+          </p>
+          <p className="text-xs text-text-3">
+            If it is the last session, tmux shuts its server down too. Any watch on it stops.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setKillTarget(null)} disabled={killing}>Cancel</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={killing}
+              onClick={() => killTarget && killSession(killTarget.name)}
+            >
+              Close session
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

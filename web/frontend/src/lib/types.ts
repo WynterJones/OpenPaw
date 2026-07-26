@@ -647,6 +647,10 @@ export interface TodoItem {
   notes: string;
   attachments: TodoAttachment[];
   completed: boolean;
+  /** Claimed by someone and underway — "work on the next task" skips these. */
+  in_progress: boolean;
+  started_at: string | null;
+  started_by_agent_slug: string | null;
   sort_order: number;
   due_date: string | null;
   last_actor_agent_slug: string | null;

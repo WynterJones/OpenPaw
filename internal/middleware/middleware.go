@@ -142,7 +142,12 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'")
+		// frame-src is deliberately open: the chat canvas previews whatever the
+		// user or their agent points it at — a local dev server on some
+		// arbitrary port, a local file served back through /api/v1/canvas/fs,
+		// or a URL typed into the canvas bar. Framing outward carries none of
+		// the risk of being framed, which frame-ancestors 'none' still refuses.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data: https://fonts.gstatic.com; frame-src 'self' http: https:; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }

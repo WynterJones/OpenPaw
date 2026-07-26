@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search, FolderOpen, GripVertical, Clock, AlertCircle, CheckCircle2, Circle, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search, FolderOpen, GripVertical, Clock, AlertCircle, CheckCircle2, Circle, ChevronRight, ChevronDown } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
@@ -11,6 +11,7 @@ import { Toggle } from '../components/Toggle';
 import { FolderAssign } from '../components/FolderAssign';
 import { AvailabilitySelect } from '../components/AvailabilitySelect';
 import { HeartbeatOverride } from '../components/HeartbeatOverride';
+import { AgentSkillFiles } from '../components/skills/AgentSkillFiles';
 import { api, agentFiles, agentMemories, agentSkills, agentTasks, skills as skillsApi, type AgentRole, type Skill, type MemoryItem, type Tool, type AgentTask, type AgentTaskStatus } from '../lib/api';
 
 interface AgentTool extends Tool {
@@ -100,6 +101,9 @@ export function AgentEdit() {
   const [agentSkillList, setAgentSkillList] = useState<Skill[]>([]);
   const [globalSkillList, setGlobalSkillList] = useState<Skill[]>([]);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
+  // Which installed skill has its files open. One at a time: the file browser
+  // and editor are tall, and two open at once buries the list.
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
   // Tools state
   const [agentTools, setAgentTools] = useState<AgentTool[]>([]);
@@ -1248,33 +1252,49 @@ export function AgentEdit() {
               </div>
             ) : (
               <div className="space-y-2">
-                {agentSkillList.map(skill => (
-                  <div key={skill.name} className="flex items-center gap-3 p-3 rounded-lg border border-border-1 bg-surface-1">
-                    <div className="w-8 h-8 rounded-lg bg-accent-muted flex items-center justify-center flex-shrink-0">
-                      <Sparkles className="w-4 h-4 text-accent-text" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-text-0 font-mono">{skill.name}</p>
-                      <p className="text-[11px] text-text-3 truncate">{skill.description || skill.summary || 'No description'}</p>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                {agentSkillList.map(skill => {
+                  const open = expandedSkill === skill.name;
+                  return (
+                  <div key={skill.name} className="rounded-lg border border-border-1 bg-surface-1 overflow-hidden">
+                    <div className="flex items-center gap-3 p-3">
                       <button
-                        onClick={() => handlePublishSkill(skill.name)}
-                        className="p-1.5 rounded-lg text-text-3 hover:text-accent-primary hover:bg-accent-muted transition-colors cursor-pointer"
-                        title="Publish to global"
+                        onClick={() => setExpandedSkill(open ? null : skill.name)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
+                        aria-expanded={open}
+                        title={open ? 'Hide files' : 'Show the skill\u2019s files'}
                       >
-                        <ArrowUpFromLine className="w-3.5 h-3.5" />
+                        <div className="w-8 h-8 rounded-lg bg-accent-muted flex items-center justify-center flex-shrink-0">
+                          <Sparkles className="w-4 h-4 text-accent-text" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-text-0 font-mono">{skill.name}</p>
+                          <p className="text-[11px] text-text-3 truncate">{skill.description || skill.summary || 'No description'}</p>
+                        </div>
+                        {open
+                          ? <ChevronDown className="w-4 h-4 text-text-3 flex-shrink-0" />
+                          : <ChevronRight className="w-4 h-4 text-text-3 flex-shrink-0" />}
                       </button>
-                      <button
-                        onClick={() => handleRemoveSkill(skill.name)}
-                        className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title="Remove skill"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => handlePublishSkill(skill.name)}
+                          className="p-1.5 rounded-lg text-text-3 hover:text-accent-primary hover:bg-accent-muted transition-colors cursor-pointer"
+                          title="Publish to global"
+                        >
+                          <ArrowUpFromLine className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveSkill(skill.name)}
+                          className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          title="Remove skill"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
+                    {open && slug && <AgentSkillFiles slug={slug} skillName={skill.name} />}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

@@ -60,6 +60,12 @@ func isEditable(path string, size int64) bool {
 // "../../id_rsa" cleans to a valid-looking relative path — so the result is
 // checked to be inside the skill root after resolution.
 func resolveSkillPath(dataDir, skillName, relPath string) (string, error) {
+	return resolveSkillPathIn(globalSkillsDir(dataDir), skillName, relPath)
+}
+
+// resolveSkillPathIn is the same check against an arbitrary skills root, so an
+// agent's own skills directory gets exactly the containment the global one has.
+func resolveSkillPathIn(skillsRoot, skillName, relPath string) (string, error) {
 	if !IsValidSkillName(skillName) {
 		return "", fmt.Errorf("invalid skill name: %s", skillName)
 	}
@@ -71,7 +77,7 @@ func resolveSkillPath(dataDir, skillName, relPath string) (string, error) {
 		return "", fmt.Errorf("path must be relative to the skill")
 	}
 
-	root := filepath.Join(globalSkillsDir(dataDir), skillName)
+	root := filepath.Join(skillsRoot, skillName)
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("resolve skill dir: %w", err)
@@ -89,10 +95,14 @@ func resolveSkillPath(dataDir, skillName, relPath string) (string, error) {
 // SKILL.md first and the rest alphabetically — SKILL.md is the entry point and
 // belongs at the top regardless of how the folder happens to sort.
 func ListSkillFiles(dataDir, skillName string) ([]SkillFile, error) {
+	return listSkillFilesIn(globalSkillsDir(dataDir), skillName)
+}
+
+func listSkillFilesIn(skillsRoot, skillName string) ([]SkillFile, error) {
 	if !IsValidSkillName(skillName) {
 		return nil, fmt.Errorf("invalid skill name: %s", skillName)
 	}
-	root := filepath.Join(globalSkillsDir(dataDir), skillName)
+	root := filepath.Join(skillsRoot, skillName)
 	if _, err := os.Stat(root); err != nil {
 		return nil, fmt.Errorf("skill not found: %s", skillName)
 	}
@@ -139,7 +149,11 @@ func ListSkillFiles(dataDir, skillName string) ([]SkillFile, error) {
 
 // ReadSkillFile returns the contents of one file inside a skill.
 func ReadSkillFile(dataDir, skillName, relPath string) (string, error) {
-	full, err := resolveSkillPath(dataDir, skillName, relPath)
+	return readSkillFileIn(globalSkillsDir(dataDir), skillName, relPath)
+}
+
+func readSkillFileIn(skillsRoot, skillName, relPath string) (string, error) {
+	full, err := resolveSkillPathIn(skillsRoot, skillName, relPath)
 	if err != nil {
 		return "", err
 	}
@@ -168,7 +182,11 @@ func ReadSkillFile(dataDir, skillName, relPath string) (string, error) {
 // it, and a mode-644 deploy.sh fails with "permission denied" at the one moment
 // the agent is least able to explain why.
 func WriteSkillFile(dataDir, skillName, relPath, content string) error {
-	full, err := resolveSkillPath(dataDir, skillName, relPath)
+	return writeSkillFileIn(globalSkillsDir(dataDir), skillName, relPath, content)
+}
+
+func writeSkillFileIn(skillsRoot, skillName, relPath, content string) error {
+	full, err := resolveSkillPathIn(skillsRoot, skillName, relPath)
 	if err != nil {
 		return err
 	}
@@ -206,10 +224,14 @@ func isScript(relPath, content string) bool {
 // SKILL.md cannot be deleted: it is what makes the directory a skill, and a
 // folder without one is invisible to both the listing and the agent.
 func DeleteSkillFile(dataDir, skillName, relPath string) error {
+	return deleteSkillFileIn(globalSkillsDir(dataDir), skillName, relPath)
+}
+
+func deleteSkillFileIn(skillsRoot, skillName, relPath string) error {
 	if filepath.ToSlash(relPath) == "SKILL.md" {
 		return fmt.Errorf("SKILL.md cannot be deleted — it defines the skill")
 	}
-	full, err := resolveSkillPath(dataDir, skillName, relPath)
+	full, err := resolveSkillPathIn(skillsRoot, skillName, relPath)
 	if err != nil {
 		return err
 	}
@@ -217,7 +239,7 @@ func DeleteSkillFile(dataDir, skillName, relPath string) error {
 		return fmt.Errorf("delete file: %w", err)
 	}
 
-	root := filepath.Join(globalSkillsDir(dataDir), skillName)
+	root := filepath.Join(skillsRoot, skillName)
 	rootAbs, _ := filepath.Abs(root)
 	for dir := filepath.Dir(full); dir != rootAbs && strings.HasPrefix(dir, rootAbs); dir = filepath.Dir(dir) {
 		// Stops at the first non-empty directory: Remove fails on those.
@@ -226,4 +248,31 @@ func DeleteSkillFile(dataDir, skillName, relPath string) error {
 		}
 	}
 	return nil
+}
+
+// --- Agent-owned skills ---
+//
+// An agent's skills are copies, and once copied they are edited in place — by
+// the user here, or by the agent itself with its file tools. The UI could only
+// ever see the global library, so a skill the agent had filled out with
+// sub-skills and references still looked like a single stub document.
+
+// ListAgentSkillFiles lists every file in one of an agent's skills.
+func ListAgentSkillFiles(dataDir, agentSlug, skillName string) ([]SkillFile, error) {
+	return listSkillFilesIn(agentSkillsDir(dataDir, agentSlug), skillName)
+}
+
+// ReadAgentSkillFile returns one file from an agent's skill.
+func ReadAgentSkillFile(dataDir, agentSlug, skillName, relPath string) (string, error) {
+	return readSkillFileIn(agentSkillsDir(dataDir, agentSlug), skillName, relPath)
+}
+
+// WriteAgentSkillFile creates or overwrites a file in an agent's skill.
+func WriteAgentSkillFile(dataDir, agentSlug, skillName, relPath, content string) error {
+	return writeSkillFileIn(agentSkillsDir(dataDir, agentSlug), skillName, relPath, content)
+}
+
+// DeleteAgentSkillFile removes a file from an agent's skill.
+func DeleteAgentSkillFile(dataDir, agentSlug, skillName, relPath string) error {
+	return deleteSkillFileIn(agentSkillsDir(dataDir, agentSlug), skillName, relPath)
 }

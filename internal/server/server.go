@@ -111,6 +111,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS, s.AgentManager)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
+	canvasHandler := handlers.NewCanvasHandler()
 	skillsHandler := handlers.NewSkillsHandler(dataDir, s.DB)
 	logsHandler := handlers.NewLogsHandler(s.DB)
 	settingsHandler := handlers.NewSettingsHandler(s.DB, s.AgentManager, secretsMgr, llmClient, providers, dataDir, port)
@@ -351,6 +352,10 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/{slug}/skills/{name}", skillsHandler.UpdateAgentSkill)
 				r.Delete("/{slug}/skills/{name}", skillsHandler.RemoveSkillFromAgent)
 				r.Post("/{slug}/skills/{name}/publish", skillsHandler.PublishAgentSkill)
+				r.Get("/{slug}/skills/{name}/files", skillsHandler.ListAgentSkillFiles)
+				r.Get("/{slug}/skills/{name}/files/*", skillsHandler.GetAgentSkillFile)
+				r.Put("/{slug}/skills/{name}/files/*", skillsHandler.PutAgentSkillFile)
+				r.Delete("/{slug}/skills/{name}/files/*", skillsHandler.DeleteAgentSkillFile)
 				// Agent tasks (Kanban board)
 				r.Get("/{slug}/tasks/counts", agentTasksHandler.Counts)
 				r.Put("/{slug}/tasks/reorder", agentTasksHandler.Reorder)
@@ -405,6 +410,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/threads/{id}/pin", chatHandler.PinThread)
 				r.Post("/threads/{id}/unpin", chatHandler.UnpinThread)
 				r.Get("/tmux", chatHandler.ListTmuxSessions)
+				r.Delete("/tmux", chatHandler.KillTmuxSession)
 				r.Post("/threads/{id}/tmux-watch", chatHandler.StartTmuxWatch)
 				r.Delete("/threads/{id}/tmux-watch", chatHandler.StopTmuxWatch)
 				r.Post("/threads/{id}/confirm", chatHandler.ConfirmWork)
@@ -414,6 +420,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/threads/{id}/members/{slug}", chatHandler.RemoveThreadMember)
 				r.Post("/messages/{messageId}/reactions", chatHandler.ToggleReaction)
 			})
+
+			// Chat canvas — serves local files into the preview iframe.
+			r.Get("/canvas/fs/*", canvasHandler.ServeFile)
 
 			// Context
 			r.Route("/context", func(r chi.Router) {
@@ -498,6 +507,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/{id}/items/reorder", todoListsHandler.ReorderItems)
 				r.Put("/{id}/items/{itemId}", todoListsHandler.UpdateItem)
 				r.Put("/{id}/items/{itemId}/toggle", todoListsHandler.ToggleItem)
+				r.Put("/{id}/items/{itemId}/progress", todoListsHandler.ToggleItemProgress)
 				r.Delete("/{id}/items/{itemId}", todoListsHandler.DeleteItem)
 			})
 

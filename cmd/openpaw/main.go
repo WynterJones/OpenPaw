@@ -454,6 +454,19 @@ func main() {
 	}
 	addr := plan.Addrs[0]
 
+	// The CLI providers reach OpenPaw's tools over HTTP on this machine, so the
+	// bridge URL has to name an address we actually bound. It defaults to
+	// loopback, which is right in every normal case — but an explicit
+	// OPENPAW_BIND to a specific interface binds ONLY that, and every tool call
+	// from Claude Code / Codex would then fail to connect with nothing in the
+	// UI to say why.
+	if !hasLoopbackListener(plan.Addrs) {
+		mcpBaseURL = fmt.Sprintf("http://%s/api/v1/mcp/", addr)
+		claudeProvider.SetMCPBaseURL(mcpBaseURL)
+		codexProvider.SetMCPBaseURL(mcpBaseURL)
+		logger.Warn("Not listening on loopback — CLI engines will reach OpenPaw's tools at %s", mcpBaseURL)
+	}
+
 	httpServer := &http.Server{
 		Handler:      srv.Router,
 		ReadTimeout:  15 * time.Second,
@@ -533,4 +546,19 @@ func main() {
 	}
 
 	logger.Bye()
+}
+
+// hasLoopbackListener reports whether anything in the plan accepts a connection
+// to 127.0.0.1. "0.0.0.0" does, which is why this is not a plain prefix check.
+func hasLoopbackListener(addrs []string) bool {
+	for _, a := range addrs {
+		host, _, err := net.SplitHostPort(a)
+		if err != nil {
+			continue
+		}
+		if host == "127.0.0.1" || host == "localhost" || host == "0.0.0.0" || host == "" || host == "::" {
+			return true
+		}
+	}
+	return false
 }

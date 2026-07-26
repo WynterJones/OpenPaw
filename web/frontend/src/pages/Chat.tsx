@@ -7,8 +7,8 @@ import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Minimize2, Square, Users, AlertTriangle,
-  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench, Pin, Sparkles,
-  Clock, CornerDownLeft,
+  Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, CircleDot, ImageIcon, Wrench, Pin, Sparkles,
+  Clock, CornerDownLeft, MonitorPlay,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -28,6 +28,8 @@ import { detectBestWidget } from '../components/widgets/detectWidget';
 import { timeAgo, getToolDetail } from '../lib/chatUtils';
 import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbles';
 import { TmuxSessionCard } from '../components/chat/TmuxSessionCard';
+import { CanvasPanel } from '../components/chat/CanvasPanel';
+import { SplitDivider } from '../components/workbench/SplitDivider';
 import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
@@ -151,8 +153,34 @@ export function Chat() {
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
   // Chat list + right panel visibility come from the header's view-options
   // menu so all three layout toggles live in one place.
-  const { chatList, chatPanel, set: setViewToggle } = useViewToggles();
+  const { chatList, chatPanel, canvas, set: setViewToggle } = useViewToggles();
   const threadsCollapsed = !chatList;
+
+  // Canvas: the preview pane. Its address is kept per thread — one chat is a
+  // dev server, the next is a file somewhere else, and carrying one chat's
+  // preview into another is never what was meant.
+  const [canvasUrls, setCanvasUrls] = useState<Record<string, { url: string; title?: string }>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('openpaw_canvas_urls') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const canvasEntry = activeThread ? canvasUrls[activeThread] : undefined;
+  const setCanvasUrl = useCallback((threadId: string, url: string, title?: string) => {
+    setCanvasUrls(prev => {
+      const next = { ...prev, [threadId]: { url, title } };
+      try { localStorage.setItem('openpaw_canvas_urls', JSON.stringify(next)); } catch { /* quota — the canvas still works, it just won't be remembered */ }
+      return next;
+    });
+  }, []);
+  // Split position, as the canvas's share of the row.
+  const [canvasWidthPct, setCanvasWidthPct] = useState(() => {
+    const stored = Number(localStorage.getItem('openpaw_canvas_width_pct'));
+    return stored >= 20 && stored <= 80 ? stored : 50;
+  });
+  useEffect(() => { localStorage.setItem('openpaw_canvas_width_pct', String(Math.round(canvasWidthPct))); }, [canvasWidthPct]);
+  const canvasRowRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [streamActive, setStreamActive] = useState(false);
@@ -714,6 +742,17 @@ export function Chat() {
       loadRoles();
     }
 
+    // An agent put something on the canvas. Opening it rearranges the screen,
+    // so only the chat being looked at gets that — another thread's preview is
+    // stored and appears when that chat is opened.
+    if (msg.type === 'canvas_open' && threadId) {
+      const url = payload?.url as string;
+      if (url) {
+        setCanvasUrl(threadId, url, payload?.title as string | undefined);
+        if (threadId === activeThreadRef.current) setViewToggle('canvas', true);
+      }
+    }
+
     // Track unread messages for non-active threads
     if (!isActiveThread && threadId) {
       if (msg.type === 'agent_status') {
@@ -920,7 +959,7 @@ export function Chat() {
       }
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
-  }, [resetStreaming, setCostInfo, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads]);
+  }, [resetStreaming, setCostInfo, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads, setCanvasUrl, setViewToggle]);
 
   const { connected: wsConnected } = useWebSocket({
     onMessage: handleWSMessage,
@@ -1481,10 +1520,25 @@ export function Chat() {
           </>
         }
       />
-      <div className="flex flex-1 overflow-hidden relative">
+      <div ref={canvasRowRef} className="flex flex-1 overflow-hidden relative">
         <div className={`${showThreads ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${threadsCollapsed ? 'md:w-0 md:border-r-0' : 'md:w-72 md:border-r'} absolute md:relative z-30 w-[85vw] max-w-72 h-full flex flex-col overflow-hidden border-r border-border-0 bg-surface-1 transition-all duration-200`}>
           <div className="p-3 space-y-2">
-            <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="w-full" size="sm">New Chat</Button>
+            <div className="flex items-center gap-1.5">
+              <Button onClick={createThread} icon={<Plus className="w-4 h-4" />} className="flex-1" size="sm">New Chat</Button>
+              <button
+                onClick={() => setViewToggle('canvas', !canvas)}
+                aria-pressed={canvas}
+                className={`flex-shrink-0 p-2 rounded-lg border transition-colors cursor-pointer ${
+                  canvas
+                    ? 'border-accent-primary/40 bg-accent-muted text-accent-primary'
+                    : 'border-border-1 text-text-3 hover:text-text-1 hover:bg-surface-2'
+                }`}
+                title={canvas ? 'Close the canvas' : 'Open the canvas — preview a local server or file beside the chat'}
+                aria-label={canvas ? 'Close canvas' : 'Open canvas'}
+              >
+                <MonitorPlay className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
             <SearchBar value={search} onChange={(v) => { setSearch(v); setThreadPage(1); }} placeholder="Search chats..." />
             <div className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5" role="tablist">
               {([['all', 'All Chats'], ['pinned', 'Pinned']] as const).map(([key, label]) => (
@@ -1598,7 +1652,7 @@ export function Chat() {
           </div>
         </div>
         {showThreads && <div className="md:hidden fixed inset-0 bg-black/40 z-20" onClick={() => setShowThreads(false)} />}
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
           {activeThread ? (
             <>
               {threadStats && threadStats.message_count > 0 && (
@@ -2388,6 +2442,12 @@ export function Chat() {
                                     >
                                       {item.completed ? (
                                         <CircleCheck className="w-3.5 h-3.5 text-accent-primary flex-shrink-0 mt-px" />
+                                      ) : item.in_progress ? (
+                                        // Underway — visibly different from an
+                                        // untouched item, because that is the
+                                        // difference that decides what gets
+                                        // picked up next.
+                                        <CircleDot className="w-3.5 h-3.5 text-accent-primary flex-shrink-0 mt-px" />
                                       ) : (
                                         <div className="w-3.5 h-3.5 rounded-full border border-border-1 flex-shrink-0 mt-px group-hover/todo:border-accent-primary transition-colors" />
                                       )}
@@ -2414,6 +2474,37 @@ export function Chat() {
                   </div>
                 </>
               )}
+            </div>
+          </>
+        )}
+        {canvas && (
+          <>
+            {/* Only on a wide screen is this a split. On a phone the canvas
+                covers the conversation instead — half of each would be too
+                little of either. */}
+            <div className="hidden md:block">
+              <SplitDivider
+                direction="horizontal"
+                onDrag={(delta) => {
+                  const total = canvasRowRef.current?.clientWidth || 0;
+                  if (!total) return;
+                  setCanvasWidthPct(pct => Math.min(80, Math.max(20, pct - (delta / total) * 100)));
+                }}
+              />
+            </div>
+            {/* The width rides in on a custom property so it only applies from
+                md up — on a phone the pane is absolutely positioned and an
+                explicit width would fight inset-0. */}
+            <div
+              className="absolute inset-0 z-30 md:relative md:inset-auto md:z-auto md:w-[var(--canvas-w)] md:border-l border-border-0 flex flex-col"
+              style={{ '--canvas-w': `${canvasWidthPct}%` } as React.CSSProperties}
+            >
+              <CanvasPanel
+                url={canvasEntry?.url || ''}
+                title={canvasEntry?.title}
+                onUrlChange={(url) => activeThread && setCanvasUrl(activeThread, url)}
+                onClose={() => setViewToggle('canvas', false)}
+              />
             </div>
           </>
         )}

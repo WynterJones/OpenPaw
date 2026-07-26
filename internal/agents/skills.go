@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -102,23 +103,21 @@ func DeleteGlobalSkill(dataDir, name string) error {
 }
 
 // AddSkillToAgent copies a global skill into an agent's workspace.
+//
+// The whole directory, not just SKILL.md. A skill's sub-skills, references/ and
+// scripts/ are what its instructions point at, and copying one file produced an
+// agent-side skill that read as complete and referenced files that were never
+// there.
 func AddSkillToAgent(dataDir, skillName, agentSlug string) error {
 	if !IsValidSkillName(skillName) {
 		return fmt.Errorf("invalid skill name: %s", skillName)
 	}
-
-	// Read global skill
-	content, err := GetGlobalSkill(dataDir, skillName)
-	if err != nil {
+	src := filepath.Join(globalSkillsDir(dataDir), skillName)
+	if _, err := os.Stat(filepath.Join(src, "SKILL.md")); err != nil {
 		return fmt.Errorf("read global skill: %w", err)
 	}
-
-	// Write to agent's skills dir
-	agentSkillDir := filepath.Join(agentSkillsDir(dataDir, agentSlug), skillName)
-	if err := os.MkdirAll(agentSkillDir, 0755); err != nil {
-		return fmt.Errorf("create agent skill dir: %w", err)
-	}
-	return os.WriteFile(filepath.Join(agentSkillDir, "SKILL.md"), []byte(content), 0644)
+	dst := filepath.Join(agentSkillsDir(dataDir, agentSlug), skillName)
+	return copySkillDir(src, dst)
 }
 
 // RemoveSkillFromAgent removes a skill from an agent's workspace.
@@ -131,18 +130,61 @@ func RemoveSkillFromAgent(dataDir, skillName, agentSlug string) error {
 }
 
 // PublishAgentSkill copies an agent's skill to the global library.
+//
+// Also the whole directory. Publishing used to lift SKILL.md alone, so a rich
+// agent skill — sub-skills, references, scripts — arrived in the library as a
+// lone document that still described all the parts that had been left behind.
 func PublishAgentSkill(dataDir, skillName, agentSlug string) error {
 	if !IsValidSkillName(skillName) {
 		return fmt.Errorf("invalid skill name: %s", skillName)
 	}
-
-	agentSkillPath := filepath.Join(agentSkillsDir(dataDir, agentSlug), skillName, "SKILL.md")
-	content, err := os.ReadFile(agentSkillPath)
-	if err != nil {
+	src := filepath.Join(agentSkillsDir(dataDir, agentSlug), skillName)
+	if _, err := os.Stat(filepath.Join(src, "SKILL.md")); err != nil {
 		return fmt.Errorf("read agent skill: %w", err)
 	}
+	return copySkillDir(src, filepath.Join(globalSkillsDir(dataDir), skillName))
+}
 
-	return WriteGlobalSkill(dataDir, skillName, string(content))
+// copySkillDir copies a skill folder, replacing whatever is at dst.
+//
+// Replace rather than merge: a copy that left stale files behind would slowly
+// become a mixture of two versions of the skill, and neither side would match
+// what the source actually says. Executable bits are preserved so a copied
+// scripts/deploy.sh still runs.
+func copySkillDir(src, dst string) error {
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("clear destination: %w", err)
+	}
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		// Symlinks and device files are not part of a skill and are the kind of
+		// thing that turns a copy into a way out of the directory.
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	})
 }
 
 // ListAgentSkills lists skills installed in an agent's workspace.
