@@ -2,7 +2,7 @@
  * CompanionWizard
  *
  * Modal wizard for creating a pixel-art companion via PixelLab:
- *   apikey -> describe -> pick (3 options) -> animate (4 emotes) -> manage.
+ *   apikey -> describe -> pick -> animate (4 emotes) -> manage.
  * The finished character is saved to the server and can be pinned as a floating
  * chat companion, assigned to an agent, or extended with more emotes.
  */
@@ -12,6 +12,9 @@ import { Loader2, Sparkles, Pin, PinOff, Plus, Check, ExternalLink, RefreshCw } 
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input, Textarea, Select } from '../Input';
+import { AvailabilitySelect } from '../AvailabilitySelect';
+import { ReferencePicker } from './ReferencePicker';
+import { NO_REFERENCE, type ReferenceState } from '../../lib/companionReference';
 import { useToast } from '../Toast';
 import { api } from '../../lib/api';
 import {
@@ -76,6 +79,9 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
   const [description, setDescription] = useState('');
   const [options, setOptions] = useState<string[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
+  const [optionCount, setOptionCount] = useState(3);
+  const [reference, setReference] = useState<ReferenceState>(NO_REFERENCE);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
 
   const [emoteProgress, setEmoteProgress] = useState<EmoteProgress[]>([]);
   const [saved, setSaved] = useState<PixelLabCharacter | null>(null);
@@ -102,6 +108,9 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     setDescription('');
     setOptions([]);
     setSelected(null);
+    setOptionCount(3);
+    setReference(NO_REFERENCE);
+    setWorkspaceId(null);
     api
       .get<{ configured: boolean }>('/settings/pixellab-api-key')
       .then((d) => setStep(d.configured ? 'describe' : 'apikey'))
@@ -131,9 +140,14 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     setSelected(null);
     setStep('pick');
     try {
-      const imgs = await createPixelImageOptions({
-        description: `pixel art character, ${description.trim()}`,
-      });
+      const imgs = await createPixelImageOptions(
+        {
+          description: `pixel art character, ${description.trim()}`,
+          initImage: reference.image ?? undefined,
+          initImageStrength: reference.strength,
+        },
+        optionCount,
+      );
       setOptions(imgs);
     } catch (e) {
       setError(errorMessage(e));
@@ -191,8 +205,9 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
         pixellab_id: characterId,
         base_sprite: sprite,
         animations,
+        workspace_id: workspaceId ?? '',
       });
-      await companionStore.load();
+      await companionStore.loadAll();
       setSaved(character);
       setStep('manage');
       toast('success', 'Companion created');
@@ -206,7 +221,9 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
 
   const refreshSaved = async () => {
     if (!saved) return;
-    const list = await companionStore.load();
+    // loadAll: a companion just scoped to another workspace is no longer in
+    // the filtered list, and losing it here would strand the edit half-done.
+    const list = await companionStore.loadAll();
     const updated = list.find((c) => c.id === saved.id);
     if (updated) setSaved(updated);
   };
@@ -284,12 +301,22 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     await refreshSaved();
   };
 
+  const assignWorkspace = async (id: string | null) => {
+    if (!saved) return;
+    // '' clears the scope server-side, which means "every workspace".
+    await api.put(`/pixellab/characters/${saved.id}`, { workspace_id: id ?? '' });
+    await refreshSaved();
+  };
+
   const startOver = () => {
     setSaved(null);
     setName('');
     setDescription('');
     setOptions([]);
     setSelected(null);
+    setOptionCount(3);
+    setReference(NO_REFERENCE);
+    setWorkspaceId(null);
     setStep('describe');
   };
 
@@ -348,9 +375,31 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+            <ReferencePicker
+              value={reference}
+              onChange={setReference}
+              agents={agentRoles}
+              onError={setError}
+            />
+
+            <AvailabilitySelect value={workspaceId} onChange={setWorkspaceId} />
+
+            <Select
+              label="Options to generate"
+              value={String(optionCount)}
+              onChange={(e) => setOptionCount(Number(e.target.value))}
+              options={[1, 2, 3, 4, 6, 8].map((n) => ({
+                value: String(n),
+                label: n === 1 ? '1 option' : `${n} options`,
+              }))}
+            />
+            <p className="text-[11px] text-text-3 -mt-1.5">
+              Each option costs a PixelLab generation. More options, more to choose from.
+            </p>
+
             <div>
               <Button onClick={handleGenerate} loading={busy} disabled={!description.trim()} icon={<Sparkles className="w-4 h-4" />}>
-                Generate 3 options
+                {optionCount === 1 ? 'Generate option' : `Generate ${optionCount} options`}
               </Button>
             </div>
           </div>
@@ -359,9 +408,9 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
         {step === 'pick' && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-text-3">Pick your favourite, then animate it.</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className={`grid gap-3 ${optionCount <= 2 ? 'grid-cols-2' : optionCount <= 6 ? 'grid-cols-3' : 'grid-cols-4'}`}>
               {busy && options.length === 0
-                ? Array.from({ length: 3 }).map((_, i) => (
+                ? Array.from({ length: optionCount }).map((_, i) => (
                     <div key={i} className="aspect-square rounded-lg border border-border-1 bg-surface-2 flex items-center justify-center">
                       <Loader2 className="w-6 h-6 animate-spin text-text-3" />
                     </div>
@@ -465,6 +514,11 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
                 { value: '', label: 'Any agent (global)' },
                 ...agentRoles.map((a) => ({ value: a.slug, label: a.name })),
               ]}
+            />
+
+            <AvailabilitySelect
+              value={saved.workspace_id ?? null}
+              onChange={(v) => assignWorkspace(v)}
             />
 
             <div className="flex flex-col gap-2 border-t border-border-0 pt-3">

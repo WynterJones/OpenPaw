@@ -16,7 +16,7 @@ import (
 
 // PromptSender sends a scheduled prompt to an AI agent.
 type PromptSender interface {
-	SendScheduledPrompt(ctx context.Context, slug, prompt, threadID, workspaceID string) (response, usedThreadID string, err error)
+	SendScheduledPrompt(ctx context.Context, slug, prompt, threadID, workspaceID, provider string) (response, usedThreadID string, err error)
 }
 
 // NotifyFunc creates a notification and broadcasts it.
@@ -31,6 +31,8 @@ type ScheduleConfig struct {
 	// WorkspaceID is the schedule's target workspace ("" = global; the run path
 	// falls back to the active workspace when creating a new thread).
 	WorkspaceID string
+	// Provider pins the engine this routine runs on ("" = whatever is active).
+	Provider string
 }
 
 type Scheduler struct {
@@ -226,7 +228,7 @@ func (s *Scheduler) executePrompt(cfg ScheduleConfig) (output, threadID string, 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	return s.promptSender.SendScheduledPrompt(ctx, cfg.AgentRoleSlug, cfg.PromptContent, cfg.ThreadID, cfg.WorkspaceID)
+	return s.promptSender.SendScheduledPrompt(ctx, cfg.AgentRoleSlug, cfg.PromptContent, cfg.ThreadID, cfg.WorkspaceID, cfg.Provider)
 }
 
 // RunNow executes a schedule immediately (called from API).
@@ -268,7 +270,7 @@ func (s *Scheduler) cleanupOldDataPoints() {
 // LoadSchedules loads all enabled schedules from the DB and registers them with cron.
 func (s *Scheduler) LoadSchedules() {
 	rows, err := s.db.Query(
-		`SELECT id, cron_expr, agent_role_slug, prompt_content, thread_id, workspace_id
+		`SELECT id, cron_expr, agent_role_slug, prompt_content, thread_id, workspace_id, provider
 		 FROM schedules WHERE enabled = 1 AND type = 'prompt'`,
 	)
 	if err != nil {
@@ -281,7 +283,7 @@ func (s *Scheduler) LoadSchedules() {
 	for rows.Next() {
 		var cfg ScheduleConfig
 		var workspaceID sql.NullString
-		if err := rows.Scan(&cfg.ID, &cfg.CronExpr, &cfg.AgentRoleSlug, &cfg.PromptContent, &cfg.ThreadID, &workspaceID); err != nil {
+		if err := rows.Scan(&cfg.ID, &cfg.CronExpr, &cfg.AgentRoleSlug, &cfg.PromptContent, &cfg.ThreadID, &workspaceID, &cfg.Provider); err != nil {
 			logger.Error("Failed to scan schedule: %v", err)
 			continue
 		}

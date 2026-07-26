@@ -39,6 +39,8 @@ export interface PixelLabCharacter {
   animations: AnimationClip[];
   pinned: boolean;
   agent_slug: string;
+  /** Absent/null = every workspace, matching agents and skills. */
+  workspace_id?: string | null;
   created_at: string;
 }
 
@@ -46,12 +48,32 @@ interface CompanionState {
   characters: PixelLabCharacter[];
   mood: CompanionMood;
   activeAgentSlug: string | null;
+  /**
+   * Whether a chat thread is actually open on screen.
+   *
+   * Companions are mounted once in Layout so they survive navigation, which
+   * also meant they hovered over Settings, the Scheduler and every other page
+   * with nothing to react to. Chat publishes this so they appear only where
+   * their whole purpose — reacting to a conversation — applies.
+   */
+  chatOpen: boolean;
+  /**
+   * The whole library, unfiltered by workspace.
+   *
+   * Separate from `characters` because the two views want opposite things: the
+   * floating sprites must respect the active workspace, while the management
+   * list must show a companion scoped elsewhere — otherwise scoping one to
+   * another workspace would make it vanish with no way to change it back.
+   */
+  library: PixelLabCharacter[];
 }
 
 let state: CompanionState = {
   characters: [],
   mood: 'idle',
   activeAgentSlug: null,
+  chatOpen: false,
+  library: [],
 };
 
 const listeners = new Set<() => void>();
@@ -80,15 +102,28 @@ export const companionStore = {
   setActiveAgent(slug: string | null) {
     if (state.activeAgentSlug !== slug) set({ activeAgentSlug: slug });
   },
+  setChatOpen(open: boolean) {
+    if (state.chatOpen !== open) set({ chatOpen: open });
+  },
   setCharacters(characters: PixelLabCharacter[]) {
     set({ characters });
   },
 
-  /** Load the character library from the server. */
+  /** Companions visible in the active workspace — what actually gets pinned. */
   async load(): Promise<PixelLabCharacter[]> {
     const characters = await api.get<PixelLabCharacter[]>('/pixellab/characters');
     set({ characters });
     return characters;
+  },
+
+  /** Every companion, for the management list. Also refreshes `characters`. */
+  async loadAll(): Promise<PixelLabCharacter[]> {
+    const [library] = await Promise.all([
+      api.get<PixelLabCharacter[]>('/pixellab/characters?all=true'),
+      companionStore.load().catch(() => []),
+    ]);
+    set({ library });
+    return library;
   },
 };
 

@@ -39,6 +39,16 @@ interface DesignContextType {
   updateTheme: (input: ThemeInput) => Promise<void>;
   updateConfig: (partial: Partial<DesignConfig>) => Promise<void>;
   updateBgImage: (url: string) => Promise<void>;
+  /**
+   * Unsaved background shown instead of the saved one.
+   *
+   * Picking a background is a visual decision, and the whole UI is the
+   * preview — a thumbnail cannot tell you whether a busy image fights with
+   * the chat behind it. Settings sets this while you browse and clears it on
+   * leave, so nothing is persisted until Save.
+   */
+  previewBg: string | null;
+  setPreviewBg: (url: string | null) => void;
   updateShowMascot: (show: boolean) => Promise<void>;
   saveAll: (input: SaveAllInput) => Promise<void>;
   resetConfig: () => Promise<void>;
@@ -52,6 +62,7 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ThemeMode>(DEFAULT_MODE);
   const [bgImage, setBgImage] = useState('');
   const [showMascot, setShowMascot] = useState(true);
+  const [previewBg, setPreviewBg] = useState<string | null>(null);
 
   useEffect(() => {
     applyVars(configToCSSVars(config));
@@ -129,7 +140,7 @@ export function DesignProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <DesignContext.Provider value={{ config, accent, mode, bgImage, showMascot, updateTheme, updateConfig, updateBgImage, updateShowMascot, saveAll, resetConfig }}>
+    <DesignContext.Provider value={{ config, accent, mode, bgImage, showMascot, previewBg, setPreviewBg, updateTheme, updateConfig, updateBgImage, updateShowMascot, saveAll, resetConfig }}>
       {children}
     </DesignContext.Provider>
   );

@@ -21,6 +21,7 @@ import { CLI_CONTEXT_LIMIT } from '../lib/provider';
 import type { TodoItem, MediaItem, Tool, ThreadPin } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { ProviderSwitcher } from '../components/chat/ProviderSwitcher';
+import { companionStore } from '../lib/companionStore';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
@@ -592,6 +593,14 @@ export function Chat() {
   const [routingIndicator, setRoutingIndicator] = useState<string | null>(null);
   const [activeAgentSlug, setActiveAgentSlug] = useState<string | null>(null);
   const [subAgentTasks, setSubAgentTasks] = useState<SubAgentTask[]>([]);
+
+  // Companions are mounted app-wide in Layout, so they can only know whether a
+  // conversation is on screen if this page says so. Cleared on unmount, which
+  // is what stops them floating over Settings.
+  useEffect(() => {
+    companionStore.setChatOpen(Boolean(activeThread));
+    return () => companionStore.setChatOpen(false);
+  }, [activeThread]);
 
   // Messages typed while a turn was running, in the order they were typed.
   const [queue, setQueue] = useState<QueuedMessage[]>([]);

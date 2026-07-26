@@ -127,6 +127,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
 	studioHandler := handlers.NewStudioHandler(s.DB, dataDir, mediaRegistry)
+	backgroundsHandler := handlers.NewBackgroundsHandler(s.DB, dataDir, mediaRegistry, s.FrontendFS)
 	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
 	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
@@ -185,6 +186,10 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 
 		// Public uploaded background serving
 		r.Get("/uploads/backgrounds/{filename}", settingsHandler.ServeBackground)
+
+		// Public generated background serving (used as a CSS background-image,
+		// which sends no auth header)
+		r.Get("/backgrounds/{id}/file", backgroundsHandler.ServeFile)
 
 		// Public PixelLab sprite frame serving (rendered in <img> tags, like avatars)
 		r.Get("/pixellab/sprites/{id}/*", pixelLabHandler.ServeFrame)
@@ -545,6 +550,13 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/presets", studioHandler.ListPresets)
 				r.Post("/presets", studioHandler.SavePreset)
 				r.Delete("/presets/{id}", studioHandler.DeletePreset)
+			})
+
+			// AI-generated UI backgrounds (the file route is public, above)
+			r.Route("/backgrounds", func(r chi.Router) {
+				r.Get("/", backgroundsHandler.List)
+				r.Post("/generate", backgroundsHandler.Generate)
+				r.Delete("/{id}", backgroundsHandler.Delete)
 			})
 
 			// Logs

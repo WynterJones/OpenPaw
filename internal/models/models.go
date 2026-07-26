@@ -72,6 +72,8 @@ type Schedule struct {
 	DashboardID         string     `json:"dashboard_id"`
 	WidgetID            string     `json:"widget_id"`
 	WorkspaceID         *string    `json:"workspace_id,omitempty"`
+	// Provider pins the engine this routine runs on ("" = whatever is active).
+	Provider            string     `json:"provider"`
 	LastRunAt           *time.Time `json:"last_run_at,omitempty"`
 	NextRunAt           *time.Time `json:"next_run_at,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`

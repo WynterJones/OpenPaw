@@ -1,15 +1,17 @@
 import { useDesign } from '../contexts/DesignContext';
 
 export function BackgroundImage() {
-  const { bgImage } = useDesign();
+  const { bgImage, previewBg } = useDesign();
+  // An unsaved pick wins, so the whole UI acts as the preview.
+  const shown = previewBg ?? bgImage;
 
-  if (!bgImage) return null;
+  if (!shown) return null;
 
   return (
     <>
       <div
         className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-        style={{ backgroundImage: `url(${bgImage})`, zIndex: 0 }}
+        style={{ backgroundImage: `url(${shown})`, zIndex: 0 }}
         aria-hidden="true"
       />
       <div

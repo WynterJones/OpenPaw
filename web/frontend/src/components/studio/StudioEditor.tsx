@@ -76,6 +76,10 @@ export function StudioEditor({
   );
 
   const selectedModel = models.find(m => m.id === state.model);
+  const multiProvider = useMemo(
+    () => new Set(models.map(m => m.provider)).size > 1,
+    [models],
+  );
   const sizes = selectedModel?.sizes ?? [];
   const durations = selectedModel?.durations ?? [];
   // A custom model id isn't in the catalog, so nothing is known about it —
@@ -197,9 +201,12 @@ export function StudioEditor({
               onChange={e => onChange({ model: e.target.value })}
               className="block w-full rounded-lg border border-border-1 bg-surface-2 text-text-0 px-3 py-2 text-sm focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors"
             >
+              {/* The provider is only worth the width when more than one is
+                  offering models for this media type — otherwise every row
+                  ends in the same word. */}
               {models.map(m => (
                 <option key={`${m.provider}:${m.id}`} value={m.id}>
-                  {m.name} ({m.provider})
+                  {multiProvider ? `${m.name} · ${m.provider}` : m.name}
                 </option>
               ))}
             </select>

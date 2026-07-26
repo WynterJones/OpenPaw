@@ -47,6 +47,38 @@ const CRON_PRESETS = [
   { value: "custom", label: "Custom..." },
 ];
 
+const ENGINE_LABELS: Record<string, string> = {
+  openrouter: "OpenRouter",
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
+
+const ENGINE_ORDER = ["openrouter", "claude-code", "codex"];
+
+interface EngineStatus {
+  configured?: boolean;
+  available?: boolean;
+}
+
+/**
+ * Engines the user can actually run on.
+ *
+ * Only configured engines are offered: picking one that is not installed would
+ * silently fall back at run time, and an unattended routine is exactly where a
+ * silent fallback goes unnoticed.
+ */
+function engineOptions(statuses: Record<string, EngineStatus>) {
+  const usable = ENGINE_ORDER.filter((name) => {
+    const s = statuses[name];
+    if (!s) return false;
+    return name === "openrouter" ? Boolean(s.configured) : Boolean(s.available ?? s.configured);
+  });
+  return [
+    { value: "", label: "Use the active engine" },
+    ...usable.map((n) => ({ value: n, label: ENGINE_LABELS[n] ?? n })),
+  ];
+}
+
 const CUSTOM_CRON_CHIPS = [
   { label: "Every 5m", value: "0 */5 * * * *" },
   { label: "Every 2h", value: "0 0 */2 * * *" },
@@ -136,6 +168,7 @@ function ScheduleDetail({
   onSaved,
   agents,
   threads,
+  engines,
   getAgentName,
   getThreadTitle,
   getCronLabel,
@@ -145,6 +178,7 @@ function ScheduleDetail({
   onSaved: (updated: Schedule) => void;
   agents: AgentRole[];
   threads: ChatThread[];
+  engines: Record<string, EngineStatus>;
   getAgentName: (slug: string) => string;
   getThreadTitle: (id: string) => string;
   getCronLabel: (expr: string) => string;
@@ -163,12 +197,14 @@ function ScheduleDetail({
   const [editPrompt, setEditPrompt] = useState(schedule.prompt_content || "");
   const [editPreset, setEditPreset] = useState("");
   const [editCustom, setEditCustom] = useState("");
+  const [editEngine, setEditEngine] = useState("");
 
   const startEditing = () => {
     setEditName(schedule.name);
     setEditAgent(schedule.agent_role_slug);
     setEditThread(schedule.thread_id || "");
     setEditPrompt(schedule.prompt_content || "");
+    setEditEngine(schedule.provider || "");
     // A cron the presets don't cover has to land in the custom field, or
     // opening the editor would silently rewrite it to whichever preset the
     // dropdown happened to show first.
@@ -192,6 +228,7 @@ function ScheduleDetail({
         agent_role_slug: editAgent,
         prompt_content: editPrompt,
         thread_id: editThread,
+        provider: editEngine,
       });
       onSaved(updated);
       setEditing(false);
@@ -255,6 +292,14 @@ function ScheduleDetail({
           <h2 className="text-lg font-semibold text-text-0">{schedule.name}</h2>
           <p className="text-sm text-text-2">
             {getCronLabel(schedule.cron_expr)}
+            {/* Only shown when pinned — "uses whatever is active" is the
+                default and does not need saying on every routine. */}
+            {schedule.provider && (
+              <span className="text-text-3">
+                {" \u00b7 "}
+                {ENGINE_LABELS[schedule.provider] ?? schedule.provider}
+              </span>
+            )}
           </p>
         </div>
         {!editing && (
@@ -306,6 +351,20 @@ function ScheduleDetail({
                 })),
               ]}
             />
+
+            <div>
+              <Select
+                label="Engine"
+                value={editEngine}
+                onChange={(e) => setEditEngine(e.target.value)}
+                options={engineOptions(engines)}
+              />
+              <p className="mt-1.5 text-xs text-text-3 leading-relaxed">
+                Pins this routine to one engine, so switching engines in chat
+                does not change what it costs to run. Each engine uses its own
+                models from Settings &rarr; AI Models.
+              </p>
+            </div>
 
             <CronField
               preset={editPreset}
@@ -511,6 +570,8 @@ export function Scheduler() {
   const [agentSlug, setAgentSlug] = useState("");
   const [threadId, setThreadId] = useState("");
   const [promptContent, setPromptContent] = useState("");
+  const [engine, setEngine] = useState("");
+  const [engines, setEngines] = useState<Record<string, EngineStatus>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -519,14 +580,18 @@ export function Scheduler() {
 
   const loadData = async () => {
     try {
-      const [schedulesData, agentsData, threadsData] = await Promise.all([
+      const [schedulesData, agentsData, threadsData, providerData] = await Promise.all([
         api.get<Schedule[]>("/schedules"),
         api.get<AgentRole[]>("/agent-roles"),
         api.get<ChatThread[]>("/chat/threads"),
+        api
+          .get<{ providers: Record<string, EngineStatus> }>("/settings/llm-provider")
+          .catch(() => ({ providers: {} })),
       ]);
       setSchedules(Array.isArray(schedulesData) ? schedulesData : []);
       setAgents(Array.isArray(agentsData) ? agentsData : []);
       setThreads(Array.isArray(threadsData) ? threadsData : []);
+      setEngines(providerData?.providers ?? {});
     } catch (e) {
       console.warn("loadSchedulerData failed:", e);
       setSchedules([]);
@@ -544,6 +609,7 @@ export function Scheduler() {
     setAgentSlug("");
     setThreadId("");
     setPromptContent("");
+    setEngine("");
   };
 
   const createSchedule = async () => {
@@ -556,6 +622,7 @@ export function Scheduler() {
         agent_role_slug: agentSlug,
         prompt_content: promptContent,
         thread_id: threadId,
+        provider: engine,
       });
       toast("success", "Schedule created");
       setCreateOpen(false);
@@ -668,6 +735,7 @@ export function Scheduler() {
             }}
             agents={agents}
             threads={threads}
+            engines={engines}
             getAgentName={getAgentName}
             getThreadTitle={getThreadTitle}
             getCronLabel={getCronLabel}
@@ -975,6 +1043,19 @@ export function Scheduler() {
               {threadId
                 ? "Each run posts into this existing chat thread."
                 : "Each run files a report in your Inbox. Open it as a chat from there if you want to reply."}
+            </p>
+          </div>
+
+          <div>
+            <Select
+              label="Engine"
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              options={engineOptions(engines)}
+            />
+            <p className="mt-1.5 text-xs text-text-3 leading-relaxed">
+              Pins this routine to one engine, so switching engines in chat does
+              not change what it costs to run.
             </p>
           </div>
 

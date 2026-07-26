@@ -201,18 +201,21 @@ function CompanionSprite({
 }
 
 export function ChatCompanions() {
-  const { characters, mood, activeAgentSlug } = useCompanionStore();
+  const { characters, mood, activeAgentSlug, chatOpen } = useCompanionStore();
   const pinned = useMemo(() => characters.filter((c) => c.pinned), [characters]);
 
-  // Load the library once on mount.
+  // Load the library once on mount. The endpoint is already scoped to the
+  // active workspace, so a companion made for another project stays there.
   useEffect(() => {
     companionStore.load().catch(() => {});
   }, []);
 
-  // Only run the WS-driven activity hook while at least one companion is pinned.
-  useCompanionActivity(pinned.length > 0);
+  // Only run the WS-driven activity hook while a companion is actually on
+  // screen — off the chat page there is nothing for it to animate.
+  const visible = chatOpen && pinned.length > 0;
+  useCompanionActivity(visible);
 
-  if (pinned.length === 0) return null;
+  if (!visible) return null;
 
   // The active agent's companion (if any) reacts; others stay idle. With no
   // active agent, every companion follows the global mood.

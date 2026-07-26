@@ -98,6 +98,12 @@ export function toDataUri(base64: string): string {
   return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
 }
 
+/** The inverse: PixelLab's Base64Image wants bare base64, not a data URI. */
+export function stripDataUri(value: string): string {
+  const comma = value.indexOf(',');
+  return value.startsWith('data:') && comma >= 0 ? value.slice(comma + 1) : value;
+}
+
 // ---------------------------------------------------------------------------
 // Balance
 // ---------------------------------------------------------------------------
@@ -125,17 +131,36 @@ export interface CreateImageOptions {
   description: string;
   size?: ImageSize;
   noBackground?: boolean;
+  /** Optional starting image (data URI or raw base64) to steer the result. */
+  initImage?: string;
+  /**
+   * How strongly the init image binds the result. PixelLab accepts 1..999 and
+   * defaults to 300; higher sticks closer to the reference.
+   */
+  initImageStrength?: number;
 }
 
 /** One synchronous pixflux image. */
 export async function createPixelImage(
-  { description, size = { width: 64, height: 64 }, noBackground = true }: CreateImageOptions
+  {
+    description,
+    size = { width: 64, height: 64 },
+    noBackground = true,
+    initImage,
+    initImageStrength = 300,
+  }: CreateImageOptions
 ): Promise<string> {
-  const data = await request<ApiResponse>('/create-image-pixflux', 'POST', {
+  const body: Record<string, unknown> = {
     description,
     image_size: size,
     no_background: noBackground,
-  });
+  };
+  if (initImage) {
+    // PixelLab wants bare base64 in a Base64Image envelope, not a data URI.
+    body.init_image = { type: 'base64', base64: stripDataUri(initImage) };
+    body.init_image_strength = Math.min(999, Math.max(1, Math.round(initImageStrength)));
+  }
+  const data = await request<ApiResponse>('/create-image-pixflux', 'POST', body);
   const b64 = extractBase64(data?.image);
   if (!b64) throw new PixelLabError(0, 'PixelLab returned no image data');
   return toDataUri(b64);

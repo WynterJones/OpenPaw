@@ -249,6 +249,8 @@ export interface Schedule {
   agent_role_slug: string;
   prompt_content: string;
   thread_id: string;
+  /** Engine this routine is pinned to. '' = whatever engine is active. */
+  provider: string;
   enabled: boolean;
   last_run_at: string | null;
   next_run_at: string | null;

@@ -14,6 +14,7 @@ const Secrets = lazy(() => import('./pages/Secrets').then(m => ({ default: m.Sec
 const Dashboards = lazy(() => import('./pages/Dashboards').then(m => ({ default: m.Dashboards })));
 const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
 const Studio = lazy(() => import('./pages/Studio').then(m => ({ default: m.Studio })));
+const MediaProviders = lazy(() => import('./pages/MediaProviders').then(m => ({ default: m.MediaProviders })));
 const Scheduler = lazy(() => import('./pages/Scheduler').then(m => ({ default: m.Scheduler })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agents })));
@@ -46,6 +47,7 @@ const pageTitles: Record<string, string> = {
   '/dashboards': 'Dashboards',
   '/terminal': 'Terminal',
   '/studio': 'Studio',
+  '/studio/providers': 'Media Providers',
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
   '/knowledge-base': 'Context',
@@ -133,6 +135,7 @@ function AppRoutes() {
             links and any saved state working. */}
         <Route path="/workbench" element={<Navigate to="/terminal" replace />} />
         <Route path="/studio" element={<Studio />} />
+        <Route path="/studio/providers" element={<MediaProviders />} />
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />

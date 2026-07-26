@@ -271,35 +271,27 @@ func ResolveImageToBase64(dataDir string, urlPath string, frontendFS fs.FS) (str
 	case strings.HasPrefix(urlPath, "/avatars/"):
 		// Preset avatars - try disk first, then embedded filesystem
 		filename := filepath.Base(urlPath)
-		candidates := []string{
-			filepath.Join(dataDir, "..", "web", "frontend", "public", "avatars", filename),
-			filepath.Join(dataDir, "..", "web", "frontend", "dist", "avatars", filename),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				filePath = c
-				break
-			}
-		}
-		if filePath == "" && frontendFS != nil {
-			// Fall back to embedded filesystem
-			embeddedPath := "avatars/" + filename
-			if data, err := fs.ReadFile(frontendFS, embeddedPath); err == nil {
-				mimeType := "image/png"
-				switch strings.ToLower(filepath.Ext(filename)) {
-				case ".jpg", ".jpeg":
-					mimeType = "image/jpeg"
-				case ".webp":
-					mimeType = "image/webp"
-				case ".gif":
-					mimeType = "image/gif"
-				}
-				return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
-			}
-		}
-		if filePath == "" {
+		resolved, path, err := resolveFrontendAsset(dataDir, "avatars/"+filename, frontendFS)
+		if err != nil {
 			return "", fmt.Errorf("preset avatar not found: %s", urlPath)
 		}
+		if resolved != "" {
+			return resolved, nil
+		}
+		filePath = path
+
+	case isShippedAsset(urlPath):
+		// Assets that ship with the frontend and are referenced by their public
+		// URL — the preset backgrounds and the mascot. Same disk-then-embedded
+		// lookup as preset avatars.
+		resolved, path, err := resolveFrontendAsset(dataDir, strings.TrimPrefix(urlPath, "/"), frontendFS)
+		if err != nil {
+			return "", fmt.Errorf("shipped asset not found: %s", urlPath)
+		}
+		if resolved != "" {
+			return resolved, nil
+		}
+		filePath = path
 
 	default:
 		return "", fmt.Errorf("unsupported local URL: %s", urlPath)
@@ -310,16 +302,78 @@ func ResolveImageToBase64(dataDir string, urlPath string, frontendFS fs.FS) (str
 		return "", fmt.Errorf("failed to read image file: %w", err)
 	}
 
-	mimeType := "image/png"
-	ext := strings.ToLower(filepath.Ext(filePath))
-	switch ext {
-	case ".jpg", ".jpeg":
-		mimeType = "image/jpeg"
-	case ".webp":
-		mimeType = "image/webp"
-	case ".gif":
-		mimeType = "image/gif"
+	return fmt.Sprintf("data:%s;base64,%s", MimeForPath(filePath), base64.StdEncoding.EncodeToString(data)), nil
+}
+
+// shippedAssetPrefixes are the frontend's own public files that may be inlined
+// into a model request. It is an allowlist, not a directory walk: only assets
+// the app itself references (preset backgrounds, the mascot) are reachable.
+var shippedAssetPrefixes = []string{
+	"/preset-bg/",
+	"/cat-toolbar.webp",
+	"/logo-transparent.png",
+	"/icon.webp",
+}
+
+func isShippedAsset(urlPath string) bool {
+	if strings.Contains(urlPath, "..") {
+		return false
+	}
+	for _, p := range shippedAssetPrefixes {
+		if strings.HasSuffix(p, "/") {
+			if strings.HasPrefix(urlPath, p) && !strings.Contains(strings.TrimPrefix(urlPath, p), "/") {
+				return true
+			}
+			continue
+		}
+		if urlPath == p {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveFrontendAsset locates a file that ships with the frontend. In a dev
+// checkout it is on disk; in the single-binary build it only exists inside the
+// embedded FS, which cannot be handed back as a path — hence the two return
+// modes: a ready data URI (embedded) or a filesystem path (disk) for the
+// caller to read.
+func resolveFrontendAsset(dataDir, rel string, frontendFS fs.FS) (dataURI string, filePath string, err error) {
+	if rel == "" || strings.Contains(rel, "..") {
+		return "", "", fmt.Errorf("invalid asset path %q", rel)
 	}
 
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
+	parts := strings.Split(rel, "/")
+	diskRel := filepath.Join(parts...)
+	candidates := []string{
+		filepath.Join(dataDir, "..", "web", "frontend", "public", diskRel),
+		filepath.Join(dataDir, "..", "web", "frontend", "dist", diskRel),
+	}
+	for _, c := range candidates {
+		if info, statErr := os.Stat(c); statErr == nil && !info.IsDir() {
+			return "", c, nil
+		}
+	}
+
+	if frontendFS != nil {
+		if data, readErr := fs.ReadFile(frontendFS, rel); readErr == nil {
+			return fmt.Sprintf("data:%s;base64,%s", MimeForPath(rel), base64.StdEncoding.EncodeToString(data)), "", nil
+		}
+	}
+
+	return "", "", fmt.Errorf("asset not found: %s", rel)
+}
+
+// MimeForPath guesses an image MIME type from a file extension, defaulting to
+// PNG for anything unrecognised.
+func MimeForPath(name string) string {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	}
+	return "image/png"
 }

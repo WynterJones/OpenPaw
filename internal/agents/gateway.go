@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
+	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/memory"
 	"github.com/openpaw/openpaw/internal/tmux"
 )
@@ -278,6 +279,45 @@ func workspaceFromContext(ctx context.Context) string {
 	return ws
 }
 
+type providerCtxKey struct{}
+
+// WithProvider pins a run to a named engine regardless of which one is active.
+//
+// Carried on the context rather than threaded through every signature because
+// the override has to survive the whole call chain — RoleChat, delegation, tool
+// handlers — and every intermediate would otherwise need a parameter it does
+// not care about.
+func WithProvider(ctx context.Context, name string) context.Context {
+	if name == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, providerCtxKey{}, name)
+}
+
+func providerFromContext(ctx context.Context) string {
+	name, _ := ctx.Value(providerCtxKey{}).(string)
+	return name
+}
+
+// providerFor resolves the engine for a run: the context's pin if it names one
+// that is actually usable, otherwise the active engine.
+//
+// An unusable pin falls back rather than failing. A schedule pinned to Codex
+// still has to produce its report on a machine where Codex was uninstalled —
+// silently running on the active engine beats an unattended routine that stops
+// reporting and never says why.
+func (m *Manager) providerFor(ctx context.Context) llm.Provider {
+	name := providerFromContext(ctx)
+	if name == "" || m.Providers == nil {
+		return m.Provider()
+	}
+	if p := m.Providers.Get(name); p != nil && p.IsConfigured() {
+		return p
+	}
+	logger.Warn("engine %q is not available — running on the active engine instead", name)
+	return m.Provider()
+}
+
 func (m *Manager) threadWorkspaceID(threadID string) string {
 	if threadID == "" {
 		return database.DefaultWorkspaceID
@@ -320,7 +360,8 @@ func (m *Manager) buildWorkspacePromptSection(providerName, workspaceID string) 
 }
 
 func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, history []ThreadMessage, userMessage, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath string) (string, *llm.UsageInfo, string, string, string, error) {
-	provider := m.Provider()
+	// A scheduled run may pin its own engine; everything else gets the active one.
+	provider := m.providerFor(ctx)
 	resolvedModel := provider.ResolveModel(model, llm.ModelSonnet)
 
 	// Resolve the workspace from the thread being answered, not the global
@@ -657,7 +698,10 @@ func scheduledReportDirective(threadless bool) string {
 // SendScheduledPrompt sends a prompt to an agent role and returns the response.
 // If threadID is provided, the message is persisted to that chat thread.
 // If threadID is empty, a new thread is created.
-func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID, workspaceID string) (response, usedThreadID string, err error) {
+func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID, workspaceID, provider string) (response, usedThreadID string, err error) {
+	// Pin the engine for this whole run, if the schedule chose one.
+	ctx = WithProvider(ctx, provider)
+
 	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	err = m.db.QueryRow(

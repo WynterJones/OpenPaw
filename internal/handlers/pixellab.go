@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -259,6 +260,8 @@ type charOut struct {
 	Animations []clipOut `json:"animations"`
 	Pinned     bool      `json:"pinned"`
 	AgentSlug  string    `json:"agent_slug"`
+	// nil = every workspace, matching agents/skills/services.
+	WorkspaceID *string  `json:"workspace_id,omitempty"`
 	CreatedAt  string    `json:"created_at"`
 }
 
@@ -343,7 +346,7 @@ func (h *PixelLabHandler) saveFrames(charID, clipID string, frames []string) ([]
 	return rel, nil
 }
 
-func (h *PixelLabHandler) rowToOut(id, name, pixellabID, basePath, animsJSON string, pinned int, agentSlug, createdAt string) charOut {
+func (h *PixelLabHandler) rowToOut(id, name, pixellabID, basePath, animsJSON string, pinned int, agentSlug string, workspaceID *string, createdAt string) charOut {
 	var stored []storedClip
 	_ = json.Unmarshal([]byte(animsJSON), &stored)
 	anims := make([]clipOut, 0, len(stored))
@@ -360,12 +363,26 @@ func (h *PixelLabHandler) rowToOut(id, name, pixellabID, basePath, animsJSON str
 	}
 	return charOut{
 		ID: id, Name: name, PixellabID: pixellabID, BaseURL: base,
-		Animations: anims, Pinned: pinned != 0, AgentSlug: agentSlug, CreatedAt: createdAt,
+		Animations: anims, Pinned: pinned != 0, AgentSlug: agentSlug,
+		WorkspaceID: workspaceID, CreatedAt: createdAt,
 	}
 }
 
 func (h *PixelLabHandler) ListCharacters(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query("SELECT id, name, pixellab_id, base_path, animations, pinned, agent_slug, created_at FROM pixellab_characters ORDER BY created_at ASC")
+	// Scoped to the active workspace, plus the unscoped ones (workspace_id IS
+	// NULL = every workspace). ?all=true returns the full library, which the
+	// management UI needs so a companion belonging to another workspace can
+	// still be found and re-scoped.
+	query := `SELECT id, name, pixellab_id, base_path, animations, pinned, agent_slug, workspace_id, created_at
+	          FROM pixellab_characters`
+	var args []interface{}
+	if r.URL.Query().Get("all") != "true" {
+		query += " WHERE workspace_id IS NULL OR workspace_id = ?"
+		args = append(args, h.db.ActiveWorkspaceID())
+	}
+	query += " ORDER BY created_at ASC"
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list characters")
 		return
@@ -375,11 +392,17 @@ func (h *PixelLabHandler) ListCharacters(w http.ResponseWriter, r *http.Request)
 	out := []charOut{}
 	for rows.Next() {
 		var id, name, pixellabID, basePath, anims, agentSlug, createdAt string
+		var workspaceID sql.NullString
 		var pinned int
-		if err := rows.Scan(&id, &name, &pixellabID, &basePath, &anims, &pinned, &agentSlug, &createdAt); err != nil {
+		if err := rows.Scan(&id, &name, &pixellabID, &basePath, &anims, &pinned, &agentSlug, &workspaceID, &createdAt); err != nil {
 			continue
 		}
-		out = append(out, h.rowToOut(id, name, pixellabID, basePath, anims, pinned, agentSlug, createdAt))
+		var ws *string
+		if workspaceID.Valid && workspaceID.String != "" {
+			v := workspaceID.String
+			ws = &v
+		}
+		out = append(out, h.rowToOut(id, name, pixellabID, basePath, anims, pinned, agentSlug, ws, createdAt))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -391,6 +414,8 @@ func (h *PixelLabHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 		BaseSprite string      `json:"base_sprite"`
 		Animations []clipInput `json:"animations"`
 		AgentSlug  string      `json:"agent_slug"`
+		// Absent or "" = every workspace; otherwise scope to this one.
+		WorkspaceID *string `json:"workspace_id"`
 	}
 	// Frames are base64 PNGs — allow a large body.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
@@ -436,9 +461,21 @@ func (h *PixelLabHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 
 	animsJSON, _ := json.Marshal(stored)
 	userID := middleware.GetUserID(r.Context())
+	// A new companion defaults to the workspace it was made in — that is almost
+	// always what was meant, and it can be widened to all workspaces afterwards.
+	workspaceID := req.WorkspaceID
+	if workspaceID == nil {
+		ws := h.db.ActiveWorkspaceID()
+		if ws != "" {
+			workspaceID = &ws
+		}
+	} else if *workspaceID == "" {
+		workspaceID = nil
+	}
+
 	if _, err := h.db.Exec(
-		"INSERT INTO pixellab_characters (id, user_id, name, pixellab_id, base_path, animations, pinned, agent_slug) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
-		id, userID, req.Name, req.PixellabID, basePath, string(animsJSON), req.AgentSlug,
+		"INSERT INTO pixellab_characters (id, user_id, name, pixellab_id, base_path, animations, pinned, agent_slug, workspace_id) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+		id, userID, req.Name, req.PixellabID, basePath, string(animsJSON), req.AgentSlug, workspaceID,
 	); err != nil {
 		os.RemoveAll(filepath.Join(h.spritesDir(), id))
 		writeError(w, http.StatusInternalServerError, "failed to save character")
@@ -446,7 +483,7 @@ func (h *PixelLabHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 	}
 
 	h.db.LogAudit(userID, "pixellab_character_created", "pixellab", "character", id, req.Name)
-	writeJSON(w, http.StatusOK, h.rowToOut(id, req.Name, req.PixellabID, basePath, string(animsJSON), 0, req.AgentSlug, ""))
+	writeJSON(w, http.StatusOK, h.rowToOut(id, req.Name, req.PixellabID, basePath, string(animsJSON), 0, req.AgentSlug, workspaceID, ""))
 }
 
 func (h *PixelLabHandler) AddAnimation(w http.ResponseWriter, r *http.Request) {
@@ -497,9 +534,10 @@ func (h *PixelLabHandler) AddAnimation(w http.ResponseWriter, r *http.Request) {
 func (h *PixelLabHandler) UpdateCharacter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Pinned    *bool   `json:"pinned"`
-		AgentSlug *string `json:"agent_slug"`
-		Name      *string `json:"name"`
+		Pinned      *bool   `json:"pinned"`
+		AgentSlug   *string `json:"agent_slug"`
+		Name        *string `json:"name"`
+		WorkspaceID *string `json:"workspace_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -517,6 +555,14 @@ func (h *PixelLabHandler) UpdateCharacter(w http.ResponseWriter, r *http.Request
 	}
 	if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
 		h.db.Exec("UPDATE pixellab_characters SET name = ? WHERE id = ?", *req.Name, id)
+	}
+	if req.WorkspaceID != nil {
+		// Empty string clears the scope (nullable = every workspace).
+		if *req.WorkspaceID == "" {
+			h.db.Exec("UPDATE pixellab_characters SET workspace_id = NULL WHERE id = ?", id)
+		} else {
+			h.db.Exec("UPDATE pixellab_characters SET workspace_id = ? WHERE id = ?", *req.WorkspaceID, id)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

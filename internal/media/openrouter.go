@@ -115,7 +115,46 @@ func (p *ProviderOpenRouter) Models(ctx context.Context, kind Kind) ([]Model, er
 	for _, e := range entries {
 		out = append(out, e.model)
 	}
+	shortenNames(out)
 	return out, nil
+}
+
+// shortenNames drops the trailing parenthetical from model names.
+//
+// OpenRouter ships names like "Nano Banana Pro (Gemini 3 Pro Image Preview)",
+// which in a narrow picker is mostly noise — the marketing name is what people
+// recognise. The suffix is kept only where dropping it would make two different
+// models read identically ("Nano Banana 2 (…Flash Image Preview)" and "Nano
+// Banana 2 (…Flash Image)" are genuinely different models), because an
+// ambiguous picker is worse than a wordy one.
+func shortenNames(models []Model) {
+	short := make([]string, len(models))
+	counts := map[string]int{}
+	for i, m := range models {
+		short[i] = stripParenthetical(m.Name)
+		counts[short[i]]++
+	}
+	for i := range models {
+		if counts[short[i]] == 1 {
+			models[i].Name = short[i]
+		}
+	}
+}
+
+// stripParenthetical removes a single trailing "(...)" group.
+func stripParenthetical(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if !strings.HasSuffix(trimmed, ")") {
+		return trimmed
+	}
+	open := strings.LastIndex(trimmed, "(")
+	if open <= 0 {
+		return trimmed
+	}
+	if s := strings.TrimSpace(trimmed[:open]); s != "" {
+		return s
+	}
+	return trimmed
 }
 
 // maxOpenRouterRefImages caps how many reference images the editor offers.
