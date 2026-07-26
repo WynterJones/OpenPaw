@@ -22,7 +22,8 @@ import { EmptyState } from "../components/EmptyState";
 import { Pagination } from "../components/Pagination";
 import { DataTable } from "../components/DataTable";
 import { SearchBar } from "../components/SearchBar";
-import { ViewToggle, usePersistentViewMode } from "../components/ViewToggle";
+import { ViewToggle } from "../components/ViewToggle";
+import { usePersistentViewMode } from "../components/viewMode";
 import { Toggle } from "../components/Toggle";
 import {
   api,

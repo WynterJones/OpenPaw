@@ -147,7 +147,6 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
 

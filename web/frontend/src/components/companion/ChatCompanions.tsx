@@ -84,8 +84,12 @@ function CompanionSprite({
   index: number;
   mood: CompanionMood;
 }) {
-  const fracRef = useRef<Frac>(loadFrac(character.id, index));
-  const [pos, setPos] = useState<Pos>(() => fracToPos(fracRef.current));
+  // Seeded through state rather than read back off the ref: reading a ref
+  // during render is what the initial position needs, and doing it directly
+  // makes the component's first paint depend on a value React does not track.
+  const [initialFrac] = useState<Frac>(() => loadFrac(character.id, index));
+  const fracRef = useRef<Frac>(initialFrac);
+  const [pos, setPos] = useState<Pos>(() => fracToPos(initialFrac));
   const [hovered, setHovered] = useState(false);
   const [randomClip, setRandomClip] = useState<string | null>(null);
   const dragRef = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);

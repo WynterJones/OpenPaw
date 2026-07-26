@@ -1,20 +1,5 @@
 import { LayoutGrid, List } from 'lucide-react';
-import { useState, useEffect } from 'react';
-
-export type ViewMode = 'grid' | 'list';
-
-// Persists a page's grid/list choice across navigation (the pages unmount on
-// route change). Keyed per page so each list remembers its own preference.
-export function usePersistentViewMode(key: string, fallback: ViewMode): [ViewMode, (v: ViewMode) => void] {
-  const [view, setView] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem(`openpaw_view_${key}`);
-    return saved === 'grid' || saved === 'list' ? saved : fallback;
-  });
-  useEffect(() => {
-    localStorage.setItem(`openpaw_view_${key}`, view);
-  }, [key, view]);
-  return [view, setView];
-}
+import type { ViewMode } from './viewMode';
 
 interface ViewToggleProps {
   view: ViewMode;

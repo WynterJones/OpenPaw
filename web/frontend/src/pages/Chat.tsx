@@ -1032,7 +1032,6 @@ export function Chat() {
   useEffect(() => {
     draftHydratedRef.current = false; // skip the persist triggered by this restore
     setInput(localStorage.getItem(`openpaw_chat_draft_${activeThread ?? 'new'}`) ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThread]);
   useEffect(() => {
     if (!draftHydratedRef.current) { draftHydratedRef.current = true; return; }
