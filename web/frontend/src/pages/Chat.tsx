@@ -160,7 +160,7 @@ export function Chat() {
   const [attachedContextFiles, setAttachedContextFiles] = useState<ContextFile[]>([]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  // Tools attachable via the `#` trigger. `/tools` already returns this
+  // Microservices attachable via the `#` trigger. `/tools` already returns this
   // workspace's tools plus global ones (workspace_id === null).
   const [toolItems, setToolItems] = useState<Tool[]>([]);
   const [attachedTools, setAttachedTools] = useState<Tool[]>([]);
@@ -408,7 +408,7 @@ export function Chat() {
       mediaAnchorRef.current = null;
     }
 
-    // Detect # trigger for attaching Tools (only at the start of the input or
+    // Detect # trigger for attaching Microservices (only at the start of the input or
     // after whitespace, so `#` inside a word or a markdown heading is ignored).
     const toolMatch = textBefore.match(/(^|\s)#([\w-]*)$/);
     if (toolMatch) {
@@ -1728,21 +1728,21 @@ export function Chat() {
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
                   <TmuxSessionCard threadId={activeThread} />
-                  {/* Tools # autocomplete dropdown */}
+                  {/* Microservices # autocomplete dropdown */}
                   {/* Shown when there are matches, or when the workspace genuinely
                       has no tools. A filter that matches nothing just closes,
                       so typing "#5" in prose isn't interrupted. */}
                   {toolPickerVisible && (
-                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Attach tools">
+                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Attach microservices">
                       {flatTools.length === 0 ? (
                         <div className="px-4 py-3 text-sm text-text-3">
-                          No tools available. Add tools in Settings.
+                          No microservices available. Add microservices in Settings.
                         </div>
                       ) : (
                         <>
                           {workspaceTools.length > 0 && (
                             <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0">
-                              Workspace Tools
+                              Workspace Microservices
                             </div>
                           )}
                           {workspaceTools.map((tool, i) => (
@@ -1755,7 +1755,7 @@ export function Chat() {
                           ))}
                           {globalTools.length > 0 && (
                             <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0 border-t">
-                              Global Tools
+                              Global Microservices
                             </div>
                           )}
                           {globalTools.map((tool, i) => (
@@ -1966,7 +1966,7 @@ export function Chat() {
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
                     onPaste={handlePaste}
-                    placeholder="Ask anything... (@ agents, # tools, !! context, @@ media)"
+                    placeholder="Ask anything... (@ agents, # microservices, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
                     disabled={sending}

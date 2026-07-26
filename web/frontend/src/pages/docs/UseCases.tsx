@@ -29,9 +29,9 @@ const useCases = [
     description: 'Accelerate software development with AI-powered code review, documentation, and automation.',
     examples: [
       'Create a "Code Reviewer" agent with coding standards in its system prompt',
-      'Install the GitHub tool to let agents create issues, review PRs, and check CI status',
+      'Install the GitHub microservice to let agents create issues, review PRs, and check CI status',
       'Set up scheduled code quality reports that run nightly',
-      'Build a custom tool to monitor staging deployments and report status',
+      'Build a custom microservice to monitor staging deployments and report status',
     ],
     agents: ['Code Reviewer', 'DevOps Agent', 'Documentation Writer'],
     tools: ['GitHub', 'GitLab', 'Docker Hub'],
@@ -56,10 +56,10 @@ const useCases = [
     title: 'Research & Analysis',
     description: 'Conduct deep research, analyze data, and generate reports using multiple specialized agents.',
     examples: [
-      'Create a "Research Analyst" agent with access to search and academic tools',
-      'Install Semantic Scholar and ArXiv tools for academic paper access',
+      'Create a "Research Analyst" agent with access to search and academic microservices',
+      'Install Semantic Scholar and ArXiv microservices for academic paper access',
       'Set up automated literature reviews that run weekly',
-      'Build custom tools to pull data from external APIs and analyze trends',
+      'Build custom microservices to pull data from external APIs and analyze trends',
     ],
     agents: ['Research Analyst', 'Data Analyst'],
     tools: ['Semantic Scholar', 'ArXiv', 'Wikipedia', 'Brave Search'],
@@ -68,12 +68,12 @@ const useCases = [
     id: 'automation',
     icon: Cog,
     title: 'Task Automation',
-    description: 'Automate repetitive tasks with scheduled jobs, heartbeat monitoring, and tool integrations.',
+    description: 'Automate repetitive tasks with scheduled jobs, heartbeat monitoring, and microservice integrations.',
     examples: [
-      'Schedule a daily tool action to check system health and report via notifications',
+      'Schedule a daily microservice action to check system health and report via notifications',
       'Set up heartbeat monitoring so agents proactively check for issues',
       'Create workflows where one agent&apos;s output triggers another agent&apos;s action',
-      'Build custom tools to fetch reports and monitor dashboards on a schedule',
+      'Build custom microservices to fetch reports and monitor dashboards on a schedule',
     ],
     agents: ['Automation Agent', 'Monitor Agent'],
     tools: ['HTTP Client', 'Cron Scheduler', 'Notification API'],
@@ -101,7 +101,7 @@ export function UseCases() {
 
       <h2 id="overview">Overview</h2>
       <p>
-        The combination of customizable agents, installable tools, and scheduled automation
+        The combination of customizable agents, installable microservices, and scheduled automation
         makes OpenPaw suitable for everything from personal productivity to
         team-wide workflow automation.
       </p>
@@ -135,7 +135,7 @@ export function UseCases() {
               </div>
             </div>
             <div>
-              <p className="text-xs font-semibold text-text-3 uppercase tracking-wider mb-1.5">Useful Tools</p>
+              <p className="text-xs font-semibold text-text-3 uppercase tracking-wider mb-1.5">Useful Microservices</p>
               <div className="flex flex-wrap gap-1.5">
                 {useCase.tools.map((tool) => (
                   <span key={tool} className="px-2 py-0.5 rounded-full bg-surface-2 text-text-2 text-xs font-medium border border-border-0">
@@ -151,7 +151,7 @@ export function UseCases() {
       <h2 id="getting-started">Getting Started</h2>
       <p>
         The best way to start is to pick the use case closest to your needs and set up one agent
-        with the appropriate tools. As you get comfortable, add more agents and automate with
+        with the appropriate microservices. As you get comfortable, add more agents and automate with
         the scheduler.
       </p>
       <p>

@@ -61,7 +61,7 @@ func GetCatalogTool(slug string) (*CatalogTool, error) {
 			return &t, nil
 		}
 	}
-	return nil, fmt.Errorf("catalog tool not found: %s", slug)
+	return nil, fmt.Errorf("catalog microservice not found: %s", slug)
 }
 
 func GetSourceFiles(slug string) (map[string][]byte, error) {
@@ -103,7 +103,7 @@ func InstallTool(db *database.DB, slug, toolsDir string) (string, error) {
 	toolID := uuid.New().String()
 	toolDir := filepath.Join(toolsDir, toolID)
 	if err := os.MkdirAll(toolDir, 0755); err != nil {
-		return "", fmt.Errorf("create tool dir: %w", err)
+		return "", fmt.Errorf("create microservice dir: %w", err)
 	}
 
 	tmplData := TemplateData{
@@ -166,7 +166,7 @@ func InstallTool(db *database.DB, slug, toolsDir string) (string, error) {
 	)
 	if err != nil {
 		os.RemoveAll(toolDir)
-		return "", fmt.Errorf("insert tool record: %w", err)
+		return "", fmt.Errorf("insert microservice record: %w", err)
 	}
 
 	logger.Success("Installed library tool: %s (%s)", cat.Name, toolID)

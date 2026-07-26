@@ -46,7 +46,7 @@ export function ImageWidget({ data }: WidgetProps) {
         <div className="relative group flex items-center justify-center p-2 bg-surface-2/30 min-h-[100px]">
           <img
             src={imageInfo.src}
-            alt="Tool output"
+            alt="Microservice output"
             className="max-h-[400px] max-w-full object-contain rounded"
           />
           <button
@@ -84,7 +84,7 @@ export function ImageWidget({ data }: WidgetProps) {
           </button>
           <img
             src={imageInfo.src}
-            alt="Tool output (expanded)"
+            alt="Microservice output (expanded)"
             className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />

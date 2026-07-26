@@ -1,7 +1,7 @@
 {
-  "pid": 73261,
-  "parent_pid": 73240,
-  "database": "/Users/wynterjones/Work/SYSTEM/OpenPaw/.beads/beads.db",
+  "pid": 36876,
+  "parent_pid": 36855,
+  "database": "/Users/wynterjones/Work/SYSTEM/OpenPaw/.beads/dolt",
   "version": "0.34.0",
-  "started_at": "2026-03-03T23:25:09.419728Z"
+  "started_at": "2026-07-26T00:56:14.407891Z"
 }

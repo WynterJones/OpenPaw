@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
+	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/models"
 )
@@ -81,6 +82,8 @@ type Manager struct {
 	// lives in handlers — and handlers already imports this package.
 	TmuxWatchFn     TmuxWatchStarter
 	TmuxUnwatchFn   TmuxWatchStopper
+	// MediaRegistry backs the studio_* tools. Nil disables them.
+	MediaRegistry   *media.Registry
 	manifestCache   sync.Map // map[toolID][]byte
 	streamStates    sync.Map // map[threadID]*StreamState
 	activeSubAgents int32    // atomic counter for concurrent sub-agents
@@ -179,7 +182,7 @@ func (m *Manager) buildAgentList(workspaceID string) string {
 		}
 		sb.WriteString(fmt.Sprintf("- %s (slug: %s): %s", name, slug, desc))
 		if toolsCSV != "" {
-			sb.WriteString(fmt.Sprintf(" [tools: %s]", toolsCSV))
+			sb.WriteString(fmt.Sprintf(" [microservices: %s]", toolsCSV))
 		}
 		sb.WriteString("\n")
 	}

@@ -36,13 +36,13 @@ const quickLinks = [
 const keyFeatures = [
   { icon: Boxes, label: 'Workspaces', description: 'Isolate chats, dashboards, context, tasks, and files per project' },
   { icon: Bot, label: 'AI Agents', description: 'Multi-agent system with customizable roles and prompts' },
-  { icon: Wrench, label: 'Tool Library', description: 'Install and manage tools from the built-in catalog' },
+  { icon: Wrench, label: 'Microservice Library', description: 'Install and manage microservices from the built-in catalog' },
   { icon: Sparkles, label: 'Skills', description: 'Reusable prompt templates for common tasks' },
   { icon: BookOpen, label: 'Context System', description: 'Upload files and knowledge for agents to reference' },
   { icon: Clock, label: 'Scheduler', description: 'Cron-based automation for recurring tasks' },
   { icon: Heart, label: 'Heartbeat', description: 'Proactive agent check-ins on a schedule' },
   { icon: MessageSquare, label: 'Chat', description: 'Threaded conversations with multiple agents' },
-  { icon: Shield, label: 'Secrets', description: 'Encrypted credential management for tools' },
+  { icon: Shield, label: 'Secrets', description: 'Encrypted credential management for microservices' },
   { icon: Zap, label: 'Real-time', description: 'WebSocket streaming for live agent output' },
 ];
 
@@ -63,13 +63,13 @@ export function DocsHome() {
       <h1>OpenPaw Documentation</h1>
       <p className="text-lg text-text-2 mb-8">
         Build your own AI-powered assistant factory. OpenPaw is a self-hosted platform for managing
-        AI agents, tools, and automations — all from a single Go binary.
+        AI agents, microservices, and automations — all from a single Go binary.
       </p>
 
       <h2 id="what-is-openpaw">What is OpenPaw?</h2>
       <p>
         OpenPaw is an <strong>agentic factory</strong> — a single-binary application that lets you create,
-        configure, and orchestrate AI agents. Each agent can have its own personality, tools, and
+        configure, and orchestrate AI agents. Each agent can have its own personality, microservices, and
         capabilities. Connect them to external APIs, schedule recurring tasks, and manage everything
         through a beautiful web interface.
       </p>

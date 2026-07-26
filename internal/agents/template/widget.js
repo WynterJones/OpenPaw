@@ -1,8 +1,8 @@
-// Default OpenPaw widget — renders tool data as a themed key-value list.
-// Customize this file to create rich visualizations for your tool's output.
+// Default OpenPaw widget — renders microservice data as a themed key-value list.
+// Customize this file to create rich visualizations for your microservice's output.
 //
 // Available globals:
-//   window.WIDGET_DATA  — the JSON data from the tool response
+//   window.WIDGET_DATA  — the JSON data from the microservice response
 //   window.WIDGET_THEME — object with --op-* CSS var values (underscored keys)
 //
 // Available CSS vars:

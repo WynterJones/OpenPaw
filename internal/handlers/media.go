@@ -170,6 +170,12 @@ func (h *MediaHandler) ServeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?download=1 turns the same URL into a save-to-disk link, which is how
+	// Studio's download button works without duplicating the file route.
+	if r.URL.Query().Get("download") != "" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	}
+
 	mediaDir := filepath.Join(h.dataDir, "..", "media")
 	filePath := filepath.Join(mediaDir, filename)
 	http.ServeFile(w, r, filePath)

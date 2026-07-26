@@ -62,7 +62,7 @@ func (m *Manager) postBuildLifecycle(toolID, toolDir, workOrderID, builderOutput
 	// 5. Wait for health (10s timeout)
 	healthy := true
 	if err := m.ToolMgr.WaitForHealth(toolID, 10*time.Second); err != nil {
-		logger.Warn("Tool %s health check failed after build: %v", toolID, err)
+		logger.Warn("Microservice %s health check failed after build: %v", toolID, err)
 		healthy = false
 	}
 

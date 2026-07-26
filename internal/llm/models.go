@@ -117,10 +117,45 @@ type ModelInfo struct {
 		MaxCompletionTokens int `json:"max_completion_tokens"`
 	} `json:"top_provider"`
 	Architecture struct {
-		Modality     string `json:"modality"`
-		Tokenizer    string `json:"tokenizer"`
-		InstructType string `json:"instruct_type"`
+		Modality         string   `json:"modality"`
+		Tokenizer        string   `json:"tokenizer"`
+		InstructType     string   `json:"instruct_type"`
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
 	} `json:"architecture"`
+	Description string `json:"description"`
+}
+
+// EmitsImages reports whether the model can return generated images. Newer
+// OpenRouter payloads say so in output_modalities; older ones only carry the
+// combined modality string ("text+image->text+image"), so both are checked.
+func (m ModelInfo) EmitsImages() bool {
+	for _, mod := range m.Architecture.OutputModalities {
+		if strings.EqualFold(mod, "image") {
+			return true
+		}
+	}
+	if idx := strings.Index(m.Architecture.Modality, "->"); idx >= 0 {
+		return strings.Contains(m.Architecture.Modality[idx:], "image")
+	}
+	return false
+}
+
+// IsImageFirst reports whether images are the model's primary output. Purpose-
+// built image models list "image" first in output_modalities; chat models that
+// can also emit an image list "text" first. The distinction matters for picking
+// a default — a text-first model asked for a picture often replies with words.
+func (m ModelInfo) IsImageFirst() bool {
+	if len(m.Architecture.OutputModalities) == 0 {
+		return false
+	}
+	return strings.EqualFold(m.Architecture.OutputModalities[0], "image")
+}
+
+// IsRouter reports whether the id is one of OpenRouter's meta-models, which
+// dispatch to some other model rather than generating anything themselves.
+func (m ModelInfo) IsRouter() bool {
+	return strings.HasPrefix(m.ID, "openrouter/auto")
 }
 
 type ModelPricing struct {
@@ -211,4 +246,70 @@ func GetCachedModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
 		return globalModelCache.all(), nil
 	}
 	return FetchModels(ctx, apiKey)
+}
+
+// The catalog above is deliberately filtered to tool-capable models, because
+// that is what the chat model picker should offer. Image-generation models
+// don't support tools and are missing from it entirely, so Studio needs the
+// unfiltered catalog and keeps it in its own cache.
+var fullModelCache = &ModelCache{byID: make(map[string]*ModelInfo)}
+
+// FetchAllModels retrieves the complete OpenRouter catalog, unfiltered.
+func FetchAllModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("API key required to fetch models")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://openrouter.ai/api/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("models endpoint returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []ModelInfo `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode models: %w", err)
+	}
+
+	fullModelCache.update(result.Data)
+	return result.Data, nil
+}
+
+// GetAllModels returns the full catalog from cache, fetching if stale.
+func GetAllModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
+	if !fullModelCache.isStale() {
+		return fullModelCache.all(), nil
+	}
+	return FetchAllModels(ctx, apiKey)
+}
+
+// GetImageModels returns catalog entries that can emit images, newest-looking
+// first is not attempted — OpenRouter has no release date, so callers sort.
+func GetImageModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
+	all, err := GetAllModels(ctx, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	var out []ModelInfo
+	for _, m := range all {
+		// Routers are excluded outright: "openrouter/auto" advertises image
+		// output but decides at request time what to dispatch to, so asking it
+		// for an image can come back as text — a bad thing to spend money on.
+		if m.EmitsImages() && !m.IsRouter() {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }

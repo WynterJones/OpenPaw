@@ -26,6 +26,24 @@ var ImageGenModels = []string{
 type ImageResult struct {
 	Base64        string `json:"b64_json"`
 	RevisedPrompt string `json:"revised_prompt"`
+	// MimeType is what the model actually returned. Models ignore the format
+	// hint and commonly reply with JPEG or WebP, so callers must not assume
+	// PNG when naming the file.
+	MimeType string `json:"mime_type"`
+}
+
+// mimeFromDataURI pulls the media type out of a "data:image/jpeg;base64,…"
+// prefix, defaulting to PNG when the URI is malformed or unlabelled.
+func mimeFromDataURI(uri string) string {
+	if !strings.HasPrefix(uri, "data:") {
+		return "image/png"
+	}
+	rest := uri[len("data:"):]
+	end := strings.IndexAny(rest, ";,")
+	if end <= 0 {
+		return "image/png"
+	}
+	return rest[:end]
 }
 
 // GenerateImage sends an image generation request to OpenRouter with retry on 429 rate limits.
@@ -157,7 +175,11 @@ func (c *Client) doImageRequest(ctx context.Context, key string, body []byte, pr
 		if img.ImageURL.URL != "" && strings.HasPrefix(img.ImageURL.URL, "data:") {
 			idx := strings.Index(img.ImageURL.URL, ",")
 			if idx >= 0 {
-				return &ImageResult{Base64: img.ImageURL.URL[idx+1:], RevisedPrompt: prompt}, nil
+				return &ImageResult{
+					Base64:        img.ImageURL.URL[idx+1:],
+					RevisedPrompt: prompt,
+					MimeType:      mimeFromDataURI(img.ImageURL.URL),
+				}, nil
 			}
 		}
 	}
@@ -178,15 +200,23 @@ func (c *Client) doImageRequest(ctx context.Context, key string, body []byte, pr
 	if err := json.Unmarshal(msg.Content, &parts); err == nil {
 		for _, part := range parts {
 			if part.B64JSON != "" {
-				return &ImageResult{Base64: part.B64JSON, RevisedPrompt: prompt}, nil
+				return &ImageResult{Base64: part.B64JSON, RevisedPrompt: prompt, MimeType: "image/png"}, nil
 			}
 			if part.InlineData != nil && part.InlineData.Data != "" {
-				return &ImageResult{Base64: part.InlineData.Data, RevisedPrompt: prompt}, nil
+				mime := part.InlineData.MimeType
+				if mime == "" {
+					mime = "image/png"
+				}
+				return &ImageResult{Base64: part.InlineData.Data, RevisedPrompt: prompt, MimeType: mime}, nil
 			}
 			if part.ImageURL != nil && strings.HasPrefix(part.ImageURL.URL, "data:") {
 				idx := strings.Index(part.ImageURL.URL, ",")
 				if idx >= 0 {
-					return &ImageResult{Base64: part.ImageURL.URL[idx+1:], RevisedPrompt: prompt}, nil
+					return &ImageResult{
+						Base64:        part.ImageURL.URL[idx+1:],
+						RevisedPrompt: prompt,
+						MimeType:      mimeFromDataURI(part.ImageURL.URL),
+					}, nil
 				}
 			}
 		}

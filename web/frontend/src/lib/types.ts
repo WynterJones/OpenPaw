@@ -709,3 +709,71 @@ export interface PastedImage {
   mime_type: string;
   size_bytes: number;
 }
+
+// --- Studio ---
+
+export type StudioKind = 'image' | 'video' | 'audio';
+
+export interface StudioProvider {
+  name: string;
+  configured: boolean;
+  kinds: StudioKind[];
+}
+
+export interface StudioProvidersResponse {
+  providers: StudioProvider[];
+  supports: Record<StudioKind, boolean>;
+}
+
+export interface StudioModel {
+  id: string;
+  name: string;
+  provider: string;
+  kind: StudioKind;
+  description?: string;
+  sizes?: string[];
+  durations?: number[];
+}
+
+export interface StudioFolder {
+  id: string;
+  name: string;
+  count: number;
+  created_at: string;
+}
+
+/** A generated asset. Mirrors media.Record on the Go side. */
+export interface StudioAsset {
+  id: string;
+  media_type: StudioKind;
+  provider: string;
+  source_model: string;
+  prompt: string;
+  filename: string;
+  mime_type: string;
+  width: number;
+  height: number;
+  duration_ms: number;
+  size_bytes: number;
+  folder_id: string;
+  workspace_id: string;
+  thread_id: string;
+  created_at: string;
+  local_url: string;
+}
+
+/** The saved left-column state, restored by clicking an entry in Saved. */
+export interface StudioPreset {
+  id: string;
+  name: string;
+  provider: string;
+  media_type: StudioKind;
+  model: string;
+  prompt: string;
+  count: number;
+  size: string;
+  folder_id: string;
+  params: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}

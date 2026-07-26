@@ -131,7 +131,7 @@ func (h *LogsHandler) ToolLogs(w http.ResponseWriter, r *http.Request) {
 		toolID, limit,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list tool logs")
+		writeError(w, http.StatusInternalServerError, "failed to list microservice logs")
 		return
 	}
 	defer rows.Close()

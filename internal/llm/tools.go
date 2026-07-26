@@ -19,7 +19,7 @@ func BuildCallToolDef() ToolDef {
 	params, _ := json.Marshal(map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"tool_id":  map[string]interface{}{"type": "string", "description": "The tool's ID (from the AVAILABLE TOOLS section)"},
+			"tool_id":  map[string]interface{}{"type": "string", "description": "The microservice's ID (from the AVAILABLE MICROSERVICES section)"},
 			"endpoint": map[string]interface{}{"type": "string", "description": "The endpoint path to call (e.g. /weather/London)"},
 			"method":   map[string]interface{}{"type": "string", "description": "HTTP method: GET or POST (default GET)", "enum": []string{"GET", "POST"}},
 			"payload":  map[string]interface{}{"type": "string", "description": "JSON request body for POST requests"},
@@ -30,7 +30,7 @@ func BuildCallToolDef() ToolDef {
 		Type: "function",
 		Function: FunctionDef{
 			Name:        "call_tool",
-			Description: "Call one of the user's custom tools by making an HTTP request to it. Use this when the user asks you to do something that one of the available tools can handle.",
+			Description: "Call one of the user's custom microservices by making an HTTP request to it. Use this when the user asks you to do something that one of the available microservices can handle.",
 			Parameters:  params,
 		},
 	}

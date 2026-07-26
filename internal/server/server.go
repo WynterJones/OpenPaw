@@ -19,6 +19,7 @@ import (
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/mcp"
+	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/memory"
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -58,6 +59,7 @@ type Config struct {
 	LLMClient    *llm.Client
 	Providers    *llm.ProviderRouter
 	MCPRegistry  *mcp.Registry
+	MediaRegistry *media.Registry
 	FrontendFS   fs.FS
 	ToolsDir     string
 	DataDir      string
@@ -82,7 +84,7 @@ func New(cfg Config) *Server {
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Providers, cfg.MCPRegistry, cfg.Port)
+	s.setupRoutes(cfg.ToolMgr, cfg.ToolsDir, cfg.DataDir, cfg.Secrets, cfg.LLMClient, cfg.Providers, cfg.MCPRegistry, cfg.MediaRegistry, cfg.Port)
 	s.setupFrontend(cfg.FrontendFS)
 
 	return s
@@ -97,7 +99,7 @@ func (s *Server) setupMiddleware() {
 	s.Router.Use(chiMiddleware.Recoverer)
 }
 
-func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, providers *llm.ProviderRouter, mcpRegistry *mcp.Registry, port int) {
+func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir string, secretsMgr *secrets.Manager, llmClient *llm.Client, providers *llm.ProviderRouter, mcpRegistry *mcp.Registry, mediaRegistry *media.Registry, port int) {
 	authHandler := handlers.NewAuthHandler(s.DB, s.Auth, dataDir)
 	setupHandler := handlers.NewSetupHandler(s.DB, s.Auth, secretsMgr, llmClient, providers, dataDir)
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
@@ -124,6 +126,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	agentTasksHandler := handlers.NewAgentTasksHandler(s.DB)
 	todoListsHandler := handlers.NewTodoListsHandler(s.DB)
 	mediaHandler := handlers.NewMediaHandler(s.DB, dataDir)
+	studioHandler := handlers.NewStudioHandler(s.DB, dataDir, mediaRegistry)
 	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
 	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
@@ -528,6 +531,22 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/{id}/file", mediaHandler.ServeFile)
 			})
 
+			// Studio — media generation (images, video, audio)
+			r.Route("/studio", func(r chi.Router) {
+				r.Get("/providers", studioHandler.Providers)
+				r.Get("/models", studioHandler.Models)
+				r.Post("/generate", studioHandler.Generate)
+				r.Get("/media", studioHandler.ListMedia)
+				r.Post("/media/{id}/move", studioHandler.MoveMedia)
+				r.Get("/folders", studioHandler.ListFolders)
+				r.Post("/folders", studioHandler.CreateFolder)
+				r.Patch("/folders/{id}", studioHandler.RenameFolder)
+				r.Delete("/folders/{id}", studioHandler.DeleteFolder)
+				r.Get("/presets", studioHandler.ListPresets)
+				r.Post("/presets", studioHandler.SavePreset)
+				r.Delete("/presets/{id}", studioHandler.DeletePreset)
+			})
+
 			// Logs
 			r.Get("/logs", logsHandler.List)
 			r.Get("/logs/stats", logsHandler.Stats)
@@ -557,6 +576,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			r.Put("/settings/models", settingsHandler.UpdateModels)
 			r.Get("/settings/api-key", settingsHandler.GetAPIKey)
 			r.Put("/settings/api-key", settingsHandler.UpdateAPIKey)
+			r.Get("/settings/media-keys", settingsHandler.GetMediaKeys)
+			r.Put("/settings/media-keys/{provider}", settingsHandler.UpdateMediaKey)
 			r.Get("/settings/pixellab-api-key", pixelLabHandler.GetAPIKey)
 			r.Put("/settings/pixellab-api-key", pixelLabHandler.UpdateAPIKey)
 			r.Post("/pixellab/proxy", pixelLabHandler.Proxy)

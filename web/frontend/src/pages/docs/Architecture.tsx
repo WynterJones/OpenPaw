@@ -90,7 +90,7 @@ export function Architecture() {
 │   ├── handlers/         # HTTP route handlers
 │   ├── models/           # Data structures
 │   ├── server/           # HTTP server setup + middleware
-│   ├── toollibrary/      # Tool catalog and management
+│   ├── toollibrary/      # Microservice catalog and management
 │   └── skilllibrary/     # Skill catalog
 ├── web/
 │   ├── embed.go          # go:embed for frontend dist
@@ -156,7 +156,7 @@ CGO_ENABLED=1 go build -o openpaw   # Go + embed → binary`}</code></pre>
           <tr><td><code>agent_roles</code></td><td>Agent configurations and system prompts</td></tr>
           <tr><td><code>threads</code></td><td>Chat conversation threads</td></tr>
           <tr><td><code>messages</code></td><td>Chat messages with cost/token metadata</td></tr>
-          <tr><td><code>tools</code></td><td>Installed tools and their status</td></tr>
+          <tr><td><code>tools</code></td><td>Installed microservices and their status</td></tr>
           <tr><td><code>secrets</code></td><td>Encrypted API keys and credentials</td></tr>
           <tr><td><code>schedules</code></td><td>Cron jobs and scheduled tasks</td></tr>
           <tr><td><code>audit_logs</code></td><td>Full activity audit trail</td></tr>
@@ -180,7 +180,7 @@ CGO_ENABLED=1 go build -o openpaw   # Go + embed → binary`}</code></pre>
           <tr><td><code>/api/auth</code></td><td>POST login, setup, logout</td><td>Authentication</td></tr>
           <tr><td><code>/api/agents</code></td><td>CRUD</td><td>Agent management</td></tr>
           <tr><td><code>/api/threads</code></td><td>CRUD + messages</td><td>Chat threads</td></tr>
-          <tr><td><code>/api/tools</code></td><td>CRUD + start/stop</td><td>Tool management</td></tr>
+          <tr><td><code>/api/tools</code></td><td>CRUD + start/stop</td><td>Microservice management</td></tr>
           <tr><td><code>/api/secrets</code></td><td>CRUD</td><td>Secrets vault</td></tr>
           <tr><td><code>/api/schedules</code></td><td>CRUD + trigger</td><td>Scheduled tasks</td></tr>
           <tr><td><code>/api/settings</code></td><td>GET/PUT</td><td>App configuration</td></tr>
@@ -214,7 +214,7 @@ CGO_ENABLED=1 go build -o openpaw   # Go + embed → binary`}</code></pre>
         <li><strong>Authentication</strong> — JWT tokens stored in HttpOnly cookies</li>
         <li><strong>CSRF Protection</strong> — double-submit cookie pattern for state-changing requests</li>
         <li><strong>Secrets Encryption</strong> — all secrets encrypted at rest in SQLite</li>
-        <li><strong>Tool Integrity</strong> — SHA-256 hashes verify tool binaries haven&apos;t been modified</li>
+        <li><strong>Microservice Integrity</strong> — SHA-256 hashes verify microservice binaries haven&apos;t been modified</li>
         <li><strong>Rate Limiting</strong> — configurable per-endpoint rate limits</li>
         <li><strong>Audit Logging</strong> — every significant action is logged with user, action, and target</li>
       </ul>

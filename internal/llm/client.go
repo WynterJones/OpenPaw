@@ -366,3 +366,8 @@ func (c *Client) FetchModels(ctx context.Context) ([]ModelInfo, error) {
 func (c *Client) GetCachedModels(ctx context.Context) ([]ModelInfo, error) {
 	return GetCachedModels(ctx, c.getAPIKey())
 }
+
+// GetImageModels returns the catalog entries capable of emitting images.
+func (c *Client) GetImageModels(ctx context.Context) ([]ModelInfo, error) {
+	return GetImageModels(ctx, c.getAPIKey())
+}

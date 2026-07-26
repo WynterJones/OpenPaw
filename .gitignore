@@ -72,3 +72,6 @@ desktop/node_modules/
 
 # Personal setup plan (local only)
 MYPLAN.md
+
+# Agent telemetry scratch — regenerated locally, not source
+.farmwork/

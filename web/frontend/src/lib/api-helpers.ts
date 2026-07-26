@@ -38,6 +38,12 @@ import type {
   WorkspaceDirectory,
   ThreadPin,
   TerminalSession,
+  StudioKind,
+  StudioProvidersResponse,
+  StudioModel,
+  StudioFolder,
+  StudioAsset,
+  StudioPreset,
   Workbench,
 } from './types';
 
@@ -512,4 +518,68 @@ export const threadPins = {
   get: (threadId: string) => api.get<ThreadPin>(`/chat/threads/${threadId}/pin`),
   pin: (threadId: string) => api.post<{ status: string; pin_summary: string }>(`/chat/threads/${threadId}/pin`),
   unpin: (threadId: string) => api.post<{ status: string }>(`/chat/threads/${threadId}/unpin`),
+};
+
+/**
+ * Studio — media generation.
+ *
+ * Generation is slow and paid, so every call here is deliberate: nothing polls
+ * and nothing retries on its own.
+ */
+export const studio = {
+  providers: () => api.get<StudioProvidersResponse>('/studio/providers'),
+
+  models: (type: StudioKind, provider?: string) => {
+    const q = new URLSearchParams({ type });
+    if (provider) q.set('provider', provider);
+    return api.get<{ models: StudioModel[] }>(`/studio/models?${q}`);
+  },
+
+  generate: (body: {
+    type: StudioKind;
+    prompt: string;
+    provider?: string;
+    model?: string;
+    count?: number;
+    size?: string;
+    duration?: number;
+    folder_id?: string;
+    ref_images?: string[];
+  }) => api.post<{ items: StudioAsset[]; errors: string[] }>('/studio/generate', body),
+
+  media: (opts?: { folderId?: string; type?: StudioKind; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (opts?.folderId) q.set('folder_id', opts.folderId);
+    if (opts?.type) q.set('type', opts.type);
+    if (opts?.limit) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return api.get<{ items: StudioAsset[] }>(`/studio/media${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Pass an empty folderId to unfile. */
+  move: (id: string, folderId: string) =>
+    api.post(`/studio/media/${id}/move`, { folder_id: folderId }),
+
+  folders: () => api.get<{ folders: StudioFolder[] }>('/studio/folders'),
+  createFolder: (name: string) => api.post<StudioFolder>('/studio/folders', { name }),
+  renameFolder: (id: string, name: string) => api.patch(`/studio/folders/${id}`, { name }),
+  /** Deletes the folder only — its media survives, unfiled. */
+  deleteFolder: (id: string) => api.delete(`/studio/folders/${id}`),
+
+  presets: () => api.get<{ presets: StudioPreset[] }>('/studio/presets'),
+  savePreset: (body: {
+    id?: string;
+    name?: string;
+    provider: string;
+    media_type: StudioKind;
+    model: string;
+    prompt: string;
+    count: number;
+    size: string;
+    folder_id: string;
+  }) => api.post<{ id: string; name: string }>('/studio/presets', body),
+  deletePreset: (id: string) => api.delete(`/studio/presets/${id}`),
+
+  /** Browser download of a generated asset. */
+  downloadUrl: (id: string) => `/api/v1/media/${id}/file?download=1`,
 };

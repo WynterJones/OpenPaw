@@ -13,7 +13,7 @@ import { toolLibrary, agentLibrary, skillLibrary, skillsSh, secretsApi, type Lib
 type LibraryTab = 'tools' | 'agents' | 'skills';
 const libraryTabs: { key: LibraryTab; label: string; icon: typeof Wrench }[] = [
   { key: 'agents', label: 'Agents', icon: Bot },
-  { key: 'tools', label: 'Tools', icon: Wrench },
+  { key: 'tools', label: 'Microservices', icon: Wrench },
   { key: 'skills', label: 'Skills', icon: Sparkles },
 ];
 
@@ -133,7 +133,7 @@ function ToolModal({ tool, open, onClose, onInstall, installing, secretStatuses 
             </div>
           ) : (
             <Button onClick={() => onInstall(tool.slug)} loading={installing} icon={<Download className="w-4 h-4" />} className="w-full">
-              Install Tool
+              Install Microservice
             </Button>
           )}
         </div>
@@ -254,7 +254,7 @@ function SkillModal({ skill, open, onClose, onInstall, installing }: { skill: Li
         )}
         {skill.required_tools && skill.required_tools.length > 0 && (
           <div className="rounded-lg bg-surface-2 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">Required Tools</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">Required Microservices</p>
             <div className="flex flex-wrap gap-1.5">
               {skill.required_tools.map(t => (
                 <code key={t} className="px-2 py-0.5 rounded text-xs font-mono bg-surface-3 text-text-1 border border-border-0">{t}</code>
@@ -325,7 +325,7 @@ function ToolsPanel() {
     setInstalling(slug);
     try {
       await toolLibrary.install(slug);
-      toast('success', 'Tool installed');
+      toast('success', 'Microservice installed');
       setSelected(null);
       load();
     } catch (err) {
@@ -348,15 +348,15 @@ function ToolsPanel() {
   return (
     <>
       <div className="flex items-center gap-3 mb-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search tools..." className="flex-1" />
-        <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter tools by category" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search microservices..." className="flex-1" />
+        <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter microservices by category" />
       </div>
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : catalog.length === 0 ? (
-        <EmptyState icon={<Package className="w-8 h-8" />} title="No tools found" description="Try a different search or category filter." />
+        <EmptyState icon={<Package className="w-8 h-8" />} title="No microservices found" description="Try a different search or category filter." />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {catalog.map(tool => <ToolCard key={tool.slug} tool={tool} onClick={() => handleSelect(tool)} needsSecrets={toolsMissingSecrets.has(tool.slug)} />)}

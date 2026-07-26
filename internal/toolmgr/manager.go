@@ -153,7 +153,7 @@ func (m *Manager) ensureToolDataDir(toolID string) {
 func (m *Manager) CompileTool(toolID string) error {
 	toolDir := filepath.Join(m.toolsDir, toolID)
 	if _, err := os.Stat(filepath.Join(toolDir, "main.go")); os.IsNotExist(err) {
-		return fmt.Errorf("no main.go found in tool directory")
+		return fmt.Errorf("no main.go found in microservice directory")
 	}
 
 	m.ensureToolDataDir(toolID)
@@ -204,14 +204,14 @@ func (m *Manager) StartTool(toolID string) error {
 	m.mu.Lock()
 	if rt, exists := m.tools[toolID]; exists && rt.Status == "running" {
 		m.mu.Unlock()
-		return fmt.Errorf("tool already running on port %d", rt.Port)
+		return fmt.Errorf("microservice already running on port %d", rt.Port)
 	}
 	m.mu.Unlock()
 
 	toolDir := filepath.Join(m.toolsDir, toolID)
 	binaryPath := filepath.Join(toolDir, "tool")
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-		return fmt.Errorf("tool binary not found, compile first")
+		return fmt.Errorf("microservice binary not found, compile first")
 	}
 
 	m.ensureToolDataDir(toolID)
@@ -284,7 +284,7 @@ func (m *Manager) StartTool(toolID string) error {
 		delete(m.tools, toolID)
 		m.mu.Unlock()
 		m.setToolError(toolID, fmt.Sprintf("start failed: %v", err))
-		return fmt.Errorf("failed to start tool: %w", err)
+		return fmt.Errorf("failed to start microservice: %w", err)
 	}
 
 	rt.PID = cmd.Process.Pid
@@ -324,7 +324,7 @@ func (m *Manager) StopTool(toolID string) error {
 	rt, exists := m.tools[toolID]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("tool not running")
+		return fmt.Errorf("microservice not running")
 	}
 	delete(m.tools, toolID)
 	m.mu.Unlock()
@@ -365,7 +365,7 @@ func (m *Manager) WaitForHealth(toolID string, timeout time.Duration) error {
 	rt, exists := m.tools[toolID]
 	m.mu.RUnlock()
 	if !exists {
-		return fmt.Errorf("tool not running")
+		return fmt.Errorf("microservice not running")
 	}
 
 	deadline := time.Now().Add(timeout)
@@ -391,10 +391,10 @@ func (m *Manager) CallToolWithContext(ctx context.Context, toolID, endpoint stri
 	rt, exists := m.tools[toolID]
 	m.mu.RUnlock()
 	if !exists {
-		return nil, fmt.Errorf("tool %s not running", toolID)
+		return nil, fmt.Errorf("microservice %s not running", toolID)
 	}
 	if rt.Status != "running" {
-		return nil, fmt.Errorf("tool %s status is %s, not running", toolID, rt.Status)
+		return nil, fmt.Errorf("microservice %s status is %s, not running", toolID, rt.Status)
 	}
 
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", rt.Port, endpoint)
@@ -416,7 +416,7 @@ func (m *Manager) CallToolWithContext(ctx context.Context, toolID, endpoint stri
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("call tool: %w", err)
+		return nil, fmt.Errorf("call microservice: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -426,7 +426,7 @@ func (m *Manager) CallToolWithContext(ctx context.Context, toolID, endpoint stri
 	}
 
 	if resp.StatusCode >= 400 {
-		return respBody, fmt.Errorf("tool returned status %d: %s", resp.StatusCode, string(respBody))
+		return respBody, fmt.Errorf("microservice returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	return respBody, nil
@@ -448,10 +448,10 @@ func (m *Manager) ProxyRequest(toolID, path string) (*ProxyResponse, error) {
 	rt, exists := m.tools[toolID]
 	m.mu.RUnlock()
 	if !exists {
-		return nil, fmt.Errorf("tool %s not running", toolID)
+		return nil, fmt.Errorf("microservice %s not running", toolID)
 	}
 	if rt.Status != "running" {
-		return nil, fmt.Errorf("tool %s status is %s, not running", toolID, rt.Status)
+		return nil, fmt.Errorf("microservice %s status is %s, not running", toolID, rt.Status)
 	}
 
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", rt.Port, path)

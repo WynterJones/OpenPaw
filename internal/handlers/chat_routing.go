@@ -364,11 +364,11 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		switch resp.Action {
 		case "build_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", gwName+" is building the tool…")
+			h.broadcastStatus(threadID, "spawning", gwName+" is building the microservice…")
 			h.handleBuildTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "update_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", gwName+" is updating the tool…")
+			h.broadcastStatus(threadID, "spawning", gwName+" is updating the microservice…")
 			h.handleUpdateTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "build_dashboard", "build_custom_dashboard":
 			h.broadcastRoutingIndicator(threadID, "builder")
@@ -519,8 +519,8 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		systemPrompt += fmt.Sprintf("The user is referencing project **%s**.\n", projectCtx.ProjectName)
 		systemPrompt += fmt.Sprintf("- **Directory**: `%s`\n", projectCtx.Directory)
 		if projectCtx.ToolID != "" {
-			systemPrompt += fmt.Sprintf("- **Coding CLI Tool ID**: `%s`\n", projectCtx.ToolID)
-			systemPrompt += "\nUse `call_tool` with this tool ID and directory for any file operations, code analysis, or modifications in this project.\n"
+			systemPrompt += fmt.Sprintf("- **Coding CLI Microservice ID**: `%s`\n", projectCtx.ToolID)
+			systemPrompt += "\nUse `call_tool` with this microservice ID and directory for any file operations, code analysis, or modifications in this project.\n"
 		}
 	}
 
@@ -744,7 +744,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 		).Scan(&toolID)
 	}
 	if toolID == "" {
-		h.saveAssistantMessage(threadID, "", "Could not find an existing tool named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
+		h.saveAssistantMessage(threadID, "", "Could not find an existing microservice named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
 		h.endAgentWork(threadID)
 		return
 	}

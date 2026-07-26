@@ -92,7 +92,7 @@ CGO_ENABLED=1 go build -o openpaw ./cmd/openpaw
       </ol>
       <p>
         After completing setup, you&apos;ll land on the dashboard where you can start exploring agents,
-        tools, and chats.
+        microservices, and chats.
       </p>
 
       <h2 id="first-chat">Your First Chat</h2>

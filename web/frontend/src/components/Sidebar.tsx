@@ -21,6 +21,8 @@ import {
   Check,
   Plus,
   MoreHorizontal,
+  Cpu,
+  Clapperboard,
   ImagePlus,
   Settings2,
   Trash2,
@@ -43,25 +45,31 @@ type NavItem = {
 };
 type NavGroup = { items: NavItem[] };
 
+// The places you go all day sit at the top level; everything that configures
+// how OpenPaw works is folded into the two groups below so the nav stays short.
 const navGroups: NavGroup[] = [
   {
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
       { to: "/inbox", icon: InboxIcon, label: "Inbox" },
       { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
-      { to: "/knowledge-base", icon: Database, label: "Context" },
-      { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
-      { to: "/agents", icon: Bot, label: "Agents" },
-      { to: "/tools", icon: Wrench, label: "Tools" },
-      { to: "/skills", icon: Sparkles, label: "Skills" },
+      { to: "/studio", icon: Clapperboard, label: "Studio" },
     ],
   },
 ];
 
-const moreItems: NavItem[] = [
-  { to: "/library", icon: Store, label: "Templates" },
+const systemItems: NavItem[] = [
+  { to: "/knowledge-base", icon: Database, label: "Context" },
+  { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
+  { to: "/agents", icon: Bot, label: "Agents" },
+  { to: "/microservices", icon: Wrench, label: "Microservices" },
+  { to: "/skills", icon: Sparkles, label: "Skills" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },
   { to: "/heartbeat", icon: Heart, label: "Heartbeat" },
+];
+
+const moreItems: NavItem[] = [
+  { to: "/library", icon: Store, label: "Templates" },
   { to: "/secrets", icon: KeyRound, label: "Secrets" },
   { to: "/logs", icon: FileText, label: "Logs" },
   { to: "/settings", icon: Settings, label: "Settings" },
@@ -587,9 +595,26 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function MoreNav({ collapsed }: { collapsed: boolean }) {
+/**
+ * A collapsible nav group ("System", "More").
+ *
+ * Collapsed sidebar has no room for a label, so the group flattens to its icons
+ * — the disclosure only exists to save vertical space, which is not the
+ * constraint at 64px wide.
+ */
+function NavGroupNav({
+  label,
+  icon: GroupIcon,
+  items,
+  collapsed,
+}: {
+  label: string;
+  icon: typeof LayoutDashboard;
+  items: NavItem[];
+  collapsed: boolean;
+}) {
   const location = useLocation();
-  const hasActive = moreItems.some((i) => location.pathname === i.to);
+  const hasActive = items.some((i) => location.pathname === i.to);
   const [open, setOpen] = useState(hasActive);
 
   useEffect(() => {
@@ -600,7 +625,7 @@ function MoreNav({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="space-y-0.5">
-        {moreItems.map((item) => (
+        {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -631,8 +656,8 @@ function MoreNav({ collapsed }: { collapsed: boolean }) {
             : "text-text-2 hover:text-text-1 hover:bg-surface-2"
         }`}
       >
-        <MoreHorizontal className="flex-shrink-0 w-5 h-5" />
-        <span className="flex-1 text-left">More</span>
+        <GroupIcon className="flex-shrink-0 w-5 h-5" />
+        <span className="flex-1 text-left">{label}</span>
         <ChevronDown
           className={`w-4 h-4 text-text-3 transition-transform ${open ? "rotate-180" : ""}`}
           aria-hidden="true"
@@ -641,7 +666,7 @@ function MoreNav({ collapsed }: { collapsed: boolean }) {
 
       {open && (
         <div className="mt-0.5 ml-4 pl-2 border-l border-border-0 space-y-0.5">
-          {moreItems.map((item) => (
+          {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -743,7 +768,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
           </div>
         ))}
         <div className="mx-3 my-2 border-b border-border-0" />
-        <MoreNav collapsed={collapsed} />
+        <NavGroupNav label="System" icon={Cpu} items={systemItems} collapsed={collapsed} />
+        <div className="mx-3 my-2 border-b border-border-0" />
+        <NavGroupNav label="More" icon={MoreHorizontal} items={moreItems} collapsed={collapsed} />
       </nav>
 
       {/* The show/hide control lives in the header's view-options menu, so the

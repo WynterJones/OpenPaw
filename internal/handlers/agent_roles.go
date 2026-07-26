@@ -680,7 +680,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 		slug,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list tools")
+		writeError(w, http.StatusInternalServerError, "failed to list microservices")
 		return
 	}
 	defer rows.Close()
@@ -688,7 +688,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var t models.Tool
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.OwnerAgentSlug, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan tool")
+			writeError(w, http.StatusInternalServerError, "failed to scan microservice")
 			return
 		}
 		tools = append(tools, agentTool{Tool: t, AccessType: "owned"})
@@ -704,7 +704,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 		slug,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list granted tools")
+		writeError(w, http.StatusInternalServerError, "failed to list granted microservices")
 		return
 	}
 	defer grantRows.Close()
@@ -712,7 +712,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	for grantRows.Next() {
 		var t models.Tool
 		if err := grantRows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.OwnerAgentSlug, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan granted tool")
+			writeError(w, http.StatusInternalServerError, "failed to scan granted microservice")
 			return
 		}
 		tools = append(tools, agentTool{Tool: t, AccessType: "granted"})
@@ -786,7 +786,7 @@ func (h *AgentRolesHandler) UpdateToolOwner(w http.ResponseWriter, r *http.Reque
 	}
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		writeError(w, http.StatusNotFound, "tool not found")
+		writeError(w, http.StatusNotFound, "microservice not found")
 		return
 	}
 

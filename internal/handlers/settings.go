@@ -225,6 +225,75 @@ func (h *SettingsHandler) GetAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// mediaProviderKeys maps the provider name used by Studio to its settings key
+// and the env var that overrides it.
+var mediaProviderKeys = map[string]struct{ setting, env string }{
+	"replicate": {"replicate_api_key", "REPLICATE_API_TOKEN"},
+	"fal":       {"fal_api_key", "FAL_KEY"},
+}
+
+// GetMediaKeys reports which Studio provider keys are set, never their values.
+func (h *SettingsHandler) GetMediaKeys(w http.ResponseWriter, r *http.Request) {
+	out := map[string]interface{}{}
+	for name, keys := range mediaProviderKeys {
+		source := "none"
+		if os.Getenv(keys.env) != "" {
+			source = "env"
+		} else {
+			var stored string
+			if err := h.db.QueryRow("SELECT value FROM settings WHERE key = ?", keys.setting).Scan(&stored); err == nil && stored != "" {
+				source = "database"
+			}
+		}
+		out[name] = map[string]interface{}{
+			"configured": source != "none",
+			"source":     source,
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// UpdateMediaKey stores a Studio provider key, encrypted. Unlike the
+// OpenRouter key it is not validated on save: Replicate and fal have no free
+// "check this token" endpoint, and burning a paid prediction to test a key
+// would be a surprising charge.
+func (h *SettingsHandler) UpdateMediaKey(w http.ResponseWriter, r *http.Request) {
+	provider := chi.URLParam(r, "provider")
+	keys, ok := mediaProviderKeys[provider]
+	if !ok {
+		writeError(w, http.StatusBadRequest, "unknown provider")
+		return
+	}
+
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+
+	// An empty value clears the key, which is how a user disconnects a provider.
+	if strings.TrimSpace(req.APIKey) == "" {
+		h.db.Exec("DELETE FROM settings WHERE key = ?", keys.setting)
+		h.db.LogAudit(userID, "media_api_key_cleared", "settings", "settings", keys.setting, "")
+		writeJSON(w, http.StatusOK, map[string]interface{}{"configured": false, "source": "none"})
+		return
+	}
+
+	encrypted, err := h.secretsMgr.Encrypt(strings.TrimSpace(req.APIKey))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to encrypt API key")
+		return
+	}
+	h.upsertSetting(keys.setting, encrypted)
+	h.db.LogAudit(userID, "media_api_key_updated", "settings", "settings", keys.setting, "")
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"configured": true, "source": "database"})
+}
+
 func (h *SettingsHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		APIKey string `json:"api_key"`

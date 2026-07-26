@@ -375,7 +375,7 @@ export function AgentEdit() {
       await api.post(`/agent-roles/${slug}/tools/${toolId}/grant`);
       await loadTools(slug);
       setShowToolPicker(false);
-      toast('success', 'Tool access granted');
+      toast('success', 'Microservice access granted');
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Failed to grant access');
     }
@@ -386,7 +386,7 @@ export function AgentEdit() {
     try {
       await api.delete(`/agent-roles/${slug}/tools/${toolId}/revoke`);
       setAgentTools(prev => prev.filter(t => !(t.id === toolId && t.access_type === 'granted')));
-      toast('success', 'Tool access revoked');
+      toast('success', 'Microservice access revoked');
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Failed to revoke access');
     }
@@ -559,7 +559,7 @@ export function AgentEdit() {
     { key: 'heartbeat', label: 'Heartbeat' },
     { key: 'memory', label: 'Memory', badge: memories.length || undefined },
     { key: 'skills', label: 'Skills', badge: agentSkillList.length || undefined },
-    { key: 'tools', label: 'Tools' },
+    { key: 'tools', label: 'Microservices' },
     { key: 'work', label: 'Work', badge: activeTaskCount || undefined },
   ];
 
@@ -1227,7 +1227,7 @@ export function AgentEdit() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-accent-primary" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3">Agent Tools</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3">Agent Microservices</h3>
               </div>
               <Button size="sm" onClick={() => setShowToolPicker(!showToolPicker)} icon={<Plus className="w-3.5 h-3.5" />}>
                 Grant Access
@@ -1238,7 +1238,7 @@ export function AgentEdit() {
               const grantable = allTools.filter(t => !agentToolIds.has(t.id));
               return grantable.length > 0 ? (
                 <div className="mb-4 p-3 rounded-lg border border-border-1 bg-surface-1">
-                  <p className="text-xs text-text-3 mb-2">Grant access to a tool:</p>
+                  <p className="text-xs text-text-3 mb-2">Grant access to a microservice:</p>
                   <div className="space-y-1">
                     {grantable.map(tool => (
                       <button key={tool.id} onClick={() => handleGrantTool(tool.id)} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-surface-2 transition-colors cursor-pointer">
@@ -1253,12 +1253,12 @@ export function AgentEdit() {
                 </div>
               ) : (
                 <div className="mb-4 p-3 rounded-lg border border-border-1 bg-surface-1">
-                  <p className="text-xs text-text-3">No additional tools available to grant.</p>
+                  <p className="text-xs text-text-3">No additional microservices available to grant.</p>
                 </div>
               );
             })()}
             {agentTools.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-xs text-text-3">No tools assigned. Grant access to tools from Templates.</div>
+              <div className="flex items-center justify-center py-16 text-xs text-text-3">No microservices assigned. Grant access to microservices from Templates.</div>
             ) : (
               <div className="space-y-2">
                 {agentTools.map(tool => (

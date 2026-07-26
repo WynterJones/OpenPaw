@@ -38,8 +38,8 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	if m.ToolMgr != nil {
 		toolsSection := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if toolsSection != "" {
-			gatewayPrompt += "\n\n## SYSTEM TOOLS (read-only info for routing decisions)\n\n" + toolsSection
-			gatewayPrompt += "\nWhen a user's request requires a tool (e.g. weather data, API calls), route to an agent that can use the tool — do NOT try to answer directly.\n"
+			gatewayPrompt += "\n\n## SYSTEM MICROSERVICES (read-only info for routing decisions)\n\n" + toolsSection
+			gatewayPrompt += "\nWhen a user's request requires a microservice (e.g. weather data, API calls), route to an agent that can use the microservice — do NOT try to answer directly.\n"
 		}
 	}
 
@@ -504,6 +504,20 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	}
 	for name, handler := range MakeContextToolHandlers(m.db, m.DataDir, agentRoleSlug, m.broadcast) {
 		cfg.ExtraHandlers[name] = handler
+	}
+
+	// Studio tools: browse the media library and generate into it. Separate
+	// from generate_image below, which is the older single-shot image path —
+	// these add folders, video and audio, and providers beyond OpenRouter.
+	if studioDefs := BuildStudioToolDefs(m.MediaRegistry); len(studioDefs) > 0 {
+		cfg.ExtraTools = append(cfg.ExtraTools, studioDefs...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeStudioToolHandlers(threadID) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + buildStudioPromptSection(m.MediaRegistry)
 	}
 
 	// Inject image generation tool (OpenRouter with model fallback chain)

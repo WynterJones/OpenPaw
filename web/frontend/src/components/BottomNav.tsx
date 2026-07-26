@@ -16,6 +16,7 @@ import {
   Heart,
   ListTodo,
   Inbox,
+  Clapperboard,
   MoreHorizontal,
 } from 'lucide-react';
 
@@ -30,8 +31,9 @@ const moreItems = [
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
   { to: '/knowledge-base', icon: Database, label: 'Context' },
   { to: '/todo-lists', icon: ListTodo, label: 'Tasks' },
-  { to: '/tools', icon: Wrench, label: 'Tools' },
+  { to: '/microservices', icon: Wrench, label: 'Microservices' },
   { to: '/workbench', icon: TerminalSquare, label: 'Workbench' },
+  { to: '/studio', icon: Clapperboard, label: 'Studio' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },
   { to: '/library', icon: Store, label: 'Templates' },
   { to: '/secrets', icon: KeyRound, label: 'Secrets' },

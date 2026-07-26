@@ -24,6 +24,7 @@ import (
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/mcp"
+	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/memory"
 	"github.com/openpaw/openpaw/internal/models"
 	"github.com/openpaw/openpaw/internal/platform"
@@ -231,6 +232,31 @@ func main() {
 	providerRouter.Register(claudeProvider)
 	providerRouter.Register(codexProvider)
 
+	// Studio's media providers. Keys are read on every call rather than
+	// captured once, so saving one in Settings takes effect without a restart.
+	// OpenRouter covers images; Replicate and fal add video and audio, which
+	// OpenRouter has no models for.
+	mediaKey := func(settingKey, envKey string) func() string {
+		return func() string {
+			if v := os.Getenv(envKey); v != "" {
+				return v
+			}
+			var encrypted string
+			if err := db.QueryRow("SELECT value FROM settings WHERE key = ?", settingKey).Scan(&encrypted); err != nil || encrypted == "" {
+				return ""
+			}
+			decrypted, err := secretsMgr.Decrypt(encrypted)
+			if err != nil {
+				return ""
+			}
+			return decrypted
+		}
+	}
+	mediaRegistry := media.NewRegistry()
+	mediaRegistry.Register(media.NewOpenRouterProvider(llmClient))
+	mediaRegistry.Register(media.NewReplicateProvider(mediaKey("replicate_api_key", "REPLICATE_API_TOKEN")))
+	mediaRegistry.Register(media.NewFalProvider(mediaKey("fal_api_key", "FAL_KEY")))
+
 	var savedProvider string
 	db.QueryRow("SELECT value FROM settings WHERE key = 'llm_provider'").Scan(&savedProvider)
 	if savedProvider != "" && savedProvider != llm.ProviderOpenRouter {
@@ -269,6 +295,8 @@ func main() {
 	agentMgr.Providers = providerRouter
 	agentMgr.DataDir = cfg.DataDir
 	agentMgr.FrontendFS = frontendFS
+	// Lets the chat agent browse Studio folders and generate media itself.
+	agentMgr.MediaRegistry = mediaRegistry
 
 	// Wire notification function (creates notification + broadcasts)
 	notifyFn := func(in models.NotificationInput) {
@@ -376,6 +404,7 @@ func main() {
 		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
 		Providers:    providerRouter,
+		MediaRegistry: mediaRegistry,
 		MCPRegistry:  mcpRegistry,
 		FrontendFS:   frontendFS,
 		ToolsDir:     toolsDir,

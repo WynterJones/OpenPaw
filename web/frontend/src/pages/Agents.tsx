@@ -321,7 +321,7 @@ export function Agents() {
               <p className="text-base font-bold text-text-0 truncate">{gatewayName}</p>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-primary/20 text-accent-primary font-medium">Gateway</span>
             </div>
-            <p className="text-xs text-text-3 truncate">Routes conversations, builds tools, dashboards, and agents</p>
+            <p className="text-xs text-text-3 truncate">Routes conversations, builds microservices, dashboards, and agents</p>
           </div>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
             <Cpu className="w-2.5 h-2.5" />{builderRole?.model ? formatModelName(builderRole.model) : "—"}

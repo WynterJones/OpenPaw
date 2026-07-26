@@ -13,6 +13,7 @@ const Tools = lazy(() => import('./pages/Tools').then(m => ({ default: m.Tools }
 const Secrets = lazy(() => import('./pages/Secrets').then(m => ({ default: m.Secrets })));
 const Dashboards = lazy(() => import('./pages/Dashboards').then(m => ({ default: m.Dashboards })));
 const Workbench = lazy(() => import('./pages/Workbench').then(m => ({ default: m.Workbench })));
+const Studio = lazy(() => import('./pages/Studio').then(m => ({ default: m.Studio })));
 const Scheduler = lazy(() => import('./pages/Scheduler').then(m => ({ default: m.Scheduler })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agents })));
@@ -37,13 +38,14 @@ const Architecture = lazy(() => import('./pages/docs/Architecture').then(m => ({
 
 const pageTitles: Record<string, string> = {
   '/chat': 'Chat',
-  '/tools': 'Tools',
+  '/microservices': 'Microservices',
   '/agents': 'Agents',
   '/agents/gateway': 'Gateway',
   '/skills': 'Skills',
   '/secrets': 'Secrets',
   '/dashboards': 'Dashboards',
   '/workbench': 'Workbench',
+  '/studio': 'Studio',
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
   '/knowledge-base': 'Context',
@@ -114,7 +116,8 @@ function AppRoutes() {
       >
         <Route path="/chat" element={<Chat />} />
         <Route path="/chat/:threadId" element={<Chat />} />
-        <Route path="/tools" element={<Tools />} />
+        <Route path="/microservices" element={<Tools />} />
+        <Route path="/tools" element={<Navigate to="/microservices" replace />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/agents/gateway" element={<GatewayEdit />} />
         <Route path="/agents/:slug" element={<AgentEdit />} />
@@ -122,6 +125,7 @@ function AppRoutes() {
         <Route path="/secrets" element={<Secrets />} />
         <Route path="/dashboards" element={<Dashboards />} />
         <Route path="/workbench" element={<Workbench />} />
+        <Route path="/studio" element={<Studio />} />
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />

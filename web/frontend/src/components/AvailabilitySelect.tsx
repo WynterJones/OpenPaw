@@ -13,7 +13,7 @@ interface AvailabilitySelectProps {
 }
 
 /**
- * Labeled dropdown for scoping an agent/tool/skill to a single workspace,
+ * Labeled dropdown for scoping an agent/microservice/skill to a single workspace,
  * or leaving it available in every workspace ("All workspaces").
  */
 export function AvailabilitySelect({ value, onChange, className, label = 'Availability' }: AvailabilitySelectProps) {

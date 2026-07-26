@@ -107,7 +107,7 @@ function CollapsibleWidget({ widget, resolvedType, children }: {
   const expandDefault = EXPAND_BY_DEFAULT.has(resolvedType);
   const [expanded, setExpanded] = useState(expandDefault);
 
-  const label = widget.title || 'Tool Response';
+  const label = widget.title || 'Microservice Response';
   const endpoint = widget.endpoint;
   const preview = !expanded ? dataPreview(widget.data) : '';
 
