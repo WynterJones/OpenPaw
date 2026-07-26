@@ -126,22 +126,32 @@ func TestStart_RunsDetachedAndSurvivesTheCommand(t *testing.T) {
 	name := "openpaw-test-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	t.Cleanup(func() { run(ctx, "kill-session", "-t", name) })
 
+	// echo is the hard case: it finishes almost instantly, so any setup that
+	// races the command loses the session before the output can be read.
 	if err := Start(ctx, name, t.TempDir(), "echo hello-from-tmux"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if !Exists(ctx, name) {
-		t.Fatal("session does not exist after Start")
-	}
 
-	// remain-on-exit keeps the pane readable once echo has finished.
+	// Wait for the command to finish, then assert the session outlived it.
 	var pane string
-	for i := 0; i < 50; i++ {
-		pane, _ = Capture(ctx, name)
-		if strings.Contains(pane, "hello-from-tmux") {
+	for i := 0; i < 100; i++ {
+		if dead, _, ok := Finished(ctx, name); ok && dead {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	if !Exists(ctx, name) {
+		t.Fatal("session vanished once its command exited — output and status are lost")
+	}
+	dead, status, ok := Finished(ctx, name)
+	if !ok || !dead {
+		t.Fatalf("Finished = (dead %v, ok %v), want a dead pane", dead, ok)
+	}
+	if status != 0 {
+		t.Errorf("exit status = %d, want 0", status)
+	}
+
+	pane, _ = Capture(ctx, name)
 	if !strings.Contains(pane, "hello-from-tmux") {
 		t.Fatalf("command output never appeared in pane: %q", pane)
 	}

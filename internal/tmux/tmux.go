@@ -168,6 +168,12 @@ func Exists(ctx context.Context, name string) bool {
 // The session stays alive after the command exits (remain-on-exit) so the exit
 // status and last output are still readable — a session that vanished on
 // completion would be indistinguishable from one that never started.
+//
+// The command is typed into an idle shell rather than passed to new-session,
+// because remain-on-exit can only be set on a session that already exists.
+// Launching the command directly races it: a quick one exits before the option
+// lands, the session disappears, and the output and exit status are gone. An
+// idle shell cannot outrun the setup.
 func Start(ctx context.Context, name, workDir, command string) error {
 	if !Available() {
 		return errors.New("tmux is not installed")
@@ -182,17 +188,27 @@ func Start(ctx context.Context, name, workDir, command string) error {
 		return fmt.Errorf("a tmux session named %q is already running", name)
 	}
 
+	// 1. An idle shell, which will sit there indefinitely.
 	args := []string{"new-session", "-d", "-s", name}
 	if workDir != "" {
 		args = append(args, "-c", workDir)
 	}
-	args = append(args, command)
-
 	if _, err := run(ctx, args...); err != nil {
 		return fmt.Errorf("tmux new-session failed: %w", err)
 	}
-	// Best-effort: an old tmux without the option just leaves the default.
+
+	// 2. Keep the pane after its command exits. Best-effort: an old tmux
+	//    without the option just leaves the default and the session ends on
+	//    completion, which the watcher still detects.
 	run(ctx, "set-option", "-t", name, "remain-on-exit", "on")
+
+	// 3. Type the command. The trailing "exit $?" hands the command's own
+	//    status to the pane, which is what pane_dead_status then reports —
+	//    without it every run would look like it succeeded.
+	if _, err := run(ctx, "send-keys", "-t", name, command+"; exit $?", "Enter"); err != nil {
+		run(ctx, "kill-session", "-t", name)
+		return fmt.Errorf("tmux send-keys failed: %w", err)
+	}
 	return nil
 }
 
