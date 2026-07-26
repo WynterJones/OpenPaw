@@ -1,25 +1,5 @@
 # OpenPaw
 
-## MANDATORY: Issue-First Workflow
-
-**ALWAYS create beads issues BEFORE starting work.** This ensures full visibility and tracking.
-
-```bash
-# Single task
-bd create "Task description" -t bug|feature|task -p 0-4
-bd update <id> --status in_progress
-# Do the work
-bd close <id> --reason "What was done"
-
-# Multiple tasks - log ALL first, then work through
-bd create "Task 1" -t feature && bd create "Task 2" -t task
-bd list --status open
-```
-
-**NO EXCEPTIONS**: Every task gets an issue.
-
----
-
 ## Architecture & Build Pipeline
 
 OpenPaw is a **single-binary Go application** with an embedded React frontend.
@@ -126,8 +106,7 @@ Skills auto-activate when you use these phrases. Workflow details are in `.claud
 When entering Plan Mode:
 
 1. **Save Plan**: Write to `_PLANS/<FEATURE_NAME>.md` (SCREAMING_SNAKE_CASE)
-2. **Exit & Create Epic**: Create beads Epic + child issues
-3. **Confirm**: Ask "Ready to start implementing?" - wait for explicit yes
+2. **Confirm**: Ask "Ready to start implementing?" - wait for explicit yes
 
 ---
 
@@ -150,7 +129,6 @@ When entering Plan Mode:
 just --list        # See all commands
 just info          # Show project paths and config
 just routes        # Show all API routes
-bd list            # See all issues
 ls .claude/skills  # See available skills
 ls .claude/agents  # See available agents
 ```

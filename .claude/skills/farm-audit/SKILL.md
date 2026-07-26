@@ -24,7 +24,6 @@ Spawn the `the-farmer` agent to gather all metrics.
 2. Count agents: `ls -1 .claude/agents/*.md 2>/dev/null | wc -l`
 3. Count skills: `ls -d .claude/skills/*/ 2>/dev/null | wc -l`
 4. Count tests: `find . -name "*.test.*" -not -path "./node_modules/*" | wc -l`
-5. Count completed issues: `bd list --status closed 2>/dev/null | wc -l`
 
 ### Step 3: Tend the Idea Garden
 Read `_AUDIT/GARDEN.md` and check idea ages:

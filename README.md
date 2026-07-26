@@ -847,8 +847,6 @@ OpenPaw uses [FarmWork](https://farmwork.dev) to keep the codebase self-document
 
 FarmWork activates through voice-style commands in your AI coding assistant. Say "open the farm" to audit systems, "count the herd" to run a full code inspection, or "/push" to lint, test, build, commit, and push in one step. Each command triggers a defined workflow backed by specialized subagents (security scanning, performance auditing, accessibility checks, etc.).
 
-All development follows an **issue-first workflow** using [Beads](https://github.com/WynterJones/beads) for local issue tracking — every task gets an issue before work begins.
-
 ### Directory Structure
 
 ```
@@ -871,7 +869,6 @@ _OFFICE/                      Product strategy documents
 
 _PLANS/                       Implementation blueprints (created during Plan Mode)
 _RESEARCH/                    Research docs (created via "let's research..." command)
-.beads/                       Local issue tracking data
 ```
 
 <img src="assets/farmer.webp" alt="FarmWork" width="250" />

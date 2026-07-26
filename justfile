@@ -290,15 +290,3 @@ search pattern:
 # Show git status
 status:
     @git status --short
-
-# ============================================
-# Farmwork WORKFLOW
-# ============================================
-
-# Show beads issues
-issues:
-    @bd list --status open 2>/dev/null || echo "Beads not installed. Run: cargo install beads"
-
-# Show completed issues count
-completed:
-    @bd list --status closed 2>/dev/null | wc -l || echo "0"

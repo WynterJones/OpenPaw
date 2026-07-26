@@ -15,7 +15,6 @@ Maintains `_AUDIT/FARMHOUSE.md` - the living document tracking all systems and h
 1. Count commands: `ls -1 .claude/commands/*.md | wc -l`
 2. Count agents: `ls -1 .claude/agents/*.md | wc -l`
 3. Count tests: `find . -name "*.test.*" | wc -l`
-4. Count completed issues: `bd list --status closed | wc -l`
 
 ### Step 2: Tend the Idea Garden
 Read `_AUDIT/GARDEN.md` and check the age of each idea:

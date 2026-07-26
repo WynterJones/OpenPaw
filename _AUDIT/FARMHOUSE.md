@@ -30,7 +30,7 @@
 
 ## How to get 10/10
 
-All Claude Code commands and agents are documented, phrase triggers are tested and working, issue tracking via beads is active, justfile navigation covers all project areas, and the CLAUDE.md instructions are complete and accurate.
+All Claude Code commands and agents are documented, phrase triggers are tested and working, justfile navigation covers all project areas, and the CLAUDE.md instructions are complete and accurate.
 
 ---
 
@@ -112,19 +112,6 @@ All Claude Code commands and agents are documented, phrase triggers are tested a
 
 ---
 
-## Issue Tracking (`.beads/`)
-
-Using `bd` CLI for issue management:
-
-```bash
-bd ready              # Find available work
-bd create "..." -t task -p 2  # Create issue
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-```
-
----
-
 ## Research Library (`_RESEARCH/`)
 
 | Document | Last Researched | Status |
@@ -133,12 +120,6 @@ bd close <id>         # Complete work
 | Claude Code CLI Permissions | 2026-02-18 | Fresh |
 | Claude Code SDK Compaction | 2026-02-18 | Fresh |
 | OpenRouter Balance API | 2026-02-20 | Fresh |
-
----
-
-## Beads Issue History
-
-**Total Completed Issues:** 99
 
 ---
 
