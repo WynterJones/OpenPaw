@@ -72,6 +72,7 @@ import {
   setNotificationVolume,
 } from "../lib/pushNotifications";
 import { isTauri } from "../lib/tauri";
+import { RemoteAccessCard } from "../components/RemoteAccessCard";
 
 // Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
 // app has its own TBD mobile-connection story, so hide Tailscale there.
@@ -589,6 +590,8 @@ function NetworkTab() {
 
   return (
     <div className="space-y-6">
+      <RemoteAccessCard />
+
       <div className="flex items-center justify-between p-4 rounded-lg bg-surface-2">
         <div>
           <p className="text-sm font-medium text-text-1">Network Access</p>

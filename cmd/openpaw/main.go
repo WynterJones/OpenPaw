@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/memory"
 	"github.com/openpaw/openpaw/internal/models"
+	"github.com/openpaw/openpaw/internal/netutil"
 	"github.com/openpaw/openpaw/internal/platform"
 	"github.com/openpaw/openpaw/internal/providers"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -435,16 +437,33 @@ func main() {
 		logger.Warn("No admin user found. Visit the app to complete setup.")
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.BindAddress, cfg.Port)
-	if cfg.BindAddress != "127.0.0.1" && cfg.BindAddress != "localhost" {
-		logger.Warn("Binding to %s — accessible from the network. Use OPENPAW_BIND=127.0.0.1 for localhost-only.", cfg.BindAddress)
+	// Where to listen. Loopback is always served; remote_access decides whether
+	// a tailnet (or all-interfaces) listener joins it. Done with explicit
+	// listeners rather than a single bind address so "reachable from my phone"
+	// does not have to mean "reachable from the coffee shop wifi".
+	var remoteMode string
+	db.QueryRow("SELECT value FROM settings WHERE key = 'remote_access'").Scan(&remoteMode)
+	plan := netutil.PlanListeners(netutil.ParseRemoteAccess(remoteMode), os.Getenv("OPENPAW_BIND"), cfg.Port)
+	if plan.Warning != "" {
+		logger.Warn("%s", plan.Warning)
 	}
+	for _, a := range plan.Addrs {
+		if !strings.HasPrefix(a, "127.0.0.1:") {
+			logger.Warn("Listening on %s — reachable beyond this machine.", a)
+		}
+	}
+	addr := plan.Addrs[0]
+
 	httpServer := &http.Server{
-		Addr:         addr,
 		Handler:      srv.Router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // intentionally zero for SSE/WebSocket support
 		IdleTimeout:  60 * time.Second,
+	}
+
+	listeners, err := netutil.Listen(plan)
+	if err != nil {
+		logger.Fatal("Failed to bind: %v", err)
 	}
 
 	// Graceful shutdown
@@ -457,7 +476,15 @@ func main() {
 		if os.Getenv("OPENPAW_OPEN") == "1" {
 			platform.OpenBrowser(url)
 		}
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// One goroutine per listener, all serving the same handler.
+		for _, l := range listeners[1:] {
+			go func(l net.Listener) {
+				if err := httpServer.Serve(l); err != nil && err != http.ErrServerClosed {
+					logger.Error("Server error on %s: %v", l.Addr(), err)
+				}
+			}(l)
+		}
+		if err := httpServer.Serve(listeners[0]); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Server error: %v", err)
 		}
 	}()

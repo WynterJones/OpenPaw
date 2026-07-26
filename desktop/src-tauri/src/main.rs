@@ -87,8 +87,12 @@ fn main() {
                 .sidecar("openpaw")
                 .expect("failed to locate openpaw sidecar")
                 .env("OPENPAW_DATA_DIR", &data_dir_str)
-                .env("OPENPAW_NO_OPEN", "1")
-                .env("OPENPAW_BIND", "127.0.0.1");
+                .env("OPENPAW_NO_OPEN", "1");
+            // OPENPAW_BIND is deliberately NOT set. It used to be pinned to
+            // 127.0.0.1 here, which silently overrode the Remote Access setting
+            // and made it impossible to reach the desktop app from a phone.
+            // The server now decides for itself and always keeps a loopback
+            // listener, so this window still reaches its backend either way.
 
             let (mut _rx, child) = sidecar.spawn().expect("failed to spawn openpaw sidecar");
 

@@ -361,6 +361,11 @@ export interface SystemInfo {
   tailscale_ip: string;
   port: number;
   tailscale_enabled: boolean;
+  /** 'off' | 'tailscale' | 'lan' — how far the server opens itself up. */
+  remote_access?: string;
+  /** URL another device should open. Empty unless remote access is live. */
+  remote_url?: string;
+  remote_active?: boolean;
   bind_address: string;
 }
 

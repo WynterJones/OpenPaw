@@ -36,6 +36,12 @@ func GetLANIP() string {
 	return ""
 }
 
+// tailscaleCGNAT is the range Tailscale assigns tailnet addresses from.
+var tailscaleCGNAT = &net.IPNet{
+	IP:   net.IPv4(100, 64, 0, 0),
+	Mask: net.CIDRMask(10, 32),
+}
+
 // GetTailscaleIP returns the first Tailscale CGNAT (100.64.0.0/10) IPv4 address.
 func GetTailscaleIP() string {
 	ifaces, err := net.Interfaces()
@@ -58,11 +64,16 @@ func GetTailscaleIP() string {
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			if ip == nil || ip.To4() == nil {
+			// Must index the 4-byte form. An IPv4 address from Addrs() is
+			// often the 16-byte representation, where ip[0] is a leading zero
+			// rather than the first octet — testing ip[0] directly silently
+			// never matched, which left tailnet detection dead on macOS.
+			ip4 := ip.To4()
+			if ip4 == nil {
 				continue
 			}
-			if ip[0] == 100 && ip[1] >= 64 && ip[1] <= 127 {
-				return ip.String()
+			if tailscaleCGNAT.Contains(ip4) {
+				return ip4.String()
 			}
 		}
 	}

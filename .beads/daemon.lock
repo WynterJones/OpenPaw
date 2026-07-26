@@ -1,7 +1,7 @@
 {
-  "pid": 13416,
-  "parent_pid": 13394,
+  "pid": 30805,
+  "parent_pid": 30782,
   "database": "/Users/wynterjones/Work/SYSTEM/OpenPaw/.beads/dolt",
   "version": "0.34.0",
-  "started_at": "2026-07-26T01:44:19.749658Z"
+  "started_at": "2026-07-26T01:52:12.482188Z"
 }

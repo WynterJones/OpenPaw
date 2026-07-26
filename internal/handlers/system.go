@@ -66,6 +66,21 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 		bindAddress = "127.0.0.1"
 	}
 
+	// Remote access is what the desktop app uses; the older bind_address /
+	// tailscale_enabled pair stays for the npx build's existing settings.
+	var remoteAccess string
+	h.db.QueryRow("SELECT value FROM settings WHERE key = 'remote_access'").Scan(&remoteAccess)
+	mode := netutil.ParseRemoteAccess(remoteAccess)
+
+	// The URL a phone on the tailnet should open. Empty when remote access is
+	// off or Tailscale is not up, which is what the UI keys off.
+	remoteURL := ""
+	if mode == netutil.RemoteTailscale && tailscaleIP != "" {
+		remoteURL = fmt.Sprintf("http://%s:%d", tailscaleIP, h.port)
+	} else if mode == netutil.RemoteLAN && lanIP != "" {
+		remoteURL = fmt.Sprintf("http://%s:%d", lanIP, h.port)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"version":            AppVersion,
 		"go_version":         runtime.Version(),
@@ -83,6 +98,9 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 		"port":               h.port,
 		"tailscale_enabled":  tailscaleEnabled == "true",
 		"bind_address":       bindAddress,
+		"remote_access":      string(mode),
+		"remote_url":         remoteURL,
+		"remote_active":      remoteURL != "",
 	})
 }
 
