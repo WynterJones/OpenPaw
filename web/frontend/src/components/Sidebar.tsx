@@ -74,7 +74,6 @@ const systemItems: NavItem[] = [
 const moreItems: NavItem[] = [
   // Studio's generation keys. Under More rather than System because it is a
   // credential page you visit once, not somewhere you work.
-  { to: "/studio/providers", icon: Clapperboard, label: "Media Providers" },
   { to: "/library", icon: Store, label: "Templates" },
   { to: "/secrets", icon: KeyRound, label: "Secrets" },
   { to: "/logs", icon: FileText, label: "Logs" },

@@ -74,6 +74,7 @@ import {
 import { isTauri } from "../lib/tauri";
 import { RemoteAccessCard } from "../components/RemoteAccessCard";
 import { EngineModels } from "../components/settings/EngineModels";
+import { StudioProviders } from "../components/settings/StudioProviders";
 import { BackgroundGenerator } from "../components/settings/BackgroundGenerator";
 
 // Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
@@ -1319,6 +1320,10 @@ function ModelsTab() {
         Save Model Settings
       </Button>
 
+      {/* Media keys live here rather than on their own nav item: they are the
+          same kind of setting as the language-model keys above, and a top-level
+          entry for one card of API keys crowded the sidebar. */}
+      <StudioProviders />
     </div>
   );
 }
@@ -3370,8 +3375,17 @@ function CompanionTab() {
   );
 }
 
+// Reads ?tab= so a link can open Settings on the right pane. Validated against
+// TABS rather than cast, so a stale or hand-typed value falls back to Profile
+// instead of rendering nothing.
+function initialTab(): TabId {
+  const want = new URLSearchParams(window.location.search).get("tab");
+  const match = TABS.find((t) => t.id === want);
+  return match ? match.id : "profile";
+}
+
 export function Settings() {
-  const [activeTab, setActiveTab] = useState<TabId>("profile");
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   const tabContent: Record<TabId, React.ReactNode> = {
     profile: <ProfileTab />,

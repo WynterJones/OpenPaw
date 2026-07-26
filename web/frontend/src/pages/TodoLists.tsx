@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { useToast } from '../components/Toast';
 import { TaskComposer } from '../components/todo/TaskComposer';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 const colorPresets = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'];
 
@@ -197,6 +198,27 @@ export function TodoLists() {
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
+  // Deleting a list takes every task in it with it, and neither delete is
+  // undoable — both go through a themed confirm rather than firing on click.
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    confirmLabel: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
+  const runConfirm = async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    try {
+      await confirm.run();
+      setConfirm(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null;
 
   const fetchLists = useCallback(async () => {
@@ -256,6 +278,23 @@ export function TodoLists() {
     } catch {
       toast('error', 'Failed to update list');
     }
+  };
+
+  // Names the count, because the tasks inside go too and the list row only
+  // shows a tally — "delete Groceries" reads much cheaper than it is.
+  const confirmDeleteList = (list: TodoList) => {
+    const count = list.total_items ?? 0;
+    setConfirm({
+      title: 'Delete list',
+      message: (
+        <>
+          Delete <strong>{list.name}</strong>
+          {count > 0 && <> and its {count} task{count === 1 ? '' : 's'}</>}? This cannot be undone.
+        </>
+      ),
+      confirmLabel: 'Delete list',
+      run: () => handleDeleteList(list.id),
+    });
   };
 
   const handleDeleteList = async (id: string) => {
@@ -334,6 +373,19 @@ export function TodoLists() {
       toast('error', 'Failed to update item');
     }
     setEditingItemId(null);
+  };
+
+  const confirmDeleteItem = (item: TodoItem) => {
+    setConfirm({
+      title: 'Delete task',
+      message: (
+        <>
+          Delete <strong>{item.title}</strong>? This cannot be undone.
+        </>
+      ),
+      confirmLabel: 'Delete task',
+      run: () => handleDeleteItem(item.id),
+    });
   };
 
   const handleDeleteItem = async (itemId: string) => {
@@ -544,7 +596,7 @@ export function TodoLists() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteList(list.id);
+                        confirmDeleteList(list);
                       }}
                       className="p-1 rounded-md text-text-3 hover:text-red-400 hover:bg-surface-2 transition-colors cursor-pointer"
                       aria-label="Delete list"
@@ -707,7 +759,7 @@ export function TodoLists() {
 
                             {/* Delete */}
                             <button
-                              onClick={() => handleDeleteItem(item.id)}
+                              onClick={() => confirmDeleteItem(item)}
                               className="flex-shrink-0 p-1 rounded text-text-3 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-surface-2 transition-all cursor-pointer"
                               aria-label="Delete item"
                               title="Delete item"
@@ -770,7 +822,7 @@ export function TodoLists() {
 
                               {/* Delete */}
                               <button
-                                onClick={() => handleDeleteItem(item.id)}
+                                onClick={() => confirmDeleteItem(item)}
                                 className="flex-shrink-0 p-1 rounded text-text-3 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-surface-2 transition-all cursor-pointer"
                                 aria-label="Delete item"
                                 title="Delete item"
@@ -816,6 +868,16 @@ export function TodoLists() {
         onClose={() => { setListModalOpen(false); setEditingList(null); }}
         onSubmit={editingList ? handleUpdateList : handleCreateList}
         initial={editingList ? { name: editingList.name, description: editingList.description, color: editingList.color } : undefined}
+      />
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.title ?? ''}
+        message={confirm?.message ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        busy={confirmBusy}
+        onConfirm={runConfirm}
+        onCancel={() => setConfirm(null)}
       />
     </div>
   );
