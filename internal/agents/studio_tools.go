@@ -144,6 +144,40 @@ func buildStudioPromptSection(registry *media.Registry) string {
 	return b.String()
 }
 
+// buildStudioRoutingNote tells the gateway that media generation exists and is
+// something an agent does, not something it can answer in prose. The gateway
+// never carries the studio tools itself — it only decides who handles a message.
+func buildStudioRoutingNote(registry *media.Registry) string {
+	if registry == nil {
+		return ""
+	}
+
+	var kinds []string
+	for _, k := range []media.Kind{media.KindImage, media.KindVideo, media.KindAudio} {
+		if registry.Supports(k) {
+			kinds = append(kinds, string(k))
+		}
+	}
+	if len(kinds) == 0 {
+		return "\n\n## MEDIA GENERATION\nNo media provider is configured, so images, video and music cannot be generated. If the user asks for one, say so and point them at Settings to add an OpenRouter key (images) or a Replicate/fal key (video, music).\n"
+	}
+
+	return fmt.Sprintf(`
+
+## MEDIA GENERATION (Studio)
+
+OpenPaw can generate %s. Specialist agents hold the studio tools; you do not.
+
+When the user asks to create, generate, make or design an image, video, song or
+piece of audio, ASSIGN it to an agent — do not answer conversationally and do
+not claim you have made something. Assigning is what causes it to actually be
+generated and saved.
+
+The same applies to questions about existing generated media ("what images do we
+have", "show me the logos"), which agents answer with the studio tools.
+`, strings.Join(kinds, ", "))
+}
+
 // MakeStudioToolHandlers builds the handlers, bound to the calling thread so
 // generated assets are linked to the conversation that produced them.
 func (m *Manager) MakeStudioToolHandlers(threadID string) map[string]llm.ToolHandler {
@@ -349,12 +383,13 @@ func (m *Manager) handleStudioGenerate(threadID string) llm.ToolHandler {
 			if firstURL == "" {
 				firstURL = rec.LocalURL
 			}
-			// Markdown image syntax renders inline in chat; video and audio
-			// get a plain link because the chat renderer has no player.
+			// Images use markdown image syntax. Video and audio are links with
+			// a ?kind= hint, which the chat renderer turns into a real player —
+			// the media URL carries no file extension for it to sniff.
 			if kind == media.KindImage {
 				fmt.Fprintf(&out, "![%s](%s)\n", truncateLine(req.Prompt, 80), rec.LocalURL)
 			} else {
-				fmt.Fprintf(&out, "[%s %d](%s)\n", kind, i+1, rec.LocalURL)
+				fmt.Fprintf(&out, "[%s %d](%s?kind=%s)\n", kind, i+1, rec.LocalURL, kind)
 			}
 		}
 

@@ -228,8 +228,9 @@ func (h *SettingsHandler) GetAPIKey(w http.ResponseWriter, r *http.Request) {
 // mediaProviderKeys maps the provider name used by Studio to its settings key
 // and the env var that overrides it.
 var mediaProviderKeys = map[string]struct{ setting, env string }{
-	"replicate": {"replicate_api_key", "REPLICATE_API_TOKEN"},
-	"fal":       {"fal_api_key", "FAL_KEY"},
+	"replicate":  {"replicate_api_key", "REPLICATE_API_TOKEN"},
+	"fal":        {"fal_api_key", "FAL_KEY"},
+	"elevenlabs": {"elevenlabs_api_key", "ELEVENLABS_API_KEY"},
 }
 
 // GetMediaKeys reports which Studio provider keys are set, never their values.

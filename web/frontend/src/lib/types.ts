@@ -733,6 +733,8 @@ export interface StudioModel {
   description?: string;
   sizes?: string[];
   durations?: number[];
+  /** How many reference images this model uses. 0 hides the picker. */
+  max_ref_images?: number;
 }
 
 export interface StudioFolder {

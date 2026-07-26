@@ -83,27 +83,50 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
   const allDone = running === 0;
   const total = tools.length;
 
+  // The step to name on the second line: whatever is running now, or the last
+  // thing that ran once everything is done. Collapsed, the badge otherwise
+  // says only "1 running", which tells you nothing about what it is doing.
+  const current = tools.filter(t => !t.done).at(-1) ?? tools.at(-1);
+  const currentLabel = current ? toolDisplayName(current.name, current.endpoint) : '';
+
   return (
     <div className={`tool-panel-entrance rounded-lg border border-border-1 bg-transparent overflow-hidden my-1.5 ${expanded ? 'w-full' : 'w-fit max-w-full'}`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"
+        className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/40 transition-colors"
       >
-        {allDone ? (
-          <Check className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
-        ) : (
-          <Activity className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
-        )}
-        <span className="text-xs font-medium text-text-2 whitespace-nowrap">
-          {allDone ? `${total} tool call${total !== 1 ? 's' : ''}` : 'Activity'}
+        <span className="flex items-center gap-2 w-full">
+          {allDone ? (
+            <Check className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
+          ) : (
+            <Activity className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" />
+          )}
+          <span className="text-xs font-medium text-text-2 whitespace-nowrap">
+            {allDone ? `${total} tool call${total !== 1 ? 's' : ''}` : 'Activity'}
+          </span>
+          {running > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-accent-primary flex-shrink-0 whitespace-nowrap">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              {running} running
+            </span>
+          )}
+          <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ml-auto ${expanded ? 'rotate-180' : ''}`} />
         </span>
-        {running > 0 && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-accent-primary flex-shrink-0 whitespace-nowrap">
-            <Loader2 className="w-2.5 h-2.5 animate-spin" />
-            {running} running
+
+        {currentLabel && (
+          // Keyed on the tool id so React remounts it on every change, which is
+          // what replays the entrance animation.
+          <span
+            key={current?.id ?? currentLabel}
+            className={`op-tool-swap block max-w-full truncate pl-[22px] text-[11px] leading-tight ${
+              allDone ? 'text-text-3' : 'op-shimmer-text'
+            }`}
+            title={current?.detail || currentLabel}
+          >
+            {currentLabel}
+            {current?.detail ? <span className="font-mono"> · {current.detail}</span> : null}
           </span>
         )}
-        <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
         <div className="border-t border-border-1 px-3 py-2 space-y-2">

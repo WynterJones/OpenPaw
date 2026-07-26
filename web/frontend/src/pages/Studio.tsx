@@ -16,6 +16,9 @@ import { api } from '../lib/api';
 import { StudioEditor, type EditorState } from '../components/studio/StudioEditor';
 import { StudioSaved } from '../components/studio/StudioSaved';
 import { StudioCanvas } from '../components/studio/StudioCanvas';
+import { SplitDivider } from '../components/workbench/SplitDivider';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PromptDialog } from '../components/PromptDialog';
 import { useToast } from '../components/Toast';
 import type {
   StudioAsset,
@@ -26,7 +29,21 @@ import type {
   StudioProvider,
 } from '../lib/types';
 
+// The rail holds selects and a prompt box, so it stops well short of unusable
+// on the narrow end and never grows enough to squeeze the canvas out.
+const RAIL_MIN = 260;
+const RAIL_MAX = 620;
+const RAIL_DEFAULT = 320;
+const RAIL_WIDTH_KEY = 'openpaw.studio.railWidth';
+
+function loadRailWidth() {
+  const stored = Number(localStorage.getItem(RAIL_WIDTH_KEY));
+  if (!Number.isFinite(stored) || stored <= 0) return RAIL_DEFAULT;
+  return Math.min(RAIL_MAX, Math.max(RAIL_MIN, stored));
+}
+
 const DEFAULT_STATE: EditorState = {
+  refImages: [],
   type: 'image',
   provider: '',
   model: '',
@@ -63,8 +80,49 @@ export function Studio() {
   const [presetsLoading, setPresetsLoading] = useState(true);
 
   const [generating, setGenerating] = useState(false);
+  const [railWidth, setRailWidth] = useState(loadRailWidth);
+
+  // Generated media is permanent until explicitly removed, so every delete
+  // goes through a themed confirm rather than a native one.
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    confirmLabel: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
+  // Folder create/rename share one dialog — window.prompt does nothing in the
+  // desktop webview.
+  const [naming, setNaming] = useState<{ mode: 'create' | 'rename'; folder?: StudioFolder } | null>(
+    null,
+  );
+  const [namingBusy, setNamingBusy] = useState(false);
+
+  const runConfirm = async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    try {
+      await confirm.run();
+      setConfirm(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
 
   const patch = useCallback((p: Partial<EditorState>) => setState(s => ({ ...s, ...p })), []);
+
+  // Persisted on release rather than on every mousemove — the drag fires
+  // continuously and localStorage writes are synchronous.
+  const resizeRail = useCallback((delta: number) => {
+    setRailWidth(w => Math.min(RAIL_MAX, Math.max(RAIL_MIN, w + delta)));
+  }, []);
+
+  useEffect(() => {
+    const persist = () => localStorage.setItem(RAIL_WIDTH_KEY, String(railWidth));
+    const timer = setTimeout(persist, 400);
+    return () => clearTimeout(timer);
+  }, [railWidth]);
 
   // --- loaders ---
 
@@ -152,6 +210,7 @@ export function Studio() {
         size: state.size || undefined,
         duration: state.duration || undefined,
         folder_id: state.folderId || undefined,
+        ref_images: state.refImages.length ? state.refImages.map(r => r.src) : undefined,
       });
 
       // New items are prepended rather than refetched so they appear even when
@@ -192,6 +251,9 @@ export function Studio() {
 
   const handleLoadPreset = (p: StudioPreset) => {
     setState({
+      // References are per-run, not part of a saved setup: they are often
+      // one-off pastes and would be surprising to have reappear later.
+      refImages: [],
       type: p.media_type,
       provider: p.provider,
       model: p.model,
@@ -204,51 +266,75 @@ export function Studio() {
     setTab('editor');
   };
 
-  const handleDeletePreset = async (p: StudioPreset) => {
-    if (!window.confirm(`Delete saved setup "${p.name}"?`)) return;
-    try {
-      await studio.deletePreset(p.id);
-      setPresets(prev => prev.filter(x => x.id !== p.id));
-    } catch {
-      toast('error', 'Could not delete');
-    }
+  const handleDeletePreset = (p: StudioPreset) => {
+    setConfirm({
+      title: 'Delete saved setup',
+      confirmLabel: 'Delete',
+      message: (
+        <>
+          Delete <span className="text-text-0">{p.name}</span>? This removes the saved settings
+          only — anything generated from it is kept.
+        </>
+      ),
+      run: async () => {
+        try {
+          await studio.deletePreset(p.id);
+          setPresets(prev => prev.filter(x => x.id !== p.id));
+        } catch {
+          toast('error', 'Could not delete');
+        }
+      },
+    });
   };
 
-  const handleNewFolder = async () => {
-    const name = window.prompt('Folder name');
-    if (!name?.trim()) return;
+  const handleNewFolder = () => setNaming({ mode: 'create' });
+
+  const handleRenameFolder = (f: StudioFolder) => setNaming({ mode: 'rename', folder: f });
+
+  const submitName = async (name: string) => {
+    if (!naming) return;
+    setNamingBusy(true);
     try {
-      const folder = await studio.createFolder(name.trim());
-      await loadFolders();
-      patch({ folderId: folder.id });
-      toast('success', `Created "${folder.name}"`);
+      if (naming.mode === 'create') {
+        const folder = await studio.createFolder(name);
+        await loadFolders();
+        patch({ folderId: folder.id });
+        toast('success', `Created "${folder.name}"`);
+      } else if (naming.folder) {
+        await studio.renameFolder(naming.folder.id, name);
+        await loadFolders();
+      }
+      setNaming(null);
     } catch (e) {
-      toast('error', e instanceof Error ? e.message : 'Could not create folder');
+      toast('error', e instanceof Error ? e.message : 'Could not save folder');
+    } finally {
+      setNamingBusy(false);
     }
   };
 
-  const handleRenameFolder = async (f: StudioFolder) => {
-    const name = window.prompt('Rename folder', f.name);
-    if (!name?.trim() || name === f.name) return;
-    try {
-      await studio.renameFolder(f.id, name.trim());
-      await loadFolders();
-    } catch {
-      toast('error', 'Could not rename');
-    }
-  };
-
-  const handleDeleteFolder = async (f: StudioFolder) => {
-    if (!window.confirm(`Delete folder "${f.name}"? Its ${f.count} item(s) stay, unfiled.`)) return;
-    try {
-      await studio.deleteFolder(f.id);
-      if (activeFolder === f.id) setActiveFolder('');
-      if (state.folderId === f.id) patch({ folderId: '' });
-      await loadFolders();
-      await loadAssets(activeFolder === f.id ? '' : activeFolder);
-    } catch {
-      toast('error', 'Could not delete folder');
-    }
+  const handleDeleteFolder = (f: StudioFolder) => {
+    setConfirm({
+      title: 'Delete folder',
+      confirmLabel: 'Delete folder',
+      message: (
+        <>
+          Delete <span className="text-text-0">{f.name}</span>? Its {f.count} item
+          {f.count === 1 ? '' : 's'} will be kept and moved to Unfiled — nothing is generated
+          again and nothing is lost.
+        </>
+      ),
+      run: async () => {
+        try {
+          await studio.deleteFolder(f.id);
+          if (activeFolder === f.id) setActiveFolder('');
+          if (state.folderId === f.id) patch({ folderId: '' });
+          await loadFolders();
+          await loadAssets(activeFolder === f.id ? '' : activeFolder);
+        } catch {
+          toast('error', 'Could not delete folder');
+        }
+      },
+    });
   };
 
   const handleMove = async (asset: StudioAsset, folderId: string) => {
@@ -265,21 +351,40 @@ export function Studio() {
     }
   };
 
-  const handleDelete = async (asset: StudioAsset) => {
-    if (!window.confirm('Delete this permanently?')) return;
-    try {
-      await api.delete(`/media/${asset.id}`);
-      setAssets(prev => prev.filter(a => a.id !== asset.id));
-      loadFolders();
-    } catch {
-      toast('error', 'Could not delete');
-    }
+  const handleDelete = (asset: StudioAsset) => {
+    setConfirm({
+      title: `Delete this ${asset.media_type}?`,
+      confirmLabel: 'Delete permanently',
+      message: (
+        <>
+          This deletes the file from disk and removes it from the media library. It cannot be
+          undone, and regenerating it costs another API call.
+          {asset.prompt && (
+            <span className="block mt-2 text-xs text-text-3 italic line-clamp-3">
+              “{asset.prompt}”
+            </span>
+          )}
+        </>
+      ),
+      run: async () => {
+        try {
+          await api.delete(`/media/${asset.id}`);
+          setAssets(prev => prev.filter(a => a.id !== asset.id));
+          loadFolders();
+        } catch {
+          toast('error', 'Could not delete');
+        }
+      },
+    });
   };
 
   return (
     <div className="flex h-full min-h-0">
       {/* Left rail */}
-      <div className="w-80 flex-shrink-0 flex flex-col border-r border-border-0 bg-surface-1 min-h-0">
+      <div
+        style={{ width: railWidth }}
+        className="flex-shrink-0 flex flex-col bg-surface-1 min-h-0"
+      >
         <div className="flex items-center gap-2 px-4 pt-4 pb-2 flex-shrink-0">
           <Sparkles className="w-4 h-4 text-accent-text" aria-hidden="true" />
           <h1 className="text-sm font-semibold text-text-0">Studio</h1>
@@ -319,6 +424,7 @@ export function Studio() {
               onGenerate={handleGenerate}
               onSavePreset={handleSavePreset}
               onNewFolder={handleNewFolder}
+              onError={msg => toast('error', msg)}
             />
           ) : (
             <StudioSaved
@@ -330,6 +436,10 @@ export function Studio() {
           )}
         </div>
       </div>
+
+      {/* Drag to rebalance the two columns. Replaces the rail's right border,
+          so the seam stays a single line until it is hovered. */}
+      <SplitDivider direction="horizontal" onDrag={resizeRail} />
 
       {/* Canvas */}
       <div className="flex-1 min-w-0 min-h-0">
@@ -351,6 +461,28 @@ export function Studio() {
           }}
         />
       </div>
+
+      <PromptDialog
+        open={naming !== null}
+        title={naming?.mode === 'rename' ? 'Rename folder' : 'New folder'}
+        label="Folder name"
+        placeholder="e.g. Logos"
+        initialValue={naming?.folder?.name ?? ''}
+        confirmLabel={naming?.mode === 'rename' ? 'Rename' : 'Create'}
+        busy={namingBusy}
+        onConfirm={submitName}
+        onCancel={() => setNaming(null)}
+      />
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.title ?? ''}
+        message={confirm?.message ?? ''}
+        confirmLabel={confirm?.confirmLabel}
+        busy={confirmBusy}
+        onConfirm={runConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

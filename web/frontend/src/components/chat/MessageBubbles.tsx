@@ -222,7 +222,7 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
           </span>
         </div>
         <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
-          <div className="prose-chat">
+          <div className="prose-chat prose-measure">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{message.content}</ReactMarkdown>
           </div>
         </div>

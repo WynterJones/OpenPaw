@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image as ImageIcon, Film, Music, Sparkles, Save, Loader2, FolderPlus } from 'lucide-react';
 import { Button } from '../Button';
 import { Select, Textarea } from '../Input';
+import { ReferenceImages, type ReferenceImage } from './ReferenceImages';
 import type {
   StudioFolder,
   StudioKind,
@@ -19,6 +20,7 @@ import type {
 } from '../../lib/types';
 
 export interface EditorState {
+  refImages: ReferenceImage[];
   type: StudioKind;
   provider: string;
   model: string;
@@ -47,6 +49,7 @@ interface Props {
   onGenerate: () => void;
   onSavePreset: () => void;
   onNewFolder: () => void;
+  onError: (message: string) => void;
 }
 
 export function StudioEditor({
@@ -61,6 +64,7 @@ export function StudioEditor({
   onGenerate,
   onSavePreset,
   onNewFolder,
+  onError,
 }: Props) {
   const [customModel, setCustomModel] = useState(false);
 
@@ -74,6 +78,17 @@ export function StudioEditor({
   const selectedModel = models.find(m => m.id === state.model);
   const sizes = selectedModel?.sizes ?? [];
   const durations = selectedModel?.durations ?? [];
+  // A custom model id isn't in the catalog, so nothing is known about it —
+  // assume a single reference rather than hiding the control entirely.
+  const refSlots = customModel ? 1 : (selectedModel?.max_ref_images ?? 0);
+
+  // Switching to a model with fewer slots must drop the extras, or the request
+  // would be rejected for carrying more references than allowed.
+  useEffect(() => {
+    if (state.refImages.length > refSlots) {
+      onChange({ refImages: state.refImages.slice(0, refSlots) });
+    }
+  }, [refSlots, state.refImages, onChange]);
 
   // Whenever the model list changes under us (type or provider switch), make
   // sure the selection still exists — a stale model id fails at the API.
@@ -87,7 +102,7 @@ export function StudioEditor({
   const unsupported = !supports[state.type];
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 p-4" data-studio-editor>
       {/* Media type */}
       <div className="grid grid-cols-3 gap-1.5">
         {KINDS.map(k => {
@@ -203,6 +218,15 @@ export function StudioEditor({
         }
         className="resize-y"
       />
+
+      {refSlots > 0 && (
+        <ReferenceImages
+          images={state.refImages}
+          max={refSlots}
+          onChange={refImages => onChange({ refImages })}
+          onError={onError}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Select

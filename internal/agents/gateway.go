@@ -43,6 +43,11 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 		}
 	}
 
+	// The gateway holds no studio tools itself — it routes. Without this it
+	// would answer "make me a picture of X" conversationally and nothing would
+	// ever be generated.
+	gatewayPrompt += buildStudioRoutingNote(m.MediaRegistry)
+
 	// Inject existing dashboards so gateway can match update requests
 	dashSection := m.buildDashboardsPromptSection()
 	if dashSection != "" {

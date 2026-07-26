@@ -1448,6 +1448,12 @@ const MEDIA_PROVIDERS = [
     name: "fal.ai",
     blurb: "Faster, cheaper video and audio. Get a key at fal.ai/dashboard/keys.",
   },
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    blurb:
+      "Text to speech. Your voices appear in Studio's Audio model picker — the prompt becomes the script. Get a key at elevenlabs.io.",
+  },
 ];
 
 /**
@@ -1489,8 +1495,8 @@ function StudioKeysCard() {
     <Card>
       <h3 className="text-sm font-semibold text-text-1 mb-1">Studio Media Providers</h3>
       <p className="text-xs text-text-3 mb-4">
-        OpenRouter generates images. Video and music need one of these — add either or both, then
-        pick per generation in Studio. Stored encrypted, never sent to the browser.
+        OpenRouter generates images. Video, music and voice need one of these — add any of them,
+        then pick per generation in Studio. Stored encrypted, never sent to the browser.
       </p>
 
       <div className="space-y-4 max-w-md">

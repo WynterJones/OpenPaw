@@ -152,6 +152,20 @@ func (m ModelInfo) IsImageFirst() bool {
 	return strings.EqualFold(m.Architecture.OutputModalities[0], "image")
 }
 
+// AcceptsImageInput reports whether the model can take reference images
+// alongside the prompt.
+func (m ModelInfo) AcceptsImageInput() bool {
+	for _, mod := range m.Architecture.InputModalities {
+		if strings.EqualFold(mod, "image") {
+			return true
+		}
+	}
+	if idx := strings.Index(m.Architecture.Modality, "->"); idx > 0 {
+		return strings.Contains(m.Architecture.Modality[:idx], "image")
+	}
+	return false
+}
+
 // IsRouter reports whether the id is one of OpenRouter's meta-models, which
 // dispatch to some other model rather than generating anything themselves.
 func (m ModelInfo) IsRouter() bool {

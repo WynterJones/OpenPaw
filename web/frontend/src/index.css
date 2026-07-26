@@ -794,3 +794,75 @@ body {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* ── Activity badge: current tool call ──────────────────────────────────────
+   A sweep of light across dim text, the way editors signal "still working".
+   The gradient is painted onto the glyphs with background-clip: text, so the
+   highlight travels through the letters rather than behind them. */
+.op-shimmer-text {
+  background: linear-gradient(
+    100deg,
+    var(--op-text-3) 0%,
+    var(--op-text-3) 40%,
+    var(--op-text-0) 50%,
+    var(--op-text-3) 60%,
+    var(--op-text-3) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: op-shimmer 2.4s linear infinite;
+}
+
+@keyframes op-shimmer {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+
+/* Each new tool name rises into place, so a change of step is visible even
+   when the two names are similar. Keyed on the tool id in the component. */
+.op-tool-swap {
+  animation: op-tool-swap 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes op-tool-swap {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .op-shimmer-text {
+    animation: none;
+    -webkit-text-fill-color: var(--op-text-2);
+    color: var(--op-text-2);
+  }
+  .op-tool-swap { animation: none; }
+}
+
+/* ── Long-form archive copy (pinned chat, compaction summary) ───────────────
+   These two cards hold essay-length text, unlike normal chat turns. On a wide
+   window a full-width line runs past 150 characters, which is well beyond the
+   ~65-75 the eye tracks comfortably — you lose your place returning to the
+   next line. Capping the measure and centring it fixes that. */
+.prose-measure {
+  max-width: 68ch;
+  margin-inline: auto;
+}
+
+/* Justification is limited to body copy. Applying it to the whole block would
+   also stretch headings and table cells, and justified code is unreadable.
+   hyphens: auto is what keeps justified text from opening rivers of
+   whitespace in the narrower column. */
+.prose-measure p,
+.prose-measure li {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+/* Short lines can't be justified without absurd word spacing. */
+.prose-measure li > p:only-child {
+  text-align: left;
+}

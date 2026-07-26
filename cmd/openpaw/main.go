@@ -256,6 +256,7 @@ func main() {
 	mediaRegistry.Register(media.NewOpenRouterProvider(llmClient))
 	mediaRegistry.Register(media.NewReplicateProvider(mediaKey("replicate_api_key", "REPLICATE_API_TOKEN")))
 	mediaRegistry.Register(media.NewFalProvider(mediaKey("fal_api_key", "FAL_KEY")))
+	mediaRegistry.Register(media.NewElevenLabsProvider(mediaKey("elevenlabs_api_key", "ELEVENLABS_API_KEY")))
 
 	var savedProvider string
 	db.QueryRow("SELECT value FROM settings WHERE key = 'llm_provider'").Scan(&savedProvider)

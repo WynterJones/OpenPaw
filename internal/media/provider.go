@@ -48,6 +48,11 @@ type Model struct {
 	// the model doesn't take that parameter and the control stays hidden.
 	Sizes     []string `json:"sizes,omitempty"`
 	Durations []int    `json:"durations,omitempty"`
+	// MaxRefImages is how many reference images this model actually uses. Zero
+	// hides the reference picker entirely. It is deliberately honest rather
+	// than optimistic: Replicate and fal image inputs take a single image, so
+	// offering three slots there would silently discard two.
+	MaxRefImages int `json:"max_ref_images"`
 }
 
 // Request is one generation job. Count is handled by the caller, not the

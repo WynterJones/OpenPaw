@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
+	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/middleware"
 )
@@ -141,6 +142,16 @@ func (h *StudioHandler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reference images arrive as data URIs (pasted or picked in the browser) or
+	// as /api/v1/media/... links to existing work. Providers can't fetch a
+	// relative URL off this machine, so anything local is inlined as base64
+	// before it leaves.
+	refImages, err := h.resolveRefImages(req.RefImages)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// Generation is slow by nature (video runs for minutes), so the ceiling is
 	// the whole batch rather than the default server timeout.
 	ctx, cancel := contextWithTimeout(r, 15*time.Minute)
@@ -158,7 +169,7 @@ func (h *StudioHandler) Generate(w http.ResponseWriter, r *http.Request) {
 			Model:     req.Model,
 			Size:      req.Size,
 			Duration:  req.Duration,
-			RefImages: req.RefImages,
+			RefImages: refImages,
 			Params:    req.Params,
 		})
 		if genErr != nil {
@@ -320,6 +331,37 @@ func (h *StudioHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(userID, "studio_folder_deleted", "studio", "media_folder", id, "")
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// maxRefImages bounds what one request may carry. Each reference is inlined as
+// base64, so an unbounded list would balloon the provider request.
+const maxRefImages = 3
+
+// resolveRefImages turns the UI's references into something a provider can
+// actually read: data URIs pass through, local media links become base64.
+func (h *StudioHandler) resolveRefImages(refs []string) ([]string, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	if len(refs) > maxRefImages {
+		return nil, fmt.Errorf("at most %d reference images", maxRefImages)
+	}
+
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		// FrontendFS is nil here: it only backs preset avatars, which are not
+		// selectable as Studio references.
+		resolved, err := llm.ResolveImageToBase64(h.dataDir, ref, nil)
+		if err != nil {
+			return nil, fmt.Errorf("could not read reference image: %w", err)
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
 }
 
 func (h *StudioHandler) folderExists(id string) bool {

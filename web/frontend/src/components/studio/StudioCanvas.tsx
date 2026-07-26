@@ -20,7 +20,9 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '../Button';
+import { VideoPlayer, AudioPlayer } from './MediaPlayer';
 import { studio } from '../../lib/api-helpers';
+import { downloadFile } from '../../lib/download';
 import type { StudioAsset, StudioFolder, StudioKind } from '../../lib/types';
 
 interface Props {
@@ -122,16 +124,17 @@ export function StudioCanvas({
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
+          // h-full, not padding: justify-center can only centre vertically if
+          // the box actually spans the scroll area's height.
+          <div className="flex items-center justify-center h-full">
             <Loader2 className="w-5 h-5 animate-spin text-text-3" aria-hidden="true" />
           </div>
         ) : assets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center h-full text-center">
             <Sparkles className="w-8 h-8 mb-3 text-text-3" aria-hidden="true" />
             <p className="text-sm text-text-1 mb-1">Nothing here yet</p>
             <p className="text-xs text-text-3 max-w-xs leading-relaxed">
-              Write a prompt on the left and press Generate. Everything you make lands here and in
-              the media library.
+              Write a prompt on the left and press Generate.
             </p>
           </div>
         ) : (
@@ -158,16 +161,11 @@ export function StudioCanvas({
                         />
                       </button>
                     ) : a.media_type === 'video' ? (
-                      <video
-                        src={a.local_url}
-                        controls
-                        preload="metadata"
-                        className="w-full h-full object-contain bg-black"
-                      />
+                      <VideoPlayer src={a.local_url} />
                     ) : (
                       <div className="flex flex-col items-center justify-center gap-3 w-full h-full p-4">
                         <Icon className="w-8 h-8 text-accent-text" aria-hidden="true" />
-                        <audio src={a.local_url} controls className="w-full" />
+                        <AudioPlayer src={a.local_url} />
                       </div>
                     )}
                   </div>
@@ -181,15 +179,14 @@ export function StudioCanvas({
                     </p>
 
                     <div className="flex items-center gap-1">
-                      <a
-                        href={studio.downloadUrl(a.id)}
-                        download
+                      <button
+                        onClick={() => downloadFile(studio.downloadUrl(a.id), a.filename)}
                         title="Download"
                         aria-label="Download"
-                        className="p-1.5 rounded-md text-text-3 hover:text-text-0 hover:bg-surface-2 transition-colors"
+                        className="p-1.5 rounded-md text-text-3 hover:text-text-0 hover:bg-surface-2 transition-colors cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" aria-hidden="true" />
-                      </a>
+                      </button>
                       <button
                         onClick={() => onUsePrompt(a.prompt)}
                         title="Load this prompt into the editor"
@@ -261,11 +258,14 @@ export function StudioCanvas({
             />
             <div className="flex items-start gap-3">
               <p className="flex-1 text-xs text-white/70 leading-relaxed">{preview.prompt}</p>
-              <a href={studio.downloadUrl(preview.id)} download>
-                <Button size="sm" variant="secondary" icon={<Download className="w-4 h-4" />}>
-                  Download
-                </Button>
-              </a>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Download className="w-4 h-4" />}
+                onClick={() => downloadFile(studio.downloadUrl(preview.id), preview.filename)}
+              >
+                Download
+              </Button>
               <Button size="sm" variant="secondary" onClick={() => setPreview(null)}>
                 Close
               </Button>

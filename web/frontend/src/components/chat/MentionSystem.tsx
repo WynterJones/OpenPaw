@@ -1,10 +1,12 @@
 import { Children, isValidElement, type ReactNode } from 'react';
+import { VideoPlayer, AudioPlayer } from '../studio/MediaPlayer';
 import { Download } from 'lucide-react';
 import type { Components } from 'react-markdown';
 import type { AgentRole } from '../../lib/api';
 import { MentionBadge } from './MentionBadge';
 import { CollapsibleCode } from './CollapsibleCode';
 import { handleExternalLinkClick } from '../../lib/openExternal';
+import { downloadFile } from '../../lib/download';
 
 let _cachedPatternRoles: AgentRole[] = [];
 let _cachedPattern = `@([A-Za-z][A-Za-z0-9_-]*)`;
@@ -92,6 +94,52 @@ function imageSrcFor(href: string): string | null {
   return null;
 }
 
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v)$/i;
+const AUDIO_EXT_RE = /\.(mp3|wav|ogg|m4a|flac)$/i;
+
+/**
+ * Detects playable media a message links to.
+ *
+ * Studio's media URLs (/api/v1/media/{id}/file) carry no extension, so
+ * studio_generate appends ?kind=video|audio purely as a rendering hint — the
+ * file route ignores unknown query params. Plain file paths still fall back to
+ * their extension.
+ */
+function mediaKindFor(href: string): 'video' | 'audio' | null {
+  if (!href) return null;
+
+  const hint = href.match(/[?&]kind=(video|audio)\b/i);
+  if (hint) return hint[1].toLowerCase() as 'video' | 'audio';
+
+  const path = href.split(/[?#]/)[0];
+  if (VIDEO_EXT_RE.test(path)) return 'video';
+  if (AUDIO_EXT_RE.test(path)) return 'audio';
+  return null;
+}
+
+function renderInlineMedia(src: string, kind: 'video' | 'audio'): ReactNode {
+  // <span>, not <div>: this renders inside a markdown paragraph, and a block
+  // element there is invalid HTML that React will warn about.
+  return (
+    <span className="block my-2 max-w-md">
+      {kind === 'video' ? (
+        <span className="block rounded-xl overflow-hidden border border-border-1 aspect-video bg-black">
+          <VideoPlayer src={src} />
+        </span>
+      ) : (
+        <AudioPlayer src={src} />
+      )}
+      <button
+        onClick={() => downloadFile(`${src}${src.includes('?') ? '&' : '?'}download=1`)}
+        className="inline-flex items-center gap-1 mt-1.5 text-[11px] text-text-3 hover:text-accent-text transition-colors cursor-pointer"
+      >
+        <Download className="w-3 h-3" aria-hidden="true" />
+        Download
+      </button>
+    </span>
+  );
+}
+
 function renderInlineImage(src: string, label: string): ReactNode {
   return (
     <span className="block my-2">
@@ -101,16 +149,14 @@ function renderInlineImage(src: string, label: string): ReactNode {
           alt={label || 'image'}
           className="max-w-full max-h-[400px] rounded-xl object-contain block"
         />
-        <a
-          href={src}
-          download
-          rel="noreferrer"
-          className="no-underline absolute top-2 right-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm !text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 ring-1 ring-white/10"
+        <button
+          onClick={() => downloadFile(src)}
+          className="absolute top-2 right-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm !text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 ring-1 ring-white/10 cursor-pointer"
           title="Download image"
         >
           <Download className="w-3.5 h-3.5" aria-hidden="true" />
           Download
-        </a>
+        </button>
       </span>
     </span>
   );
@@ -128,6 +174,12 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
       if (imgSrc) {
         const label = typeof children === 'string' ? children : extractText(children as ReactNode);
         return renderInlineImage(imgSrc, label);
+      }
+      // Generated video and music get real players inline, rather than a bare
+      // link the user has to open in a new tab to judge.
+      const mediaKind = href ? mediaKindFor(href) : null;
+      if (mediaKind && href) {
+        return renderInlineMedia(href, mediaKind);
       }
       return (
         <a

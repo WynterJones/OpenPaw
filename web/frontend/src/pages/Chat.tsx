@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router';
 import {
   Plus, MessageSquare, ArrowUp,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
-  Coins, Zap, Minimize2, Square, Users, AlertTriangle,
+  Coins, Minimize2, Square, Users, AlertTriangle,
   Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench, Pin, Sparkles,
 } from 'lucide-react';
 import { Header } from '../components/Header';
@@ -83,19 +83,6 @@ function ToolPickerRow({ tool, selected, onSelect }: { tool: Tool; selected: boo
   );
 }
 
-/**
- * Abbreviates a token count. The context strip sits in a cramped bar, and the
- * exact digits of a 15-million-token total are noise — the magnitude is the
- * only part anyone reads.
- */
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) {
-    const m = n / 1_000_000;
-    return `${m >= 10 ? Math.round(m) : m.toFixed(1)}M`;
-  }
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
-}
 
 export function Chat() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
@@ -1510,40 +1497,11 @@ export function Chat() {
                   {!isSubscription && (
                     <span className="flex items-center gap-1"><Coins className="w-3 h-3" aria-hidden="true" />${threadStats.total_cost_usd.toFixed(4)}</span>
                   )}
-                  <span
-                    className="flex items-center gap-1"
-                    title="Total tokens this conversation has used, across every turn"
-                  >
-                    <Zap className="w-3 h-3" aria-hidden="true" />
-                    {formatTokens((threadStats.total_input_tokens || 0) + (threadStats.total_output_tokens || 0))} used
-                  </span>
-                  {ctxLimit > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-16 md:w-28 h-1.5 rounded-full bg-surface-3 overflow-hidden"
-                      role="progressbar"
-                      aria-valuenow={Math.round(ctxPct * 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label="Context window usage"
-                    >
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          ctxPct > 0.8
-                            ? 'bg-red-400'
-                            : ctxPct > 0.5
-                              ? 'bg-amber-400'
-                              : 'bg-emerald-400'
-                        }`}
-                        style={{ width: `${Math.min(100, ctxPct * 100)}%` }}
-                      />
-                    </div>
-                    <span className="whitespace-nowrap">
-                      {formatTokens(ctxUsed)}<span className="hidden sm:inline"> / {formatTokens(ctxLimit)}</span> context
-                      <span className="text-text-3/70"> ({Math.round(ctxPct * 100)}%)</span>
-                    </span>
-                  </div>
-                  )}
+                  {/* The lifetime token total and the context meter used to sit
+                      here. Two unrelated numbers side by side read as one
+                      broken stat ("1.6M used" next to "4k / 1.0M"), and the
+                      context figure only matters as it approaches the limit —
+                      which the warning banner below already announces. */}
                   <div className="flex items-center gap-1 ml-auto">
                     <button
                       onClick={() => setShowCompactConfirm(true)}
@@ -1640,7 +1598,7 @@ export function Chat() {
                       </div>
                       <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
                         {activePin.pin_summary ? (
-                          <div className="prose-chat">
+                          <div className="prose-chat prose-measure">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>{activePin.pin_summary}</ReactMarkdown>
                           </div>
                         ) : (

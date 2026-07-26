@@ -84,6 +84,9 @@ func (p *ProviderOpenRouter) Models(ctx context.Context, kind Kind) ([]Model, er
 				Kind:        KindImage,
 				Description: truncate(m.Description, 180),
 				Sizes:       imageSizes,
+				// Chat-shaped image models take references as extra content
+				// parts, so several can be sent in one request.
+				MaxRefImages: refImageSlots(m.AcceptsImageInput()),
 			},
 			known:      known,
 			knownRank:  r,
@@ -113,6 +116,17 @@ func (p *ProviderOpenRouter) Models(ctx context.Context, kind Kind) ([]Model, er
 		out = append(out, e.model)
 	}
 	return out, nil
+}
+
+// maxOpenRouterRefImages caps how many reference images the editor offers.
+// Three is enough for style + subject + composition without bloating a request.
+const maxOpenRouterRefImages = 3
+
+func refImageSlots(accepts bool) int {
+	if accepts {
+		return maxOpenRouterRefImages
+	}
+	return 0
 }
 
 func fallbackImageModels() []Model {

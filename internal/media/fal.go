@@ -73,6 +73,11 @@ func (p *ProviderFal) Models(ctx context.Context, kind Kind) ([]Model, error) {
 		if kind == KindImage {
 			m.Sizes = imageSizes
 		}
+		// These APIs take one image input, and Generate only sends the first —
+		// advertising more would silently drop the rest.
+		if kind == KindImage || kind == KindVideo {
+			m.MaxRefImages = 1
+		}
 		out = append(out, m)
 	}
 	return out, nil
