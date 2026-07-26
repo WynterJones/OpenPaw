@@ -19,6 +19,7 @@ import { useOpenRouterBalance } from '../hooks/useOpenRouterBalance';
 import { CLI_CONTEXT_LIMIT } from '../lib/provider';
 import type { TodoItem, MediaItem, Tool, ThreadPin } from '../lib/types';
 import { useToast } from '../components/Toast';
+import { ProviderSwitcher } from '../components/chat/ProviderSwitcher';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
@@ -1966,6 +1967,8 @@ export function Chat() {
                       >
                         <FolderPlus className="w-4 h-4" aria-hidden="true" />
                       </button>
+                      <span className="w-px h-4 bg-border-0 mx-0.5" aria-hidden="true" />
+                      <ProviderSwitcher />
                     </div>
                     {(thinking || isStreaming) ? (
                       <button

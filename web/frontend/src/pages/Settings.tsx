@@ -73,6 +73,7 @@ import {
 } from "../lib/pushNotifications";
 import { isTauri } from "../lib/tauri";
 import { RemoteAccessCard } from "../components/RemoteAccessCard";
+import { EngineModels } from "../components/settings/EngineModels";
 
 // Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
 // app has its own TBD mobile-connection story, so hide Tailscale there.
@@ -1014,112 +1015,8 @@ function OpenClawCard() {
   );
 }
 
-function ModelPicker({
-  label,
-  description,
-  value,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  value: string;
-  onChange: (model: string) => void;
-}) {
-  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    api
-      .get<{ id: string; name: string }[]>("/settings/available-models")
-      .then(setModels)
-      .catch(() => {});
-  }, []);
-
-  const filtered = models
-    .filter(
-      (m) =>
-        m.id.toLowerCase().includes(search.toLowerCase()) ||
-        m.name.toLowerCase().includes(search.toLowerCase()),
-    )
-    .slice(0, 30);
-
-  const displayName =
-    models.find((m) => m.id === value)?.name || value || "Select a model";
-
-  return (
-    <Card>
-      <h3 className="text-sm font-semibold text-text-1 mb-1">{label}</h3>
-      <p className="text-xs text-text-3 mb-4">{description}</p>
-      <div className="max-w-sm relative">
-        <button
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border-1 bg-surface-2 text-sm text-text-1 hover:border-border-0 transition-colors cursor-pointer"
-        >
-          <span className="truncate">{displayName}</span>
-          <span className="text-text-3 ml-2 text-xs">
-            {open ? "\u25B2" : "\u25BC"}
-          </span>
-        </button>
-        {open && (
-          <div className="absolute z-20 mt-1 w-full rounded-lg border border-border-1 bg-surface-1 shadow-xl max-h-64 overflow-hidden flex flex-col">
-            <div className="p-2 border-b border-border-0">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search models..."
-                className="w-full px-2 py-1.5 rounded-md bg-surface-2 border border-border-1 text-sm text-text-1 placeholder:text-text-3 outline-none focus:border-accent-primary"
-                autoFocus
-              />
-            </div>
-            <div className="overflow-y-auto flex-1" role="listbox">
-              {filtered.length === 0 ? (
-                <p className="p-3 text-xs text-text-3 text-center">
-                  No models found
-                </p>
-              ) : (
-                filtered.map((m) => (
-                  <button
-                    key={m.id}
-                    role="option"
-                    aria-selected={m.id === value}
-                    onClick={() => {
-                      onChange(m.id);
-                      setOpen(false);
-                      setSearch("");
-                    }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer hover:bg-surface-2 ${
-                      m.id === value
-                        ? "bg-accent-muted text-accent-text"
-                        : "text-text-1"
-                    }`}
-                  >
-                    <span className="block truncate font-medium">{m.name}</span>
-                    <span className="block truncate text-xs text-text-3">
-                      {m.id}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 function ModelsTab() {
   const { toast } = useToast();
-  const [gatewayModel, setGatewayModel] = useState(
-    "anthropic/claude-haiku-4.5",
-  );
-  const [builderModel, setBuilderModel] = useState(
-    "anthropic/claude-sonnet-5",
-  );
   const [maxTurns, setMaxTurns] = useState(300);
   const [agentTimeoutMin, setAgentTimeoutMin] = useState(60);
   const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
@@ -1151,8 +1048,6 @@ function ModelsTab() {
         context_limit_override: number;
       }>("/settings/models")
       .then((data) => {
-        setGatewayModel(data.gateway_model || "anthropic/claude-haiku-4.5");
-        setBuilderModel(data.builder_model || "anthropic/claude-sonnet-5");
         if (data.max_turns > 0) setMaxTurns(data.max_turns);
         if (data.agent_timeout_min > 0)
           setAgentTimeoutMin(data.agent_timeout_min);
@@ -1175,9 +1070,10 @@ function ModelsTab() {
   const save = async () => {
     setSaving(true);
     try {
+      // Models are omitted deliberately: they are saved per engine by
+      // EngineModels, and sending them here would write the active engine's
+      // pair over whichever engine the user was just editing.
       await api.put("/settings/models", {
-        gateway_model: gatewayModel,
-        builder_model: builderModel,
         max_turns: maxTurns,
         agent_timeout_min: agentTimeoutMin,
         auto_compact_enabled: autoCompactEnabled,
@@ -1277,21 +1173,10 @@ function ModelsTab() {
         )}
       </Card>
 
-      <ModelPicker
-        key={`gateway-${providerInfo?.active ?? "openrouter"}`}
-        label="Gateway Model"
-        description="Used to analyze user messages, route requests, and generate summaries. A fast, cheap model is recommended."
-        value={gatewayModel}
-        onChange={setGatewayModel}
-      />
+      {/* Replaces the two single pickers: those only ever edited the
+          active engine, so a model chosen for one engine was lost on switch. */}
+      <EngineModels />
 
-      <ModelPicker
-        key={`builder-${providerInfo?.active ?? "openrouter"}`}
-        label="Builder Model"
-        description="Used when building microservices and dashboards. A balanced model is recommended for speed and quality."
-        value={builderModel}
-        onChange={setBuilderModel}
-      />
 
       <Card>
         <h3 className="text-sm font-semibold text-text-1 mb-1">

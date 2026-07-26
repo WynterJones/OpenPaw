@@ -351,18 +351,17 @@ func main() {
 	sched.LoadSchedules()
 	sched.StartDataRetention()
 
-	// Load model settings from database
-	var gatewayModel, builderModel, maxTurnsStr, agentTimeoutStr string
-	db.QueryRow("SELECT value FROM settings WHERE key = 'gateway_model'").Scan(&gatewayModel)
-	db.QueryRow("SELECT value FROM settings WHERE key = 'builder_model'").Scan(&builderModel)
+	// Load model settings from database. Models are stored per provider, so
+	// this picks up whatever the ACTIVE provider was last set to — a Codex
+	// model id would be meaningless to Claude Code and vice versa.
+	var maxTurnsStr, agentTimeoutStr string
 	db.QueryRow("SELECT value FROM settings WHERE key = 'max_turns'").Scan(&maxTurnsStr)
 	db.QueryRow("SELECT value FROM settings WHERE key = 'agent_timeout_min'").Scan(&agentTimeoutStr)
-	if gatewayModel != "" {
-		agentMgr.GatewayModel = agents.ParseModel(gatewayModel, llm.ModelHaiku)
-	}
-	if builderModel != "" {
-		agentMgr.BuilderModel = agents.ParseModel(builderModel, llm.ModelSonnet)
-	}
+
+	handlers.ApplyProviderModels(db, providerRouter, providerRouter.ActiveName(), func(gateway, builder string) {
+		agentMgr.GatewayModel = gateway
+		agentMgr.BuilderModel = builder
+	})
 	if maxTurnsStr != "" {
 		if v, err := strconv.Atoi(maxTurnsStr); err == nil && v > 0 {
 			agentMgr.MaxTurns = v

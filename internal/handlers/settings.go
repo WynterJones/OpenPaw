@@ -131,10 +131,26 @@ func (h *SettingsHandler) UpdateDesign(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(value))
 }
 
+// activeProviderName is the provider currently serving chat.
+func (h *SettingsHandler) activeProviderName() string {
+	if h.providers == nil {
+		return llm.ProviderOpenRouter
+	}
+	return h.providers.ActiveName()
+}
+
 func (h *SettingsHandler) GetModels(w http.ResponseWriter, r *http.Request) {
+	// ?provider= reads another provider's saved pair without switching to it,
+	// which is what lets Settings show every provider's model at once.
+	if name := r.URL.Query().Get("provider"); name != "" {
+		writeJSON(w, http.StatusOK, LoadProviderModels(h.db, h.providers, name))
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"gateway_model":          h.agentMgr.GatewayModel,
 		"builder_model":          h.agentMgr.BuilderModel,
+		"provider":               h.activeProviderName(),
 		"max_turns":              h.agentMgr.MaxTurns,
 		"agent_timeout_min":      h.agentMgr.AgentTimeoutMin,
 		"auto_compact_enabled":   h.agentMgr.AutoCompactEnabled,
@@ -147,6 +163,9 @@ func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		GatewayModel         string `json:"gateway_model"`
 		BuilderModel         string `json:"builder_model"`
+		// Provider scopes the model change. Empty means the active one, so
+		// existing callers keep working unchanged.
+		Provider             string `json:"provider"`
 		MaxTurns             *int   `json:"max_turns"`
 		AgentTimeoutMin      *int   `json:"agent_timeout_min"`
 		AutoCompactEnabled   *bool  `json:"auto_compact_enabled"`
@@ -158,25 +177,40 @@ func (h *SettingsHandler) UpdateModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Which provider these models belong to. Models are stored per provider
+	// because an id is only meaningful to the provider it came from.
+	target := req.Provider
+	if target == "" {
+		target = h.activeProviderName()
+	}
+	isActive := target == h.activeProviderName()
+
 	// On OpenRouter, normalize legacy short names to full model IDs. CLI
 	// providers use their own IDs (haiku/sonnet/opus, gpt-5.1-codex...) —
 	// store them as-is; each provider resolves names at call time.
-	onOpenRouter := h.providers == nil || h.providers.ActiveName() == llm.ProviderOpenRouter
+	onOpenRouter := target == llm.ProviderOpenRouter
 	if req.GatewayModel != "" {
 		model := req.GatewayModel
 		if onOpenRouter {
 			model = agents.ParseModel(req.GatewayModel, llm.ModelSonnet)
 		}
-		h.agentMgr.GatewayModel = model
-		h.upsertSetting("gateway_model", model)
+		h.upsertSetting(providerModelKey("gateway_model", target), model)
+		// Only touch the live manager when editing the provider in use;
+		// otherwise this would repoint the running agents at another
+		// provider's model.
+		if isActive {
+			h.agentMgr.GatewayModel = model
+		}
 	}
 	if req.BuilderModel != "" {
 		model := req.BuilderModel
 		if onOpenRouter {
 			model = agents.ParseModel(req.BuilderModel, llm.ModelSonnet)
 		}
-		h.agentMgr.BuilderModel = model
-		h.upsertSetting("builder_model", model)
+		h.upsertSetting(providerModelKey("builder_model", target), model)
+		if isActive {
+			h.agentMgr.BuilderModel = model
+		}
 	}
 	if req.MaxTurns != nil && *req.MaxTurns > 0 {
 		h.agentMgr.MaxTurns = *req.MaxTurns
@@ -342,9 +376,21 @@ func (h *SettingsHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SettingsHandler) AvailableModels(w http.ResponseWriter, r *http.Request) {
+	// ?provider= lists another provider's models without switching to it, so
+	// Settings can offer a model for each engine side by side.
+	target := r.URL.Query().Get("provider")
+	if target == "" {
+		target = h.activeProviderName()
+	}
+
 	// CLI providers expose a static tier list instead of the OpenRouter catalog
-	if h.providers != nil && h.providers.ActiveName() != llm.ProviderOpenRouter {
-		models, err := h.providers.Active().ListModels(r.Context())
+	if target != llm.ProviderOpenRouter {
+		p := h.providers.Get(target)
+		if p == nil {
+			writeError(w, http.StatusBadRequest, "unknown provider: "+target)
+			return
+		}
+		models, err := p.ListModels(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list models: "+err.Error())
 			return
@@ -427,6 +473,14 @@ func (h *SettingsHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.upsertSetting("llm_provider", req.Provider)
+
+	// Load the models this provider was last set to. Without this the previous
+	// provider's ids would carry over and be coerced to a default, quietly
+	// discarding whatever the user had chosen here before.
+	ApplyProviderModels(h.db, h.providers, req.Provider, func(gateway, builder string) {
+		h.agentMgr.GatewayModel = gateway
+		h.agentMgr.BuilderModel = builder
+	})
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "llm_provider_updated", "settings", "settings", "llm_provider", req.Provider)
