@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/database"
+	"github.com/openpaw/openpaw/internal/middleware"
 )
 
 type SkillsHandler struct {
@@ -227,4 +228,69 @@ func (h *SkillsHandler) PublishAgentSkill(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "skill published to global"})
+}
+
+// --- Skill file endpoints ---
+//
+// A skill is a directory, and everything in it besides SKILL.md was previously
+// unreachable: nothing could create it, list it or edit it, so skills were
+// effectively single documents. These expose the rest of the folder.
+
+// filePathParam pulls the wildcard path off the route. chi gives it back
+// URL-decoded via RouteContext, which is what a path like "scripts/deploy.sh"
+// needs — it contains a slash and would not survive a plain URLParam.
+func filePathParam(r *http.Request) string {
+	return chi.RouteContext(r.Context()).URLParam("*")
+}
+
+func (h *SkillsHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
+	files, err := agents.ListSkillFiles(h.dataDir, chi.URLParam(r, "name"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, files)
+}
+
+func (h *SkillsHandler) GetFile(w http.ResponseWriter, r *http.Request) {
+	content, err := agents.ReadSkillFile(h.dataDir, chi.URLParam(r, "name"), filePathParam(r))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"path":    filePathParam(r),
+		"content": content,
+	})
+}
+
+func (h *SkillsHandler) PutFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	name := chi.URLParam(r, "name")
+	path := filePathParam(r)
+	if err := agents.WriteSkillFile(h.dataDir, name, path, req.Content); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "skill_file_saved", "skills", "skill", name, path)
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
+}
+
+func (h *SkillsHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	path := filePathParam(r)
+	if err := agents.DeleteSkillFile(h.dataDir, name, path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "skill_file_deleted", "skills", "skill", name, path)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "file deleted"})
 }

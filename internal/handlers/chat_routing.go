@@ -543,6 +543,14 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	response, usage, widgetJSON, toolCallsJSON, imageURL, err := h.agentManager.RoleChat(ctx, systemPrompt, model, history, msgContent, threadID, agentDir, agentRoleSlug, agentName, avatarDescription, avatarPath)
 	if err != nil {
 		h.agentManager.ClearStreamState(threadID)
+		// A user-initiated stop is not an error to report. StopThread has
+		// already saved the partial reply; adding "I encountered an error:
+		// context canceled" behind it was the second of the two junk messages
+		// every stop used to produce.
+		if ctx.Err() == context.Canceled {
+			h.broadcastStatus(threadID, "done", "")
+			return
+		}
 		errMsg := "I'm sorry, I encountered an error: " + err.Error()
 		if ctx.Err() == context.DeadlineExceeded {
 			errMsg = "The operation timed out. This usually happens with long-running coding tasks. You can say **continue** to pick up where I left off, or adjust the timeout in Settings."

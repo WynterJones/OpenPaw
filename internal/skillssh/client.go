@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -37,8 +38,12 @@ type cacheEntry struct {
 }
 
 type repoEntry struct {
-	branch    string
-	paths     []string // every "…/SKILL.md" in the repo
+	branch string
+	paths  []string // every "…/SKILL.md" in the repo
+	// blobs is every file in the repo. The recursive tree call already returns
+	// them, and a skill is a directory — its scripts/ and references/ are what
+	// make it more than a prompt, so they have to be findable.
+	blobs     []string
 	truncated bool
 	expiresAt time.Time
 }
@@ -279,9 +284,13 @@ func (c *Client) repo(source string) (repoEntry, bool) {
 		return repoEntry{}, false
 	}
 
-	var paths []string
+	var paths, blobs []string
 	for _, t := range tree.Tree {
-		if t.Type == "blob" && strings.HasSuffix(t.Path, "/SKILL.md") {
+		if t.Type != "blob" {
+			continue
+		}
+		blobs = append(blobs, t.Path)
+		if strings.HasSuffix(t.Path, "/SKILL.md") {
 			paths = append(paths, t.Path)
 		}
 	}
@@ -289,6 +298,7 @@ func (c *Client) repo(source string) (repoEntry, bool) {
 	entry = repoEntry{
 		branch:    branch,
 		paths:     paths,
+		blobs:     blobs,
 		truncated: tree.Truncated,
 		expiresAt: time.Now().Add(15 * time.Minute),
 	}
@@ -349,4 +359,62 @@ func SanitizeSkillName(name string) string {
 		}
 	}
 	return string(cleaned)
+}
+
+// BundleFile is one non-SKILL.md file that ships with a skill.
+type BundleFile struct {
+	// Path is relative to the skill directory: "scripts/deploy.sh".
+	Path    string
+	Content string
+}
+
+// maxBundleFiles and maxBundleBytes bound what one install will pull. Each file
+// is a separate raw.githubusercontent request, so an unbounded skill directory
+// is both slow and a good way to get rate-limited mid-install.
+const (
+	maxBundleFiles = 40
+	maxBundleBytes = 2 * 1024 * 1024
+)
+
+// FetchSkillBundle returns the files that sit alongside a skill's SKILL.md.
+//
+// Installing used to fetch the single SKILL.md blob and nothing else, so a
+// skill that ships scripts/ or references/ arrived gutted: the instructions
+// still said "run scripts/deploy.sh" and the file was not there. The recursive
+// tree call already lists every blob, so the siblings cost no extra lookup to
+// find — only to download.
+//
+// Best-effort by design. A skill whose extras fail to download is still worth
+// installing for its SKILL.md, so individual failures are skipped rather than
+// failing the install.
+func (c *Client) FetchSkillBundle(source, skillID string) ([]BundleFile, error) {
+	skillPath, err := c.resolveSkillPath(source, skillID)
+	if err != nil {
+		return nil, err
+	}
+	dir := path.Dir(skillPath)
+
+	repo, ok := c.repo(source)
+	if !ok {
+		return nil, fmt.Errorf("could not list %s", source)
+	}
+
+	var files []BundleFile
+	var total int
+	for _, blob := range repo.blobs {
+		if blob == skillPath || !strings.HasPrefix(blob, dir+"/") {
+			continue
+		}
+		if len(files) >= maxBundleFiles || total >= maxBundleBytes {
+			break
+		}
+		content, ok := c.fetchAtPath(source, blob)
+		if !ok {
+			continue // binary or unreadable — skip, keep the rest
+		}
+		rel := strings.TrimPrefix(blob, dir+"/")
+		files = append(files, BundleFile{Path: rel, Content: content})
+		total += len(content)
+	}
+	return files, nil
 }

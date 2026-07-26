@@ -13,14 +13,40 @@ import { api } from './api';
 export type CompanionMood = 'idle' | 'thinking' | 'toolcall' | 'responding';
 
 /** The four default emotes generated when a character is created. */
-export const DEFAULT_EMOTES = ['idle', 'walk', 'wave', 'cheer'] as const;
+export const DEFAULT_EMOTES = ['idle', 'thinking', 'wave', 'cheer'] as const;
+
+/**
+ * What PixelLab is asked to animate for each clip.
+ *
+ * Split from the clip name because the two answer different questions: the clip
+ * name says when OpenPaw plays it, while PixelLab needs a physical action it
+ * can actually draw. "thinking" is a mood — asking PixelLab to animate it gets
+ * you nothing useful — so the thinking clip is still drawn as a walk.
+ */
+export const EMOTE_ACTIONS: Record<string, string> = {
+  idle: 'idle breathing',
+  thinking: 'walk',
+  wave: 'wave',
+  cheer: 'cheer',
+};
 
 /** Map a live mood to the animation clip that should play. */
 export const MOOD_TO_CLIP: Record<CompanionMood, string> = {
   idle: 'idle',
-  toolcall: 'walk',
-  thinking: 'wave',
+  thinking: 'thinking',
+  toolcall: 'wave',
   responding: 'cheer',
+};
+
+/**
+ * Clip names that used to be called something else.
+ *
+ * Companions created before the rename have a clip named "walk" on disk, and
+ * regenerating a companion is a paid round-trip — so the lookup falls back
+ * rather than silently dropping those characters to their idle animation.
+ */
+const CLIP_ALIASES: Record<string, string[]> = {
+  thinking: ['walk'],
 };
 
 export interface AnimationClip {
@@ -136,8 +162,15 @@ export function clipForName(
   character: PixelLabCharacter,
   name: string
 ): AnimationClip | null {
+  const exact = character.animations.find((c) => c.name === name);
+  if (exact) return exact;
+
+  for (const alias of CLIP_ALIASES[name] ?? []) {
+    const aliased = character.animations.find((c) => c.name === alias);
+    if (aliased) return aliased;
+  }
+
   return (
-    character.animations.find((c) => c.name === name) ??
     character.animations.find((c) => c.name === 'idle') ??
     character.animations[0] ??
     null

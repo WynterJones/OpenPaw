@@ -125,6 +125,8 @@ export interface ChatMessage {
   image_url?: string;
   tool_calls?: ToolCallResult[];
   reactions?: Reaction[];
+  /** The user interrupted this reply mid-stream — content is partial. */
+  stopped?: boolean;
   created_at: string;
 }
 
@@ -196,6 +198,15 @@ export interface Skill {
   allowed_tools?: string;
   folder?: string;
   workspace_id?: string;
+}
+
+/** One file inside a skill directory — SKILL.md, or anything bundled with it. */
+export interface SkillFile {
+  /** Relative to the skill directory: "SKILL.md", "scripts/deploy.sh". */
+  path: string;
+  size: number;
+  /** False for binaries and oversized files — listed, but not opened. */
+  editable: boolean;
 }
 
 export interface LibrarySkill {

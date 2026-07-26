@@ -363,3 +363,51 @@ func TestCompaction_GuardBlocksConcurrentRun(t *testing.T) {
 		t.Fatalf("an in-flight compaction should be a silent no-op, got %v", err)
 	}
 }
+
+// Stopping a reply used to discard the streamed text and save the word
+// "Stopped." instead. The partial answer is the thing worth keeping, so it is
+// stored verbatim and flagged — the flag is what lets the UI badge it rather
+// than pass a truncated reply off as a finished one.
+func TestSaveStoppedMessage_KeepsPartialAndFlagsIt(t *testing.T) {
+	h := newTestHandler(t)
+	threadID := createTestThread(t, h)
+
+	const partial = "Here is the first half of the answer"
+	id := h.saveStoppedMessage(threadID, "researcher", partial)
+	if id == "" {
+		t.Fatal("no message id returned")
+	}
+
+	var content, agent string
+	var stopped bool
+	if err := h.db.QueryRow(
+		"SELECT content, agent_role_slug, stopped FROM chat_messages WHERE id = ?", id,
+	).Scan(&content, &agent, &stopped); err != nil {
+		t.Fatalf("read back message: %v", err)
+	}
+	if content != partial {
+		t.Errorf("content = %q, want the partial text unchanged", content)
+	}
+	if agent != "researcher" {
+		t.Errorf("agent_role_slug = %q, want researcher — the badge names who was replying", agent)
+	}
+	if !stopped {
+		t.Error("stopped flag not set, so the UI would render this as a complete reply")
+	}
+}
+
+// An ordinary reply must not come back flagged, or every message would badge.
+func TestSaveAssistantMessage_IsNotStopped(t *testing.T) {
+	h := newTestHandler(t)
+	threadID := createTestThread(t, h)
+
+	id := h.saveAssistantMessage(threadID, "researcher", "A complete answer", 0, 0, 0)
+
+	var stopped bool
+	if err := h.db.QueryRow("SELECT stopped FROM chat_messages WHERE id = ?", id).Scan(&stopped); err != nil {
+		t.Fatalf("read back message: %v", err)
+	}
+	if stopped {
+		t.Error("a normal reply came back flagged as stopped")
+	}
+}

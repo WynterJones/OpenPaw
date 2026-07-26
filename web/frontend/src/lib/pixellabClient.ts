@@ -127,6 +127,38 @@ export async function getBalance(): Promise<BalanceInfo> {
 // Step 1 — generate pixel-art image options from text
 // ---------------------------------------------------------------------------
 
+/**
+ * Scale a reference image to exactly w×h.
+ *
+ * PixelLab rejects a request whose init_image dimensions differ from
+ * image_size — "init_image size (256×256) must match image_size (64×64)". The
+ * references on offer are agent avatars and arbitrary uploads, so they are
+ * almost never already the sprite size, and every generation with a reference
+ * failed on it.
+ *
+ * Smoothing is off: this is pixel art, and a bilinear downscale to 64×64 turns
+ * crisp pixels into mush.
+ */
+async function resizeToDataUri(dataUri: string, w: number, h: number): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new PixelLabError(0, 'Could not read the reference image'));
+    el.src = dataUri;
+  });
+
+  if (img.naturalWidth === w && img.naturalHeight === h) return dataUri;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new PixelLabError(0, 'Could not resize the reference image');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/png');
+}
+
 export interface CreateImageOptions {
   description: string;
   size?: ImageSize;
@@ -156,8 +188,10 @@ export async function createPixelImage(
     no_background: noBackground,
   };
   if (initImage) {
+    // Must match image_size exactly or the request is rejected outright.
+    const fitted = await resizeToDataUri(initImage, size.width, size.height);
     // PixelLab wants bare base64 in a Base64Image envelope, not a data URI.
-    body.init_image = { type: 'base64', base64: stripDataUri(initImage) };
+    body.init_image = { type: 'base64', base64: stripDataUri(fitted) };
     body.init_image_strength = Math.min(999, Math.max(1, Math.round(initImageStrength)));
   }
   const data = await request<ApiResponse>('/create-image-pixflux', 'POST', body);

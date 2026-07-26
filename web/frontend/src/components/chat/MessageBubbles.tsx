@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { DollarSign, Zap, Download, Wrench, Minimize2 } from 'lucide-react';
+import { DollarSign, Zap, Download, Wrench, Minimize2, OctagonX } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
@@ -326,6 +326,14 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
               <div className="prose-chat">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{cleanToolColons(message.content, (message.tool_calls?.length ?? 0) > 0)}</ReactMarkdown>
               </div>
+              {/* Inside the bubble, under the text: this reply is partial, and
+                  saying so next to the words is the only way to tell. */}
+              {message.stopped && (
+                <div className="mt-3 pt-2.5 border-t border-border-0 flex items-center gap-1.5 text-[11px] font-semibold text-text-3">
+                  <OctagonX className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                  <span>Stopped by you — this reply is incomplete</span>
+                </div>
+              )}
             </div>
             {message.image_url && (
               <div className="mt-2 px-1">

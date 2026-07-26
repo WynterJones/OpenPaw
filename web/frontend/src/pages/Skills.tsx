@@ -18,6 +18,9 @@ import { AvailabilitySelect } from '../components/AvailabilitySelect';
 import { useFolderGrouping } from '../hooks/useFolderGrouping';
 import { useToast } from '../components/Toast';
 import { skills as skillsApi, type Skill } from '../lib/api';
+import type { SkillFile } from '../lib/types';
+import { SkillFileBrowser } from '../components/skills/SkillFileBrowser';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 function CreateSkillModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (skill: Skill) => void }) {
   const { toast } = useToast();
@@ -86,6 +89,20 @@ export function Skills() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [customFolders, setCustomFolders] = useState<string[]>([]);
 
+  // A skill is a directory. activeFile is the one being edited — SKILL.md by
+  // default, since that is the entry point and what every skill has.
+  const [files, setFiles] = useState<SkillFile[]>([]);
+  const [activeFile, setActiveFile] = useState('SKILL.md');
+  const [fileDeleteTarget, setFileDeleteTarget] = useState<string | null>(null);
+  // Last saved text for the open file, so switching away can warn instead of
+  // silently dropping a script the user just typed.
+  const [savedContent, setSavedContent] = useState('');
+  // Set when switching files would drop unsaved edits — held until the user
+  // answers, rather than calling window.confirm, which draws a system dialog
+  // outside the theme and blocks the event loop.
+  const [pendingFile, setPendingFile] = useState<string | null>(null);
+  const dirty = editContent !== savedContent;
+
   const loadSkills = useCallback(() => {
     skillsApi.list()
       .then(data => setSkillList(data || []))
@@ -113,15 +130,91 @@ export function Skills() {
     }
   };
 
+  const loadFiles = useCallback(async (skillName: string) => {
+    try {
+      setFiles(await skillsApi.files(skillName) || []);
+    } catch {
+      // Listing is a bonus; the SKILL.md editor still works without it.
+      setFiles([]);
+    }
+  }, []);
+
   const handleEdit = async (skill: Skill) => {
+    setActiveFile('SKILL.md');
     try {
       const full = await skillsApi.get(skill.name);
       setEditing(full);
       setEditContent(full.content || '');
+      setSavedContent(full.content || '');
     } catch (e) {
       console.warn('loadSkillDetail failed:', e);
       setEditing(skill);
       setEditContent(skill.content || '');
+      setSavedContent(skill.content || '');
+    }
+    loadFiles(skill.name);
+  };
+
+  // Switching files saves nothing implicitly — the Save button is the only
+  // thing that writes, same as before. Unsaved edits are warned about rather
+  // than silently discarded, because losing a script you just typed is worse
+  // than an extra click.
+  const openFile = async (path: string) => {
+    if (!editing) return;
+    try {
+      const file = await skillsApi.readFile(editing.name, path);
+      setActiveFile(path);
+      setEditContent(file.content ?? '');
+      setSavedContent(file.content ?? '');
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not open that file');
+    }
+  };
+
+  const handleSelectFile = (path: string) => {
+    if (!editing || path === activeFile) return;
+    if (dirty) {
+      setPendingFile(path);
+      return;
+    }
+    openFile(path);
+  };
+
+  const handleCreateFile = async (path: string) => {
+    if (!editing) return;
+    if (files.some(f => f.path === path)) {
+      toast('error', `${path} already exists`);
+      return;
+    }
+    try {
+      await skillsApi.writeFile(editing.name, path, '');
+      await loadFiles(editing.name);
+      setActiveFile(path);
+      setEditContent('');
+      setSavedContent('');
+      toast('success', `Created ${path}`);
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not create that file');
+    }
+  };
+
+  const handleDeleteFile = async () => {
+    if (!editing || !fileDeleteTarget) return;
+    try {
+      await skillsApi.deleteFile(editing.name, fileDeleteTarget);
+      if (activeFile === fileDeleteTarget) {
+        // Fall back to SKILL.md — it is the one file guaranteed to be there.
+        const skillMd = await skillsApi.readFile(editing.name, 'SKILL.md').catch(() => null);
+        setActiveFile('SKILL.md');
+        setEditContent(skillMd?.content ?? '');
+        setSavedContent(skillMd?.content ?? '');
+      }
+      await loadFiles(editing.name);
+      toast('success', `Deleted ${fileDeleteTarget}`);
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not delete that file');
+    } finally {
+      setFileDeleteTarget(null);
     }
   };
 
@@ -129,12 +222,19 @@ export function Skills() {
     if (!editing) return;
     setSaving(true);
     try {
-      await skillsApi.update(editing.name, { content: editContent });
-      setSkillList(prev => prev.map(s => s.name === editing.name ? { ...s, content: editContent, summary: editContent.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '') || '' } : s));
-      setEditing(null);
-      toast('success', 'Skill saved');
+      // SKILL.md keeps going through the skill endpoint, which also refreshes
+      // the summary shown in the list. Bundled files are plain writes.
+      if (activeFile === 'SKILL.md') {
+        await skillsApi.update(editing.name, { content: editContent });
+        setSkillList(prev => prev.map(s => s.name === editing.name ? { ...s, content: editContent, summary: editContent.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '') || '' } : s));
+      } else {
+        await skillsApi.writeFile(editing.name, activeFile, editContent);
+      }
+      setSavedContent(editContent);
+      await loadFiles(editing.name);
+      toast('success', `Saved ${activeFile}`);
     } catch (err) {
-      toast('error', err instanceof Error ? err.message : 'Failed to save skill');
+      toast('error', err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -247,13 +347,26 @@ export function Skills() {
                 </Button>
               </div>
             </div>
-            <div className="rounded-xl border border-border-0 bg-surface-1 p-2 md:p-4">
-              <textarea
-                value={editContent}
-                onChange={e => setEditContent(e.target.value)}
-                className="w-full min-h-[500px] rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 md:px-4 md:py-3 text-[13px] font-mono placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
-                spellCheck={false}
+            <div className="flex flex-col md:flex-row gap-3">
+              <SkillFileBrowser
+                files={files}
+                activePath={activeFile}
+                onSelect={handleSelectFile}
+                onCreate={handleCreateFile}
+                onDelete={setFileDeleteTarget}
               />
+              <div className="flex-1 min-w-0 rounded-xl border border-border-0 bg-surface-1 p-2 md:p-4">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <span className="text-xs font-mono text-text-2">{activeFile}</span>
+                  {dirty && <span className="text-[10px] text-text-3">unsaved</span>}
+                </div>
+                <textarea
+                  value={editContent}
+                  onChange={e => setEditContent(e.target.value)}
+                  className="w-full min-h-[500px] rounded-lg border border-border-1 bg-surface-0 text-text-1 px-3 py-2 md:px-4 md:py-3 text-[13px] font-mono placeholder:text-text-3/50 focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors resize-none"
+                  spellCheck={false}
+                />
+              </div>
             </div>
           </div>
         ) : loading ? (
@@ -341,6 +454,28 @@ export function Skills() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={fileDeleteTarget !== null}
+        title="Delete file"
+        message={<>Delete <strong>{fileDeleteTarget}</strong> from this skill? This cannot be undone.</>}
+        confirmLabel="Delete file"
+        onConfirm={handleDeleteFile}
+        onCancel={() => setFileDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingFile !== null}
+        title="Discard unsaved changes?"
+        message={<>You have unsaved changes to <strong>{activeFile}</strong>. Opening another file will lose them.</>}
+        confirmLabel="Discard and open"
+        onConfirm={() => {
+          const next = pendingFile;
+          setPendingFile(null);
+          if (next) openFile(next);
+        }}
+        onCancel={() => setPendingFile(null)}
+      />
     </div>
   );
 }

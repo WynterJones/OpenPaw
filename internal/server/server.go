@@ -380,6 +380,12 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/{name}", skillsHandler.Get)
 				r.Put("/{name}", skillsHandler.Update)
 				r.Delete("/{name}", skillsHandler.Delete)
+				// Bundled files (scripts/, references/, assets/). The wildcard
+				// carries a nested path, so it must be the last segment.
+				r.Get("/{name}/files", skillsHandler.ListFiles)
+				r.Get("/{name}/files/*", skillsHandler.GetFile)
+				r.Put("/{name}/files/*", skillsHandler.PutFile)
+				r.Delete("/{name}/files/*", skillsHandler.DeleteFile)
 			})
 
 			// Chat

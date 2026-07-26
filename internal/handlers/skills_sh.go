@@ -6,6 +6,7 @@ import (
 
 	"github.com/openpaw/openpaw/internal/agents"
 	"github.com/openpaw/openpaw/internal/database"
+	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/skillssh"
 )
@@ -138,6 +139,29 @@ func (h *SkillsShHandler) Install(w http.ResponseWriter, r *http.Request) {
 	if err := agents.WriteGlobalSkill(h.dataDir, name, content); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to write skill")
 		return
+	}
+
+	// Pull the rest of the skill folder. A skill is a directory — its scripts/
+	// and references/ are what a SKILL.md refers to when it says "run
+	// scripts/deploy.sh". Installing only the SKILL.md left those instructions
+	// pointing at files that were never fetched.
+	//
+	// Best-effort: the skill is already usable, so a failure here is logged and
+	// the install still succeeds rather than rolling back a working SKILL.md.
+	bundled := 0
+	if extras, err := h.client.FetchSkillBundle(req.Source, req.SkillID); err == nil {
+		for _, f := range extras {
+			if err := agents.WriteSkillFile(h.dataDir, name, f.Path, f.Content); err != nil {
+				logger.Warn("skill %s: could not write bundled file %s: %v", name, f.Path, err)
+				continue
+			}
+			bundled++
+		}
+	} else {
+		logger.Warn("skill %s: could not list bundled files: %v", name, err)
+	}
+	if bundled > 0 {
+		logger.Info("skill %s: installed with %d bundled file(s)", name, bundled)
 	}
 
 	userID := middleware.GetUserID(r.Context())

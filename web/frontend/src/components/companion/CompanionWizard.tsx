@@ -20,6 +20,7 @@ import { api } from '../../lib/api';
 import {
   companionStore,
   DEFAULT_EMOTES,
+  EMOTE_ACTIONS,
   type PixelLabCharacter,
 } from '../../lib/companionStore';
 import {
@@ -182,7 +183,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
         try {
           const frames = await animateAndCollect({
             characterId,
-            action: emote === 'idle' ? 'idle breathing' : emote,
+            action: EMOTE_ACTIONS[emote] ?? emote,
           });
           animations.push({
             name: emote,

@@ -155,7 +155,10 @@ type ChatMessage struct {
 	ImageURL      *string         `json:"image_url,omitempty"`
 	ToolCalls     json.RawMessage `json:"tool_calls,omitempty"`
 	Reactions     []Reaction      `json:"reactions,omitempty"`
-	CreatedAt     time.Time       `json:"created_at"`
+	// Stopped marks a reply the user interrupted mid-stream. The content is
+	// whatever had been written by then, not a complete answer.
+	Stopped   bool      `json:"stopped,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Reaction struct {

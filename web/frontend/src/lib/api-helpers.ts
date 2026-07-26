@@ -8,6 +8,7 @@ import type {
   MemoryFile,
   MemoryItem,
   Skill,
+  SkillFile,
   LibrarySkill,
   SkillsShSkill,
   SkillsShDetail,
@@ -196,7 +197,23 @@ export const skills = {
   update: (name: string, data: { content?: string; folder?: string; workspace_id?: string }) =>
     api.put<Skill>(`/skills/${name}`, data),
   delete: (name: string) => api.delete(`/skills/${name}`),
+
+  // A skill is a directory. These reach the rest of it — the scripts/ and
+  // references/ a SKILL.md points at when it says "run scripts/deploy.sh".
+  // Paths are nested, so each segment is encoded but the slashes are kept.
+  files: (name: string) => api.get<SkillFile[]>(`/skills/${name}/files`),
+  readFile: (name: string, path: string) =>
+    api.get<{ path: string; content: string }>(`/skills/${name}/files/${encodePath(path)}`),
+  writeFile: (name: string, path: string, content: string) =>
+    api.put<{ path: string }>(`/skills/${name}/files/${encodePath(path)}`, { content }),
+  deleteFile: (name: string, path: string) =>
+    api.delete(`/skills/${name}/files/${encodePath(path)}`),
 };
+
+/** Encodes each path segment but leaves the separators intact. */
+function encodePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
 
 // Thread members helpers
 export const threadMembers = {

@@ -440,7 +440,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, stopped, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
 		threadID,
 	)
 	if err != nil {
@@ -454,7 +454,7 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m models.ChatMessage
 		var tcJSON *string
-		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &tcJSON, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &tcJSON, &m.Stopped, &m.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan message")
 			return
 		}
@@ -1177,6 +1177,16 @@ func (h *ChatHandler) doAutoCompact(ctx context.Context, threadID string) error 
 	return err
 }
 
+// saveStoppedMessage stores an interrupted reply, flagged so the UI can badge
+// it instead of presenting a truncated answer as a finished one.
+func (h *ChatHandler) saveStoppedMessage(threadID, agentRoleSlug, content string) string {
+	id := h.saveAssistantMessage(threadID, agentRoleSlug, content, 0, 0, 0)
+	if _, err := h.db.Exec("UPDATE chat_messages SET stopped = 1 WHERE id = ?", id); err != nil {
+		logger.Error("Failed to flag stopped message: %v", err)
+	}
+	return id
+}
+
 func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content string, costUSD float64, inputTokens, outputTokens int, extras ...string) string {
 	id := generateID()
 	now := time.Now().UTC()
@@ -1306,6 +1316,16 @@ func (h *ChatHandler) StopThread(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	stopped := false
 
+	// Snapshot the half-written reply BEFORE cancelling. Cancelling wakes the
+	// routing goroutine, which clears the stream state on its way out — read it
+	// afterwards and the text is sometimes already gone.
+	var partial string
+	var partialAgent string
+	if st := h.agentManager.GetStreamState(threadID); st != nil {
+		partial = strings.TrimSpace(st.Text)
+		partialAgent = st.AgentSlug
+	}
+
 	// 1. Cancel the routing goroutine (gateway/role chat)
 	if cancelVal, ok := h.threadCancels.LoadAndDelete(threadID); ok {
 		if cancel, ok := cancelVal.(context.CancelFunc); ok {
@@ -1331,8 +1351,17 @@ func (h *ChatHandler) StopThread(w http.ResponseWriter, r *http.Request) {
 		stopped = true
 	}
 
+	// Keep whatever was written. The old behaviour discarded it and saved the
+	// word "Stopped." instead, which threw away the only thing the user
+	// actually wanted — the answer as far as it got.
 	if stopped {
-		h.saveAssistantMessage(threadID, "", "Stopped.", 0, 0, 0)
+		if partial != "" {
+			h.saveStoppedMessage(threadID, partialAgent, partial)
+		} else {
+			// Nothing streamed yet — say so plainly rather than leaving the
+			// turn with no trace that it was interrupted.
+			h.saveStoppedMessage(threadID, partialAgent, "_Stopped before a reply was written._")
+		}
 		h.broadcastStatus(threadID, "message_saved", "")
 	}
 
