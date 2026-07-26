@@ -57,7 +57,7 @@ export function ActiveTerminalsIndicator() {
           {sessions.map((s) => (
             <button
               key={s.session_id}
-              onClick={() => jumpToWorkspace(s.workspace_id, '/workbench')}
+              onClick={() => jumpToWorkspace(s.workspace_id, '/terminal')}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors cursor-pointer"
               title={`Open "${s.title}"`}
             >

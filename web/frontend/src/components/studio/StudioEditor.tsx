@@ -103,23 +103,30 @@ export function StudioEditor({
 
   return (
     <div className="flex flex-col gap-4 p-4" data-studio-editor>
-      {/* Media type */}
-      <div className="grid grid-cols-3 gap-1.5">
+      {/* Media type — a segmented control rather than three separate cards, so
+          the three options read as one setting with one value. */}
+      <div
+        role="radiogroup"
+        aria-label="Media type"
+        className="flex items-center gap-1 rounded-lg border border-border-0 bg-surface-2 p-1"
+      >
         {KINDS.map(k => {
           const active = state.type === k.value;
           const available = supports[k.value];
           return (
             <button
               key={k.value}
+              role="radio"
+              aria-checked={active}
               onClick={() => onChange({ type: k.value, model: '' })}
               title={available ? k.label : `${k.label} needs a Replicate or fal API key`}
-              className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                 active
-                  ? 'border-accent-primary bg-accent-primary/10 text-accent-text'
-                  : 'border-border-0 text-text-2 hover:text-text-1 hover:bg-surface-2'
+                  ? 'bg-accent-primary/15 text-accent-text'
+                  : 'text-text-2 hover:text-text-1 hover:bg-surface-3'
               } ${!available ? 'opacity-50' : ''}`}
             >
-              <k.icon className="w-4 h-4" aria-hidden="true" />
+              <k.icon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
               {k.label}
             </button>
           );

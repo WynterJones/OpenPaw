@@ -52,7 +52,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
       { to: "/inbox", icon: InboxIcon, label: "Inbox" },
-      { to: "/workbench", icon: TerminalSquare, label: "Workbench" },
+      { to: "/terminal", icon: TerminalSquare, label: "Terminal" },
       { to: "/studio", icon: Clapperboard, label: "Studio" },
     ],
   },

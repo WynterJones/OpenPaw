@@ -110,7 +110,6 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
               {running} running
             </span>
           )}
-          <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ml-auto ${expanded ? 'rotate-180' : ''}`} />
         </span>
 
         {currentLabel && (

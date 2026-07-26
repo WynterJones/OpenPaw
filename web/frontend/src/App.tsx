@@ -44,7 +44,7 @@ const pageTitles: Record<string, string> = {
   '/skills': 'Skills',
   '/secrets': 'Secrets',
   '/dashboards': 'Dashboards',
-  '/workbench': 'Workbench',
+  '/terminal': 'Terminal',
   '/studio': 'Studio',
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
@@ -124,7 +124,10 @@ function AppRoutes() {
         <Route path="/skills" element={<Skills />} />
         <Route path="/secrets" element={<Secrets />} />
         <Route path="/dashboards" element={<Dashboards />} />
-        <Route path="/workbench" element={<Workbench />} />
+        <Route path="/terminal" element={<Workbench />} />
+        {/* The page was called Workbench until it was renamed; keep old
+            links and any saved state working. */}
+        <Route path="/workbench" element={<Navigate to="/terminal" replace />} />
         <Route path="/studio" element={<Studio />} />
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />

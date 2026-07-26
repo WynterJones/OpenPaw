@@ -827,13 +827,26 @@ body {
   animation: op-tool-swap 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* The badge's current-tool line carries BOTH classes, and `animation` is a
+   shorthand — whichever rule comes last replaces the other outright, which
+   silently killed the shimmer. Declaring the pair together on the combined
+   selector (specificity 0,2,0) beats either single class and runs both. */
+.op-shimmer-text.op-tool-swap {
+  animation:
+    op-tool-swap 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    op-shimmer 2.4s linear infinite;
+}
+
 @keyframes op-tool-swap {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .op-shimmer-text {
+  /* Must also match the combined selector, or it keeps its higher specificity
+     and animates on regardless. */
+  .op-shimmer-text,
+  .op-shimmer-text.op-tool-swap {
     animation: none;
     -webkit-text-fill-color: var(--op-text-2);
     color: var(--op-text-2);

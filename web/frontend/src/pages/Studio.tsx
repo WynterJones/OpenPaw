@@ -42,6 +42,13 @@ function loadRailWidth() {
   return Math.min(RAIL_MAX, Math.max(RAIL_MIN, stored));
 }
 
+// Labels are explicit rather than a capitalised key: "Saved Prompts" reads as
+// what the tab holds, where a bare "Saved" could be saved output.
+const TABS = [
+  { id: 'editor', label: 'Editor' },
+  { id: 'saved', label: 'Saved Prompts' },
+] as const;
+
 const DEFAULT_STATE: EditorState = {
   refImages: [],
   type: 'image',
@@ -392,18 +399,18 @@ export function Studio() {
 
         {/* Thin tab strip */}
         <div className="flex px-3 gap-1 border-b border-border-0 flex-shrink-0" role="tablist">
-          {(['editor', 'saved'] as const).map(t => (
+          {TABS.map(({ id, label }) => (
             <button
-              key={t}
+              key={id}
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={`relative px-3 py-2 text-xs font-medium capitalize transition-colors cursor-pointer ${
-                tab === t ? 'text-accent-text' : 'text-text-3 hover:text-text-1'
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`relative px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                tab === id ? 'text-accent-text' : 'text-text-3 hover:text-text-1'
               }`}
             >
-              {t}
-              {tab === t && (
+              {label}
+              {tab === id && (
                 <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent-primary" />
               )}
             </button>
