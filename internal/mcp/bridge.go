@@ -110,14 +110,10 @@ func (r *Registry) handlePost(w http.ResponseWriter, req *http.Request, session 
 	case "tools/list":
 		tools := make([]mcpTool, 0, len(session.Tools))
 		for _, t := range session.Tools {
-			schema := t.Function.Parameters
-			if len(schema) == 0 {
-				schema = json.RawMessage(`{"type":"object"}`)
-			}
 			tools = append(tools, mcpTool{
 				Name:        t.Function.Name,
 				Description: t.Function.Description,
-				InputSchema: schema,
+				InputSchema: normalizeSchema(t.Function.Parameters),
 			})
 		}
 		resp.Result = map[string]interface{}{"tools": tools}
@@ -128,6 +124,49 @@ func (r *Registry) handlePost(w http.ResponseWriter, req *http.Request, session 
 	}
 
 	writeRPC(w, resp)
+}
+
+// normalizeSchema makes a tool's parameter schema safe to publish.
+//
+// Strict MCP clients validate every entry of tools/list and reject the ENTIRE
+// server when one fails — Claude Code does exactly this, so a single malformed
+// field silently strips all OpenPaw tools from the run and the agent, having no
+// way to know why, tells the user its tools "aren't connected". The common
+// source is Go: a nil slice marshals to `null`, and `"required": null` is not a
+// valid JSON Schema. Drop null-valued keys rather than let one tool sink the
+// rest.
+func normalizeSchema(raw json.RawMessage) json.RawMessage {
+	fallback := json.RawMessage(`{"type":"object"}`)
+	if len(raw) == 0 {
+		return fallback
+	}
+
+	var schema map[string]interface{}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		logger.Warn("MCP: tool schema is not a JSON object, publishing an empty one instead: %v", err)
+		return fallback
+	}
+
+	changed := false
+	for key, val := range schema {
+		if val == nil {
+			delete(schema, key)
+			changed = true
+		}
+	}
+	if schema["type"] == nil {
+		schema["type"] = "object"
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+
+	out, err := json.Marshal(schema)
+	if err != nil {
+		return fallback
+	}
+	return out
 }
 
 func (r *Registry) callTool(req *http.Request, session *Session, params json.RawMessage) (interface{}, *rpcError) {

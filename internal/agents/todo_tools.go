@@ -118,9 +118,10 @@ func buildTodoListItemsDef() llm.ToolDef {
 				"description": "The ID of the todo list",
 			},
 			"include_completed": map[string]interface{}{
-				"type":        "boolean",
-				"description": "Include completed items (default false)",
-				"default":     false,
+				"type": "boolean",
+				"description": "Include items that are already done (default true). " +
+					"Set false only when you want a short list of outstanding work.",
+				"default": true,
 			},
 		},
 		"required": []string{"list_id"},
@@ -128,9 +129,12 @@ func buildTodoListItemsDef() llm.ToolDef {
 	return llm.ToolDef{
 		Type: "function",
 		Function: llm.FunctionDef{
-			Name:        "todo_list_items",
-			Description: "List items in a todo list. By default only shows incomplete items.",
-			Parameters:  params,
+			Name: "todo_list_items",
+			Description: "List items in a todo list. Every item carries a `status` of " +
+				"`not_started`, `in_progress` (with `started_by`) or `done` (with `completed_at`) — " +
+				"read it before acting, so you never redo finished work or take over a task " +
+				"someone else has claimed.",
+			Parameters: params,
 		},
 	}
 }
@@ -381,8 +385,11 @@ func handleTodoListAll(db *database.DB) llm.ToolHandler {
 func handleTodoListItems(db *database.DB) llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var params struct {
-			ListID           string `json:"list_id"`
-			IncludeCompleted bool   `json:"include_completed"`
+			ListID string `json:"list_id"`
+			// Pointer, so "omitted" is distinguishable from "false". Omitted
+			// means include them: a done item that is simply absent from the
+			// list reads as work still to do, and the next run does it again.
+			IncludeCompleted *bool `json:"include_completed"`
 		}
 		if err := json.Unmarshal(input, &params); err != nil {
 			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
@@ -390,12 +397,13 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 		if params.ListID == "" {
 			return llm.ToolResult{Output: "list_id is required", IsError: true}
 		}
+		includeCompleted := params.IncludeCompleted == nil || *params.IncludeCompleted
 
 		query := `SELECT id, title, notes, attachments, completed, in_progress, started_by_agent_slug, started_at, due_date, last_actor_agent_slug, last_actor_note, created_at, completed_at
 			FROM todo_items WHERE list_id = ?`
 		args := []interface{}{params.ListID}
 
-		if !params.IncludeCompleted {
+		if !includeCompleted {
 			query += " AND completed = 0"
 		}
 		// In-progress first: they are the ones not to touch, so they should be
@@ -409,6 +417,7 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 		defer rows.Close()
 
 		var items []map[string]interface{}
+		counts := map[string]int{"not_started": 0, "in_progress": 0, "done": 0}
 		for rows.Next() {
 			var id, title, notes, attachments, lastActorNote string
 			var completed, inProgress int
@@ -429,6 +438,8 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 			} else if inProgress == 1 {
 				status = "in_progress"
 			}
+
+			counts[status]++
 
 			item := map[string]interface{}{
 				"id":          id,
@@ -470,11 +481,18 @@ func handleTodoListItems(db *database.DB) llm.ToolHandler {
 			items = []map[string]interface{}{}
 		}
 
-		result, _ := json.Marshal(map[string]interface{}{
+		payload := map[string]interface{}{
 			"list_id": params.ListID,
 			"items":   items,
 			"count":   len(items),
-		})
+			// A tally up front, so the shape of the list survives skim-reading:
+			// "3 done" is harder to miss than three items further down.
+			"by_status": counts,
+		}
+		if !includeCompleted {
+			payload["note"] = "Completed items were excluded from this listing — some work here may already be done."
+		}
+		result, _ := json.Marshal(payload)
 		return llm.ToolResult{Output: string(result)}
 	}
 }

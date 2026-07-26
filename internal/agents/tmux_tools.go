@@ -70,11 +70,18 @@ func sessionParams(extra map[string]interface{}, required ...string) json.RawMes
 	for k, v := range extra {
 		props[k] = v
 	}
-	p, _ := json.Marshal(map[string]interface{}{
+	schema := map[string]interface{}{
 		"type":       "object",
 		"properties": props,
-		"required":   required,
-	})
+	}
+	// A nil variadic marshals to `"required": null`, which is not a valid JSON
+	// Schema. Claude Code validates every tool in tools/list and drops the WHOLE
+	// MCP server on one failure, so this single field used to take every OpenPaw
+	// tool down with it. Omit the key instead.
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	p, _ := json.Marshal(schema)
 	return p
 }
 
