@@ -38,7 +38,7 @@ const Architecture = lazy(() => import('./pages/docs/Architecture').then(m => ({
 
 const pageTitles: Record<string, string> = {
   '/chat': 'Chat',
-  '/microservices': 'Microservices',
+  '/services': 'Services',
   '/agents': 'Agents',
   '/agents/gateway': 'Gateway',
   '/skills': 'Skills',
@@ -116,8 +116,12 @@ function AppRoutes() {
       >
         <Route path="/chat" element={<Chat />} />
         <Route path="/chat/:threadId" element={<Chat />} />
-        <Route path="/microservices" element={<Tools />} />
-        <Route path="/tools" element={<Navigate to="/microservices" replace />} />
+        <Route path="/services" element={<Tools />} />
+        {/* Both former names redirect: this page was /tools, then
+            /microservices, and links to either still exist in old chats,
+            bookmarks and the desktop app's restored location. */}
+        <Route path="/tools" element={<Navigate to="/services" replace />} />
+        <Route path="/microservices" element={<Navigate to="/services" replace />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/agents/gateway" element={<GatewayEdit />} />
         <Route path="/agents/:slug" element={<AgentEdit />} />

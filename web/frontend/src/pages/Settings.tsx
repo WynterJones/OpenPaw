@@ -385,7 +385,7 @@ function GeneralTab() {
               Build Confirmations
             </p>
             <p className="text-xs text-text-3">
-              Ask for confirmation before building microservices and dashboards
+              Ask for confirmation before building services and dashboards
             </p>
           </div>
           <Toggle
@@ -2477,7 +2477,7 @@ function SystemTab() {
                 { label: "Uptime", value: info.uptime, icon: Server },
                 { label: "Database Size", value: info.db_size, icon: Database },
                 {
-                  label: "Microservices",
+                  label: "Services",
                   value: String(info.tool_count),
                   icon: Settings2,
                 },
@@ -3105,7 +3105,7 @@ function DangerTab() {
               Delete All Data
             </h3>
             <p className="text-xs text-text-3 mt-1">
-              Remove all microservices, schedules, logs, secrets, chat history, and
+              Remove all services, schedules, logs, secrets, chat history, and
               agent roles. Your account will remain intact but all application
               data will be permanently erased.
             </p>
@@ -3160,7 +3160,7 @@ function DangerTab() {
           <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
             <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
             <p className="text-sm text-red-300">
-              This will permanently delete all your microservices, schedules, logs,
+              This will permanently delete all your services, schedules, logs,
               secrets, chat history, and agent configurations.
             </p>
           </div>

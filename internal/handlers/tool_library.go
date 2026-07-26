@@ -79,7 +79,7 @@ func (h *ToolLibraryHandler) GetCatalogTool(w http.ResponseWriter, r *http.Reque
 	slug := chi.URLParam(r, "slug")
 	tool, err := toollibrary.GetCatalogTool(slug)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "catalog microservice not found")
+		writeError(w, http.StatusNotFound, "catalog service not found")
 		return
 	}
 
@@ -100,7 +100,7 @@ func (h *ToolLibraryHandler) InstallCatalogTool(w http.ResponseWriter, r *http.R
 	slug := chi.URLParam(r, "slug")
 
 	if installed, _ := toollibrary.IsInstalled(h.db, slug); installed {
-		writeError(w, http.StatusConflict, "microservice already installed")
+		writeError(w, http.StatusConflict, "service already installed")
 		return
 	}
 
@@ -168,13 +168,13 @@ func (h *ToolLibraryHandler) ExportTool(w http.ResponseWriter, r *http.Request) 
 		id,
 	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.SourceHash)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
 	toolDir := filepath.Join(h.toolsDir, id)
 	if _, err := os.Stat(toolDir); os.IsNotExist(err) {
-		writeError(w, http.StatusNotFound, "microservice directory not found")
+		writeError(w, http.StatusNotFound, "service directory not found")
 		return
 	}
 
@@ -326,7 +326,7 @@ func (h *ToolLibraryHandler) ImportTool(w http.ResponseWriter, r *http.Request) 
 	toolID := uuid.New().String()
 	toolDir := filepath.Join(h.toolsDir, toolID)
 	if err := os.MkdirAll(toolDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create microservice directory")
+		writeError(w, http.StatusInternalServerError, "failed to create service directory")
 		return
 	}
 
@@ -360,7 +360,7 @@ func (h *ToolLibraryHandler) ImportTool(w http.ResponseWriter, r *http.Request) 
 	now := time.Now().UTC()
 	toolName := exportMeta.ToolName
 	if toolName == "" {
-		toolName = "Imported Microservice"
+		toolName = "Imported Service"
 	}
 	toolType := exportMeta.ToolType
 	if toolType == "" {
@@ -374,7 +374,7 @@ func (h *ToolLibraryHandler) ImportTool(w http.ResponseWriter, r *http.Request) 
 	)
 	if err != nil {
 		os.RemoveAll(toolDir)
-		writeError(w, http.StatusInternalServerError, "failed to create microservice record")
+		writeError(w, http.StatusInternalServerError, "failed to create service record")
 		return
 	}
 
@@ -410,7 +410,7 @@ func (h *ToolLibraryHandler) GetIntegrity(w http.ResponseWriter, r *http.Request
 		id,
 	).Scan(&t.ID, &t.Name, &t.SourceHash, &t.BinaryHash)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 

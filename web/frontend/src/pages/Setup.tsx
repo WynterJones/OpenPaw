@@ -136,7 +136,7 @@ export function Setup() {
           <div>
             <h2 className="text-2xl font-bold text-text-0">Welcome to OpenPaw</h2>
             <p className="text-text-2 mt-2 max-w-md mx-auto">
-              Your AI-powered internal microservice factory. Build, manage, and orchestrate microservices from a single operations dashboard.
+              Your AI-powered internal service factory. Build, manage, and orchestrate services from a single operations dashboard.
             </p>
           </div>
         </div>

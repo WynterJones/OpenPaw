@@ -4,8 +4,12 @@
  * Which provider is answering changes cost, speed and capability, so it
  * belongs next to the prompt rather than buried in Settings. Each provider
  * carries its own model choice (an id only means something to the provider it
- * came from), so switching here also swaps the model — the menu shows which,
- * so the consequence is visible before you commit to it.
+ * came from), so switching here also swaps the models.
+ *
+ * The model name is deliberately NOT shown. A thread runs two of them — the
+ * gateway model routes, the builder model works — so naming one here read as
+ * "this is the model answering you", which was wrong more often than right.
+ * Settings → AI Models is where the pair is visible together.
  *
  * CLI providers appear only when their binary is installed and logged in;
  * unavailable ones stay listed but disabled, since "Codex is missing" is more
@@ -48,17 +52,9 @@ function isUsable(name: string, s: ProviderStatus | undefined): boolean {
   return Boolean(s.available ?? s.configured);
 }
 
-/** Short model name — the picker is narrow and the vendor prefix is noise. */
-function shortModel(id: string) {
-  if (!id) return '';
-  const slash = id.lastIndexOf('/');
-  return slash >= 0 ? id.slice(slash + 1) : id;
-}
-
 export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
   const { toast } = useToast();
   const [info, setInfo] = useState<ProviderInfo | null>(null);
-  const [models, setModels] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -67,23 +63,6 @@ export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
     try {
       const data = await api.get<ProviderInfo>('/settings/llm-provider');
       setInfo(data);
-
-      // Each provider's own model, so the menu can show what switching would
-      // actually run rather than just a provider name.
-      const names = Object.keys(data.providers ?? {});
-      const pairs = await Promise.all(
-        names.map(async n => {
-          try {
-            const m = await api.get<{ gateway_model: string }>(
-              `/settings/models?provider=${encodeURIComponent(n)}`,
-            );
-            return [n, m.gateway_model] as const;
-          } catch {
-            return [n, ''] as const;
-          }
-        }),
-      );
-      setModels(Object.fromEntries(pairs));
     } catch {
       /* leave the control hidden rather than showing a broken state */
     }
@@ -123,7 +102,6 @@ export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
   if (!info) return null;
 
   const names = ORDER.filter(n => n in (info.providers ?? {}));
-  const activeModel = shortModel(models[info.active] ?? '');
 
   return (
     <div ref={ref} className="relative">
@@ -131,14 +109,11 @@ export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Change the model answering this chat"
+        title="Change the engine answering this chat"
         className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer max-w-[190px]"
       >
         <Cpu className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
-        <span className="truncate">
-          {labelFor(info.active)}
-          {activeModel && <span className="text-text-3/70"> · {activeModel}</span>}
-        </span>
+        <span className="truncate">{labelFor(info.active)}</span>
         <ChevronDown className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
       </button>
 
@@ -153,7 +128,6 @@ export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
           {names.map(name => {
             const usable = isUsable(name, info.providers[name]);
             const active = name === info.active;
-            const model = shortModel(models[name] ?? '');
             return (
               <button
                 key={name}
@@ -180,9 +154,9 @@ export function ProviderSwitcher({ onChanged }: { onChanged?: () => void }) {
                   >
                     {labelFor(name)}
                   </span>
-                  <span className="block text-[11px] text-text-3 truncate">
-                    {usable ? model || 'default model' : 'not available'}
-                  </span>
+                  {!usable && (
+                    <span className="block text-[11px] text-text-3 truncate">not available</span>
+                  )}
                 </span>
               </button>
             );

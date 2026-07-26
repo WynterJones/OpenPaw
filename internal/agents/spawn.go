@@ -267,7 +267,7 @@ func (m *Manager) SpawnDashboardBuilder(ctx context.Context, workOrder *models.W
 	if m.ToolMgr != nil {
 		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if ts != "" {
-			toolsSection = "## Available Microservices\n\n" + ts + "\nUse the microservice IDs and endpoints above in your widget dataSource configurations.\n"
+			toolsSection = "## Available Services\n\n" + ts + "\nUse the service IDs and endpoints above in your widget dataSource configurations.\n"
 		}
 	}
 
@@ -316,7 +316,7 @@ func (m *Manager) SpawnCustomDashboardBuilder(ctx context.Context, workOrder *mo
 	if m.ToolMgr != nil {
 		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if ts != "" {
-			toolsSection = "## Available Microservices\n\n" + ts + "\nUse the microservice IDs and endpoints above with OpenPaw.callTool(toolId, endpoint).\n"
+			toolsSection = "## Available Services\n\n" + ts + "\nUse the service IDs and endpoints above with OpenPaw.callTool(toolId, endpoint).\n"
 		}
 	}
 

@@ -41,7 +41,7 @@ var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
 
-	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles"
+	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles"
 	var args []interface{}
 	var conditions []string
 	if enabledOnly {
@@ -65,7 +65,7 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var role models.AgentRole
 		var workspaceID sql.NullString
-		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan agent role")
 			return
 		}
@@ -84,9 +84,9 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 	var role models.AgentRole
 	var workspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt)
+	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -190,9 +190,9 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var existing models.AgentRole
 	var existingWorkspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existingWorkspaceID, &existing.CreatedAt, &existing.UpdatedAt)
+	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.HeartbeatIntervalSec, &existing.HeartbeatMaxTurns, &existing.HeartbeatTimeoutSec, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existingWorkspaceID, &existing.CreatedAt, &existing.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -210,6 +210,11 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		AvatarPath        *string `json:"avatar_path"`
 		AvatarDescription *string `json:"avatar_description"`
 		HeartbeatEnabled  *bool   `json:"heartbeat_enabled"`
+		// 0 means "inherit the global heartbeat setting" — a real value, not
+		// "unset", so these stay pointers to tell "leave alone" from "reset".
+		HeartbeatInterval *int    `json:"heartbeat_interval_sec"`
+		HeartbeatMaxTurns *int    `json:"heartbeat_max_turns"`
+		HeartbeatTimeout  *int    `json:"heartbeat_timeout_sec"`
 		Folder            *string `json:"folder"`
 		WorkspaceID       *string `json:"workspace_id"`
 	}
@@ -239,6 +244,15 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.HeartbeatEnabled != nil {
 		existing.HeartbeatEnabled = *req.HeartbeatEnabled
 	}
+	if req.HeartbeatInterval != nil {
+		existing.HeartbeatIntervalSec = clampNonNegative(*req.HeartbeatInterval)
+	}
+	if req.HeartbeatMaxTurns != nil {
+		existing.HeartbeatMaxTurns = clampNonNegative(*req.HeartbeatMaxTurns)
+	}
+	if req.HeartbeatTimeout != nil {
+		existing.HeartbeatTimeoutSec = clampNonNegative(*req.HeartbeatTimeout)
+	}
 	if req.Folder != nil {
 		existing.Folder = *req.Folder
 	}
@@ -259,8 +273,8 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	_, err = h.db.Exec(
-		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, folder = ?, workspace_id = ?, updated_at = ? WHERE slug = ?`,
-		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.Folder, existing.WorkspaceID, now, slug,
+		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, heartbeat_interval_sec = ?, heartbeat_max_turns = ?, heartbeat_timeout_sec = ?, folder = ?, workspace_id = ?, updated_at = ? WHERE slug = ?`,
+		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.HeartbeatIntervalSec, existing.HeartbeatMaxTurns, existing.HeartbeatTimeoutSec, existing.Folder, existing.WorkspaceID, now, slug,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent role")
@@ -680,7 +694,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 		slug,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list microservices")
+		writeError(w, http.StatusInternalServerError, "failed to list services")
 		return
 	}
 	defer rows.Close()
@@ -688,7 +702,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var t models.Tool
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.OwnerAgentSlug, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan microservice")
+			writeError(w, http.StatusInternalServerError, "failed to scan service")
 			return
 		}
 		tools = append(tools, agentTool{Tool: t, AccessType: "owned"})
@@ -704,7 +718,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 		slug,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list granted microservices")
+		writeError(w, http.StatusInternalServerError, "failed to list granted services")
 		return
 	}
 	defer grantRows.Close()
@@ -712,7 +726,7 @@ func (h *AgentRolesHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	for grantRows.Next() {
 		var t models.Tool
 		if err := grantRows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.OwnerAgentSlug, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan granted microservice")
+			writeError(w, http.StatusInternalServerError, "failed to scan granted service")
 			return
 		}
 		tools = append(tools, agentTool{Tool: t, AccessType: "granted"})
@@ -786,9 +800,19 @@ func (h *AgentRolesHandler) UpdateToolOwner(w http.ResponseWriter, r *http.Reque
 	}
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated", "owner_agent_slug": req.OwnerAgentSlug})
+}
+
+// clampNonNegative floors a value at zero. The heartbeat overrides treat 0 as
+// "inherit the global setting", so a negative would otherwise become an
+// interval that fires continuously or a timeout that expires instantly.
+func clampNonNegative(v int) int {
+	if v < 0 {
+		return 0
+	}
+	return v
 }

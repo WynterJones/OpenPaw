@@ -418,7 +418,7 @@ export function GatewayEdit() {
 
               <Card>
                 <p className="text-xs text-text-3 leading-relaxed">
-                  The gateway is the first agent that processes every message. It routes to specialists, builds microservices and dashboards, and guides users directly. Edit its soul to change its personality.
+                  The gateway is the first agent that processes every message. It routes to specialists, builds services and dashboards, and guides users directly. Edit its soul to change its personality.
                 </p>
               </Card>
             </div>

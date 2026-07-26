@@ -182,7 +182,7 @@ func (m *Manager) buildAgentList(workspaceID string) string {
 		}
 		sb.WriteString(fmt.Sprintf("- %s (slug: %s): %s", name, slug, desc))
 		if toolsCSV != "" {
-			sb.WriteString(fmt.Sprintf(" [microservices: %s]", toolsCSV))
+			sb.WriteString(fmt.Sprintf(" [services: %s]", toolsCSV))
 		}
 		sb.WriteString("\n")
 	}

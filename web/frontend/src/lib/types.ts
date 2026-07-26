@@ -162,6 +162,10 @@ export interface AgentRole {
   is_preset: boolean;
   identity_initialized: boolean;
   heartbeat_enabled: boolean;
+  /** Heartbeat overrides. 0 = inherit the global heartbeat setting. */
+  heartbeat_interval_sec: number;
+  heartbeat_max_turns: number;
+  heartbeat_timeout_sec: number;
   library_slug: string;
   library_version: string;
   folder: string;

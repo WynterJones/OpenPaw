@@ -22,7 +22,7 @@ export function HowItWorks() {
       { id: 'request-flow', text: 'Request Flow', level: 2 },
       { id: 'gateway-routing', text: 'Gateway Routing', level: 2 },
       { id: 'agent-lifecycle', text: 'Agent Lifecycle', level: 2 },
-      { id: 'microservice-execution', text: 'Microservice Execution', level: 2 },
+      { id: 'service-execution', text: 'Service Execution', level: 2 },
       { id: 'streaming', text: 'Real-time Streaming', level: 2 },
     ]);
   }, [registerToc]);
@@ -51,7 +51,7 @@ export function HowItWorks() {
           <DiagramRow>
             <DiagramBox variant="muted">Gateway Router</DiagramBox>
             <DiagramBox variant="muted">SQLite Database</DiagramBox>
-            <DiagramBox variant="muted">Microservice Manager</DiagramBox>
+            <DiagramBox variant="muted">Service Manager</DiagramBox>
           </DiagramRow>
           <DiagramArrow direction="down" />
           <DiagramBox variant="primary">Claude API (Anthropic)</DiagramBox>
@@ -100,7 +100,7 @@ export function HowItWorks() {
       <h2 id="agent-lifecycle">Agent Lifecycle</h2>
       <p>Each agent in OpenPaw follows this lifecycle:</p>
       <ol>
-        <li><strong>Configuration</strong> — defined with a name, system prompt, model, and microservice access</li>
+        <li><strong>Configuration</strong> — defined with a name, system prompt, model, and service access</li>
         <li><strong>Activation</strong> — when routed a message, the agent is activated with context</li>
         <li><strong>Processing</strong> — the agent calls the Claude API with its prompt + conversation history</li>
         <li><strong>Tool Use</strong> — if the agent needs tools, it can call them mid-response</li>
@@ -111,24 +111,24 @@ export function HowItWorks() {
         the Context system (uploaded files and knowledge).
       </p>
 
-      <h2 id="microservice-execution">Microservice Execution</h2>
+      <h2 id="service-execution">Service Execution</h2>
       <p>
-        Microservices are separate processes managed by OpenPaw. Each microservice exposes HTTP endpoints that agents
+        Services are separate processes managed by OpenPaw. Each service exposes HTTP endpoints that agents
         can call during their execution.
       </p>
       <ul>
-        <li>Microservices are compiled Go binaries, started on-demand</li>
-        <li>Each microservice gets a unique port and health check endpoint</li>
-        <li>Agents call microservices via the internal microservice proxy</li>
-        <li>Microservice output is included in the agent&apos;s response stream</li>
-        <li>Integrity verification ensures microservices haven&apos;t been tampered with</li>
+        <li>Services are compiled Go binaries, started on-demand</li>
+        <li>Each service gets a unique port and health check endpoint</li>
+        <li>Agents call services via the internal service proxy</li>
+        <li>Service output is included in the agent&apos;s response stream</li>
+        <li>Integrity verification ensures services haven&apos;t been tampered with</li>
       </ul>
 
-      <Diagram title="Microservice Execution">
+      <Diagram title="Service Execution">
         <DiagramStack>
           <DiagramBox variant="primary">Agent needs data</DiagramBox>
           <DiagramArrow direction="down" label="tool_call" />
-          <DiagramBox variant="accent">Microservice Manager</DiagramBox>
+          <DiagramBox variant="accent">Service Manager</DiagramBox>
           <DiagramArrow direction="down" label="http" />
           <DiagramRow>
             <DiagramBox variant="muted">Weather API</DiagramBox>

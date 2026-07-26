@@ -217,24 +217,32 @@ func (m *Manager) RunNow() {
 	m.runCycleForced()
 }
 
+// tickLoop wakes on a fixed short cadence and asks each agent whether it is
+// due, rather than sleeping one shared interval and running everyone.
+//
+// The shared sleep made a single global interval structural: there was one
+// timer, so there could only be one schedule. Polling cheaply and deciding
+// per-agent from each agent's own last execution gives per-agent intervals,
+// and makes the schedule survive restarts for free — a process that never
+// stays up a full hour used to never heartbeat at all, because the timer
+// restarted from zero on every boot.
 func (m *Manager) tickLoop() {
 	defer close(m.stopped)
 
-	m.mu.RLock()
-	wait := m.firstDelay(time.Duration(m.config.IntervalSec) * time.Second)
-	m.mu.RUnlock()
+	// Let the app finish starting before the first cycle.
+	select {
+	case <-m.stopCh:
+		return
+	case <-time.After(settleDelay):
+	}
 
 	for {
+		m.runCycle()
 		select {
 		case <-m.stopCh:
 			return
-		case <-time.After(wait):
-			m.runCycle()
+		case <-time.After(checkCadence):
 		}
-
-		m.mu.RLock()
-		wait = time.Duration(m.config.IntervalSec) * time.Second
-		m.mu.RUnlock()
 	}
 }
 
@@ -242,36 +250,34 @@ func (m *Manager) tickLoop() {
 // so a heartbeat doesn't contend with boot.
 const settleDelay = 45 * time.Second
 
-// firstDelay decides how long to wait before the *first* cycle of this process.
+// checkCadence is how often due-ness is evaluated. It bounds how late a
+// heartbeat can fire, and it is also the smallest interval difference that
+// means anything — two agents set 10s apart both fire on the same tick.
+const checkCadence = 30 * time.Second
+
+// dueIn reports whether an agent is due, given its effective interval.
 //
-// The loop used to wait a full interval before its first run, with no memory of
-// previous runs. With the default hourly interval that means a process
-// restarted more often than once an hour never runs a heartbeat at all — and a
-// desktop app gets restarted constantly. Anchoring the first wait to the last
-// recorded execution makes the schedule survive restarts.
-func (m *Manager) firstDelay(interval time.Duration) time.Duration {
+// The half-cadence tolerance stops the schedule walking forwards: without it
+// every run lands strictly *after* the interval, so each cycle adds up to a
+// full cadence of drift and a 30-minute heartbeat slowly becomes a 34-minute
+// one over a day.
+func (m *Manager) isDue(slug string, interval time.Duration) bool {
 	if interval <= 0 {
 		interval = time.Hour
 	}
 
 	// Selected as a plain column rather than MAX(...): an aggregate loses the
 	// column's type affinity, so the driver hands back a string and the time
-	// scan fails — which would silently reduce this to "45s after every boot".
+	// scan fails — which would silently make every agent permanently due.
 	var last sql.NullTime
 	err := m.db.QueryRow(
-		"SELECT started_at FROM heartbeat_executions ORDER BY started_at DESC LIMIT 1",
+		"SELECT started_at FROM heartbeat_executions WHERE agent_role_slug = ? ORDER BY started_at DESC LIMIT 1",
+		slug,
 	).Scan(&last)
 	if err != nil || !last.Valid {
-		// Never run before — go shortly after startup rather than in an hour.
-		return settleDelay
+		return true // never run — go now rather than an interval from now
 	}
-
-	remaining := interval - time.Since(last.Time)
-	if remaining < settleDelay {
-		// Due, or overdue while the app was closed.
-		return settleDelay
-	}
-	return remaining
+	return time.Since(last.Time) >= interval-checkCadence/2
 }
 
 func (m *Manager) runCycle() {
@@ -309,7 +315,8 @@ func (m *Manager) runCycleInternal(forced bool) {
 
 	// Get enabled agents with heartbeat enabled
 	rows, err := m.db.Query(
-		"SELECT slug, model FROM agent_roles WHERE enabled = 1 AND heartbeat_enabled = 1 ORDER BY sort_order ASC",
+		`SELECT slug, model, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec
+		 FROM agent_roles WHERE enabled = 1 AND heartbeat_enabled = 1 ORDER BY sort_order ASC`,
 	)
 	if err != nil {
 		logger.Error("Heartbeat: failed to query agents: %v", err)
@@ -317,38 +324,87 @@ func (m *Manager) runCycleInternal(forced bool) {
 	}
 	defer rows.Close()
 
-	type agentInfo struct {
-		slug, model string
-	}
-	var agentList []agentInfo
+	var agentList []agentSettings
 	for rows.Next() {
-		var a agentInfo
-		if err := rows.Scan(&a.slug, &a.model); err != nil {
+		var a agentSettings
+		if err := rows.Scan(&a.slug, &a.model, &a.intervalSec, &a.maxTurns, &a.timeoutSec); err != nil {
 			logger.Error("Heartbeat: failed to scan agent row: %v", err)
 			continue
 		}
 		agentList = append(agentList, a)
 	}
+	rows.Close()
 
 	if len(agentList) == 0 {
 		logger.Info("Heartbeat cycle: no agents with heartbeat enabled")
 		return
 	}
 
-	logger.Info("Heartbeat cycle starting for %d agent(s)", len(agentList))
+	// Filter to the agents actually due. A forced run (Run Now) ignores the
+	// schedule entirely — that button means "now", not "now if it happens to
+	// be time".
+	var due []agentSettings
+	for _, a := range agentList {
+		if forced || m.isDue(a.slug, a.interval(cfg)) {
+			due = append(due, a)
+		}
+	}
+	if len(due) == 0 {
+		return
+	}
+
+	logger.Info("Heartbeat cycle starting for %d of %d agent(s)", len(due), len(agentList))
 
 	// Execute sequentially
-	for _, agent := range agentList {
+	for _, agent := range due {
 		select {
 		case <-m.stopCh:
 			return
 		default:
 		}
 
-		m.executeForAgent(agent.slug, agent.model)
+		m.executeForAgent(agent)
 	}
 
 	logger.Info("Heartbeat cycle complete")
+}
+
+// agentSettings is one agent's heartbeat configuration. The three override
+// fields are 0 when the agent inherits the global value.
+type agentSettings struct {
+	slug, model string
+	intervalSec int
+	maxTurns    int
+	timeoutSec  int
+}
+
+func (a agentSettings) interval(cfg Config) time.Duration {
+	if a.intervalSec > 0 {
+		return time.Duration(a.intervalSec) * time.Second
+	}
+	return time.Duration(cfg.IntervalSec) * time.Second
+}
+
+// Turn and time budgets for an agent that hasn't overridden them. Deliberately
+// small: the default heartbeat is a check-in, and an agent that is meant to
+// actually finish work needs to say so by raising its own limits.
+const (
+	defaultMaxTurns = 5
+	defaultTimeout  = 2 * time.Minute
+)
+
+func (a agentSettings) turns() int {
+	if a.maxTurns > 0 {
+		return a.maxTurns
+	}
+	return defaultMaxTurns
+}
+
+func (a agentSettings) timeout() time.Duration {
+	if a.timeoutSec > 0 {
+		return time.Duration(a.timeoutSec) * time.Second
+	}
+	return defaultTimeout
 }
 
 func (m *Manager) isWithinActiveHours(cfg Config) bool {
@@ -405,17 +461,27 @@ func (m *Manager) findRecentThread(slug string, maxAge time.Duration) (threadID,
 // Deduplicated against the agent's latest execution so an unattended skip
 // doesn't add a row every interval forever — the point is to explain the
 // silence once, not to fill the tab.
+//
+// A repeat skip still moves the existing row's timestamps forward rather than
+// returning early. Scheduling reads the agent's most recent execution to decide
+// when it is next due, so a skip that left no trace would leave the agent
+// permanently overdue and retried on every tick instead of once per interval.
 func (m *Manager) recordSkip(slug, reason string) {
-	var lastStatus, lastError string
+	now := time.Now().UTC()
+
+	var lastID, lastStatus, lastError string
 	err := m.db.QueryRow(
-		"SELECT status, error FROM heartbeat_executions WHERE agent_role_slug = ? ORDER BY started_at DESC LIMIT 1",
+		"SELECT id, status, error FROM heartbeat_executions WHERE agent_role_slug = ? ORDER BY started_at DESC LIMIT 1",
 		slug,
-	).Scan(&lastStatus, &lastError)
+	).Scan(&lastID, &lastStatus, &lastError)
 	if err == nil && lastStatus == "skipped" && lastError == reason {
+		m.db.Exec(
+			"UPDATE heartbeat_executions SET started_at = ?, finished_at = ? WHERE id = ?",
+			now, now, lastID,
+		)
 		return
 	}
 
-	now := time.Now().UTC()
 	m.db.Exec(
 		`INSERT INTO heartbeat_executions (id, agent_role_slug, status, error, started_at, finished_at)
 		 VALUES (?, ?, 'skipped', ?, ?, ?)`,
@@ -424,7 +490,9 @@ func (m *Manager) recordSkip(slug, reason string) {
 	m.broadcast("heartbeat_cycle_done", map[string]interface{}{})
 }
 
-func (m *Manager) executeForAgent(slug, model string) {
+func (m *Manager) executeForAgent(a agentSettings) {
+	slug, model := a.slug, a.model
+
 	// Read HEARTBEAT.md
 	hbPath := filepath.Join(agents.AgentDir(m.dataDir, slug), agents.FileHeartbeat)
 	heartbeatContent, err := os.ReadFile(hbPath)
@@ -552,7 +620,7 @@ When creating tasks for yourself, write them so your future self (waking up fres
 Now read your heartbeat instructions below and take action.`, time.Now().Format("Monday, January 2, 2006 at 3:04 PM MST"), threadInstructions, taskBoardSummary, todoSummary)
 
 	// Run agent loop with heartbeat tools
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), a.timeout())
 	defer cancel()
 
 	var actionsTaken []string
@@ -830,7 +898,7 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 	result, err := m.agentMgr.Provider().RunAgentLoop(ctx, llm.AgentConfig{
 		Model:         m.agentMgr.Provider().ResolveModel(model, llm.ModelSonnet),
 		System:        systemPrompt,
-		MaxTurns:      5,
+		MaxTurns:      a.turns(),
 		ExtraTools:    extraTools,
 		ExtraHandlers: extraHandlers,
 	}, string(heartbeatContent))
@@ -928,7 +996,7 @@ func (m *Manager) buildTaskBoardSummary(slug string) string {
 
 func (m *Manager) buildHeartbeatTodoSummary() string {
 	rows, err := m.db.Query(`
-		SELECT tl.name,
+		SELECT tl.id, tl.name,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id) as total,
 			(SELECT COUNT(*) FROM todo_items WHERE list_id = tl.id AND completed = 1) as done
 		FROM todo_lists tl ORDER BY tl.sort_order ASC`)
@@ -939,17 +1007,20 @@ func (m *Manager) buildHeartbeatTodoSummary() string {
 
 	var lines []string
 	for rows.Next() {
-		var name string
+		var id, name string
 		var total, done int
-		if rows.Scan(&name, &total, &done) != nil {
+		if rows.Scan(&id, &name, &total, &done) != nil {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("- %s (%d items, %d done)", name, total, done))
+		// The id is included because todo_list_items takes an id, not a name.
+		// Without it every heartbeat that touches a list burns a turn on
+		// todo_list_all just to translate — out of a budget of five.
+		lines = append(lines, fmt.Sprintf("- **%s** (id: %s) — %d items, %d done", name, id, total, done))
 	}
 	if len(lines) == 0 {
 		return ""
 	}
-	return "\n### User Todo Lists\nThe user has todo lists you can manage with todo_* tools:\n" + strings.Join(lines, "\n") + "\n"
+	return "\n### User Todo Lists\nThe user has todo lists you can manage with todo_* tools. Pass the id shown here to todo_list_items / todo_check_item:\n" + strings.Join(lines, "\n") + "\n"
 }
 
 func (m *Manager) finishExecution(execID, status, actionsTaken, output, errMsg string, costUSD float64, inputTokens, outputTokens int) {

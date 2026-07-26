@@ -10,6 +10,7 @@ import {
   Bot,
   MessageSquare,
   Inbox,
+  Pencil,
 } from "lucide-react";
 import { Header } from "../components/Header";
 import { Button } from "../components/Button";
@@ -46,15 +47,104 @@ const CRON_PRESETS = [
   { value: "custom", label: "Custom..." },
 ];
 
+const CUSTOM_CRON_CHIPS = [
+  { label: "Every 5m", value: "0 */5 * * * *" },
+  { label: "Every 2h", value: "0 0 */2 * * *" },
+  { label: "Daily 8am", value: "0 0 8 * * *" },
+  { label: "Daily 6pm", value: "0 0 18 * * *" },
+  { label: "Weekdays 9am", value: "0 0 9 * * 1-5" },
+  { label: "Sat 10am", value: "0 0 10 * * 6" },
+  { label: "Every 6h", value: "0 0 */6 * * *" },
+  { label: "1st & 15th", value: "0 0 9 1,15 * *" },
+];
+
+/**
+ * The schedule picker: a preset list that falls through to a raw cron field.
+ *
+ * Shared by create and edit so an existing schedule can be re-picked with the
+ * same controls that made it — an edit form with fewer options than the create
+ * form turns "change this to every 5 minutes" into "delete and start again".
+ */
+function CronField({
+  preset,
+  custom,
+  onPreset,
+  onCustom,
+}: {
+  preset: string;
+  custom: string;
+  onPreset: (v: string) => void;
+  onCustom: (v: string) => void;
+}) {
+  return (
+    <>
+      <Select
+        label="Schedule"
+        value={preset}
+        onChange={(e) => onPreset(e.target.value)}
+        options={CRON_PRESETS}
+      />
+      {preset === "custom" && (
+        <div className="space-y-2">
+          <Input
+            label="Custom Cron Expression"
+            value={custom}
+            onChange={(e) => onCustom(e.target.value)}
+            placeholder="0 * * * * *"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {CUSTOM_CRON_CHIPS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => onCustom(p.value)}
+                className={`px-2 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
+                  custom === p.value
+                    ? "border-accent-primary bg-accent-muted/30 text-accent-text"
+                    : "border-border-1 text-text-3 hover:text-text-1 hover:border-border-0"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-text-3">
+            Format:{" "}
+            <code className="px-1 py-0.5 rounded bg-surface-2 text-text-2">
+              sec min hour day month weekday
+            </code>
+            {" · "}
+            <a
+              href="https://crontab.guru/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-text hover:underline"
+            >
+              crontab.guru
+            </a>{" "}
+            (omit seconds field there)
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ScheduleDetail({
   schedule,
   onBack,
+  onSaved,
+  agents,
+  threads,
   getAgentName,
   getThreadTitle,
   getCronLabel,
 }: {
   schedule: Schedule;
   onBack: () => void;
+  onSaved: (updated: Schedule) => void;
+  agents: AgentRole[];
+  threads: ChatThread[];
   getAgentName: (slug: string) => string;
   getThreadTitle: (id: string) => string;
   getCronLabel: (expr: string) => string;
@@ -62,6 +152,59 @@ function ScheduleDetail({
   const { toast } = useToast();
   const [executions, setExecutions] = useState<ScheduleExecution[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Edit state. Seeded from the schedule each time editing opens rather than
+  // held in sync, so cancelling really does discard.
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editName, setEditName] = useState(schedule.name);
+  const [editAgent, setEditAgent] = useState(schedule.agent_role_slug);
+  const [editThread, setEditThread] = useState(schedule.thread_id || "");
+  const [editPrompt, setEditPrompt] = useState(schedule.prompt_content || "");
+  const [editPreset, setEditPreset] = useState("");
+  const [editCustom, setEditCustom] = useState("");
+
+  const startEditing = () => {
+    setEditName(schedule.name);
+    setEditAgent(schedule.agent_role_slug);
+    setEditThread(schedule.thread_id || "");
+    setEditPrompt(schedule.prompt_content || "");
+    // A cron the presets don't cover has to land in the custom field, or
+    // opening the editor would silently rewrite it to whichever preset the
+    // dropdown happened to show first.
+    const known = CRON_PRESETS.some((p) => p.value === schedule.cron_expr);
+    setEditPreset(known ? schedule.cron_expr : "custom");
+    setEditCustom(known ? "" : schedule.cron_expr);
+    setEditing(true);
+  };
+
+  const saveEdits = async () => {
+    const cron = editPreset === "custom" ? editCustom.trim() : editPreset;
+    if (!editName.trim() || !editAgent || !editPrompt.trim() || !cron) {
+      toast("error", "Name, agent, schedule and prompt are all required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.put<Schedule>(`/schedules/${schedule.id}`, {
+        name: editName.trim(),
+        cron_expr: cron,
+        agent_role_slug: editAgent,
+        prompt_content: editPrompt,
+        thread_id: editThread,
+      });
+      onSaved(updated);
+      setEditing(false);
+      toast("success", "Schedule updated");
+    } catch (err) {
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Failed to update schedule",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     loadExecutions();
@@ -80,6 +223,10 @@ function ScheduleDetail({
       setLoading(false);
     }
   };
+
+  const agentAvatar = agents.find(
+    (a) => a.slug === schedule.agent_role_slug,
+  )?.avatar_path;
 
   const runNow = async () => {
     try {
@@ -110,10 +257,95 @@ function ScheduleDetail({
             {getCronLabel(schedule.cron_expr)}
           </p>
         </div>
+        {!editing && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={startEditing}
+            icon={<Pencil className="w-4 h-4" />}
+          >
+            Edit
+          </Button>
+        )}
         <Button size="sm" onClick={runNow} icon={<Play className="w-4 h-4" />}>
           Run Now
         </Button>
       </div>
+
+      {editing && (
+        <Card>
+          <div className="space-y-4">
+            <Input
+              label="Name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="e.g. Daily report"
+            />
+
+            <Select
+              label="Agent"
+              value={editAgent}
+              onChange={(e) => setEditAgent(e.target.value)}
+              options={[
+                { value: "", label: "Select an agent..." },
+                ...agents
+                  .filter((a) => a.enabled)
+                  .map((a) => ({ value: a.slug, label: a.name })),
+              ]}
+            />
+
+            <Select
+              label="Results go to"
+              value={editThread}
+              onChange={(e) => setEditThread(e.target.value)}
+              options={[
+                { value: "", label: "File a report in the Inbox" },
+                ...threads.map((t) => ({
+                  value: t.id,
+                  label: `Continue in: ${t.title}`,
+                })),
+              ]}
+            />
+
+            <CronField
+              preset={editPreset}
+              custom={editCustom}
+              onPreset={setEditPreset}
+              onCustom={setEditCustom}
+            />
+
+            <div>
+              <label
+                htmlFor="schedule-edit-prompt"
+                className="block text-sm font-medium text-text-1 mb-1.5"
+              >
+                Prompt
+              </label>
+              <textarea
+                id="schedule-edit-prompt"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                placeholder="Enter the prompt to send to the agent..."
+                rows={6}
+                className="w-full px-3 py-2 rounded-lg text-sm bg-surface-2 border border-border-1 text-text-0 placeholder:text-text-3 focus:outline-none focus:ring-1 focus:ring-accent-primary resize-y"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setEditing(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button onClick={saveEdits} loading={saving}>
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
@@ -133,12 +365,27 @@ function ScheduleDetail({
           </p>
         </Card>
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-1.5">
             Agent
           </p>
-          <p className="text-sm text-text-1">
-            {getAgentName(schedule.agent_role_slug)}
-          </p>
+          {/* Agents are recognised by face across the rest of the app; a bare
+              name here was the odd one out. */}
+          <div className="flex items-center gap-2 min-w-0">
+            {agentAvatar ? (
+              <img
+                src={agentAvatar}
+                alt=""
+                className="w-6 h-6 rounded-md flex-shrink-0"
+              />
+            ) : (
+              <span className="w-6 h-6 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-3.5 h-3.5 text-text-3" aria-hidden="true" />
+              </span>
+            )}
+            <span className="text-sm font-medium text-text-1 truncate">
+              {getAgentName(schedule.agent_role_slug)}
+            </span>
+          </div>
         </Card>
       </div>
 
@@ -413,6 +660,14 @@ export function Scheduler() {
           <ScheduleDetail
             schedule={selected}
             onBack={() => setSelected(null)}
+            onSaved={(updated) => {
+              setSelected(updated);
+              setSchedules((prev) =>
+                prev.map((s) => (s.id === updated.id ? updated : s)),
+              );
+            }}
+            agents={agents}
+            threads={threads}
             getAgentName={getAgentName}
             getThreadTitle={getThreadTitle}
             getCronLabel={getCronLabel}
@@ -723,63 +978,12 @@ export function Scheduler() {
             </p>
           </div>
 
-          <Select
-            label="Schedule"
-            value={cronPreset}
-            onChange={(e) => setCronPreset(e.target.value)}
-            options={CRON_PRESETS}
+          <CronField
+            preset={cronPreset}
+            custom={customCron}
+            onPreset={setCronPreset}
+            onCustom={setCustomCron}
           />
-          {cronPreset === "custom" && (
-            <div className="space-y-2">
-              <Input
-                label="Custom Cron Expression"
-                value={customCron}
-                onChange={(e) => setCustomCron(e.target.value)}
-                placeholder="0 * * * * *"
-              />
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: "Every 5m", value: "0 */5 * * * *" },
-                  { label: "Every 2h", value: "0 0 */2 * * *" },
-                  { label: "Daily 8am", value: "0 0 8 * * *" },
-                  { label: "Daily 6pm", value: "0 0 18 * * *" },
-                  { label: "Weekdays 9am", value: "0 0 9 * * 1-5" },
-                  { label: "Sat 10am", value: "0 0 10 * * 6" },
-                  { label: "Every 6h", value: "0 0 */6 * * *" },
-                  { label: "1st & 15th", value: "0 0 9 1,15 * *" },
-                ].map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setCustomCron(p.value)}
-                    className={`px-2 py-1 text-xs rounded-md border transition-colors cursor-pointer ${
-                      customCron === p.value
-                        ? "border-accent-primary bg-accent-muted/30 text-accent-text"
-                        : "border-border-1 text-text-3 hover:text-text-1 hover:border-border-0"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-text-3">
-                Format:{" "}
-                <code className="px-1 py-0.5 rounded bg-surface-2 text-text-2">
-                  sec min hour day month weekday
-                </code>
-                {" \u00b7 "}
-                <a
-                  href="https://crontab.guru/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent-text hover:underline"
-                >
-                  crontab.guru
-                </a>{" "}
-                (omit seconds field there)
-              </p>
-            </div>
-          )}
 
           <div>
             <label className="block text-sm font-medium text-text-1 mb-1.5">

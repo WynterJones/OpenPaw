@@ -93,7 +93,7 @@ export function ToolSummaryCardUI({ card }: { card: ToolSummaryCardType }) {
     <div className="rounded-xl overflow-hidden max-w-md border border-border-1 bg-surface-1">
       <div className="flex items-center gap-2 px-4 py-3 border-b bg-emerald-500/10 border-emerald-500/20">
         <Server className="w-4 h-4 text-emerald-400" />
-        <span className="text-xs font-bold uppercase tracking-wide text-emerald-400">Microservice Active</span>
+        <span className="text-xs font-bold uppercase tracking-wide text-emerald-400">Service Active</span>
         <span className="ml-auto text-[10px] font-mono text-text-3">:{card.port}</span>
       </div>
       <div className="px-4 py-3">

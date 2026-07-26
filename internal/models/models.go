@@ -198,6 +198,10 @@ type AgentRole struct {
 	IsPreset             bool      `json:"is_preset"`
 	IdentityInitialized  bool      `json:"identity_initialized"`
 	HeartbeatEnabled     bool      `json:"heartbeat_enabled"`
+	// Heartbeat overrides. 0 means "inherit the global heartbeat setting".
+	HeartbeatIntervalSec int       `json:"heartbeat_interval_sec"`
+	HeartbeatMaxTurns    int       `json:"heartbeat_max_turns"`
+	HeartbeatTimeoutSec  int       `json:"heartbeat_timeout_sec"`
 	LibrarySlug          string    `json:"library_slug"`
 	LibraryVersion       string    `json:"library_version"`
 	Folder               string    `json:"folder"`

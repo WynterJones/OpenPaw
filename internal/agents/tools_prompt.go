@@ -74,15 +74,15 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug, workspaceID string) str
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## AVAILABLE MICROSERVICES (OpenPaw platform microservices)\n\n")
-	sb.WriteString("These are custom OpenPaw platform microservices — separate from your built-in coding tools. Use the `call_tool` tool to invoke them.\n")
-	sb.WriteString("Only microservices with **status `running`** can be called. A microservice with status `error`, `stopped`, or `disabled` still EXISTS — do not tell the user it doesn't exist. Instead:\n")
-	sb.WriteString("- To **start/enable** a running-capable microservice, tell the user to enable it on the **Microservices** page.\n")
-	sb.WriteString("- To **create a new microservice, or fix/repair/update an existing one**, delegate to the **Gateway** — describe what you need built or fixed (e.g. \"fix the PrimeMoverHQ Stats Aggregator microservice, it's erroring\"). The Gateway routes microservice-building/updates to the builder. You do NOT build or edit platform microservices yourself.\n")
-	sb.WriteString("When asked \"what microservices do you have\", list the OpenPaw platform microservices below — not your internal coding tools.\n\n")
-	sb.WriteString("### IMPORTANT: Microservice Result Display\n\n")
-	sb.WriteString("When a microservice returns data, a **visual widget component** is automatically rendered below your message showing the full data (table, chart, key-value pairs, etc.).\n")
-	sb.WriteString("**Do NOT repeat or reformat the microservice data** in your text response (no markdown tables, no bullet-point lists of the same values).\n")
+	sb.WriteString("## AVAILABLE SERVICES (OpenPaw platform services)\n\n")
+	sb.WriteString("These are custom OpenPaw platform services — separate from your built-in coding tools. Use the `call_tool` tool to invoke them.\n")
+	sb.WriteString("Only services with **status `running`** can be called. A service with status `error`, `stopped`, or `disabled` still EXISTS — do not tell the user it doesn't exist. Instead:\n")
+	sb.WriteString("- To **start/enable** a running-capable service, tell the user to enable it on the **Services** page.\n")
+	sb.WriteString("- To **create a new service, or fix/repair/update an existing one**, delegate to the **Gateway** — describe what you need built or fixed (e.g. \"fix the PrimeMoverHQ Stats Aggregator service, it's erroring\"). The Gateway routes service-building/updates to the builder. You do NOT build or edit platform services yourself.\n")
+	sb.WriteString("When asked \"what services do you have\", list the OpenPaw platform services below — not your internal coding tools.\n\n")
+	sb.WriteString("### IMPORTANT: Service Result Display\n\n")
+	sb.WriteString("When a service returns data, a **visual widget component** is automatically rendered below your message showing the full data (table, chart, key-value pairs, etc.).\n")
+	sb.WriteString("**Do NOT repeat or reformat the service data** in your text response (no markdown tables, no bullet-point lists of the same values).\n")
 	sb.WriteString("Instead, provide a brief **conversational insight or commentary** about the data and reference the widget. For example:\n")
 	sb.WriteString("- \"Pretty cold out there! Here's the current weather for your area:\" (widget renders below)\n")
 	sb.WriteString("- \"Looks like sales are trending up this quarter — take a look:\" (widget renders below)\n")
@@ -91,10 +91,10 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug, workspaceID string) str
 	sb.WriteString("### CRITICAL: Workspace Restrictions & External File Operations\n\n")
 	sb.WriteString("You are **locked to your own workspace directory**. You CANNOT read, write, create, or execute files in ANY other directory on the computer. ")
 	sb.WriteString("Your Read, Write, Edit, and Bash tools are sandboxed — they will **fail silently or error** if you try to use them outside your workspace.\n\n")
-	sb.WriteString("**When a user asks you to create files, build a project, generate code, scaffold a website, or do ANY file operation in an external directory, you MUST use a coding CLI microservice via `call_tool`.** ")
-	sb.WriteString("Do NOT say \"I'll create that for you\" and then attempt to use Write/Edit — it will not work. Do NOT tell the user you cannot do it — you CAN, by delegating to a coding microservice.\n\n")
+	sb.WriteString("**When a user asks you to create files, build a project, generate code, scaffold a website, or do ANY file operation in an external directory, you MUST use a coding CLI service via `call_tool`.** ")
+	sb.WriteString("Do NOT say \"I'll create that for you\" and then attempt to use Write/Edit — it will not work. Do NOT tell the user you cannot do it — you CAN, by delegating to a coding service.\n\n")
 	sb.WriteString("#### How to handle external file/project requests:\n\n")
-	sb.WriteString("1. **Identify which coding CLI microservices are available** (look for Claude Code, Codex, or Gemini CLI in your microservices list above)\n")
+	sb.WriteString("1. **Identify which coding CLI services are available** (look for Claude Code, Codex, or Gemini CLI in your services list above)\n")
 	sb.WriteString("2. **Use `call_tool`** with the `/implement` endpoint for creating/modifying files, or `/plan` for read-only analysis\n")
 	sb.WriteString("3. **Pass the user's target directory** as the `directory` field and a detailed prompt as the `prompt` field\n\n")
 	sb.WriteString("#### Examples:\n\n")
@@ -104,7 +104,7 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug, workspaceID string) str
 	sb.WriteString("You: Use `call_tool` → tool_id: \"claude-code\", endpoint: \"/plan\", payload: {\"directory\": \"/Users/me/projects/app\", \"prompt\": \"Analyze this project and describe its structure\"}\n\n")
 	sb.WriteString("User: \"Fix the bug in /Users/me/code/server.js\"\n")
 	sb.WriteString("You: Use `call_tool` → tool_id: \"claude-code\", endpoint: \"/implement\", payload: {\"directory\": \"/Users/me/code\", \"prompt\": \"Fix the bug in server.js...\"}\n\n")
-	sb.WriteString("**NEVER attempt direct file access outside your workspace. ALWAYS delegate to a coding CLI microservice.**\n\n")
+	sb.WriteString("**NEVER attempt direct file access outside your workspace. ALWAYS delegate to a coding CLI service.**\n\n")
 
 	for _, t := range tools {
 		// Check runtime status from tool manager for accuracy
@@ -268,7 +268,7 @@ func (m *Manager) buildProjectsPromptSection() string {
 			if r.toolID != "" {
 				toolRef = fmt.Sprintf("`%s`", r.toolID)
 			}
-			sb.WriteString(fmt.Sprintf("  - \"%s\" → %s (microservice: %s)\n", r.repoName, r.folderPath, toolRef))
+			sb.WriteString(fmt.Sprintf("  - \"%s\" → %s (service: %s)\n", r.repoName, r.folderPath, toolRef))
 		}
 	}
 
@@ -338,7 +338,7 @@ func (m *Manager) makeCallToolHandler() llm.ToolHandler {
 
 		result, err := m.ToolMgr.CallToolWithContext(ctx, params.ToolID, params.Endpoint, payload)
 		if err != nil {
-			return llm.ToolResult{Output: "Microservice call failed: " + err.Error(), IsError: true}
+			return llm.ToolResult{Output: "Service call failed: " + err.Error(), IsError: true}
 		}
 
 		// Inject __tool_uuid so WidgetCollector can map to the real tool DB ID

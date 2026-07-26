@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Minimize2, Square, Users, AlertTriangle,
   Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, ImageIcon, Wrench, Pin, Sparkles,
+  Clock, CornerDownLeft,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -84,6 +85,23 @@ function ToolPickerRow({ tool, selected, onSelect }: { tool: Tool; selected: boo
   );
 }
 
+/**
+ * A message typed while the AI was still answering.
+ *
+ * Everything the composer held is snapshotted at queue time rather than read
+ * back when it eventually sends: the composer is cleared and reused
+ * immediately, so anything read later would belong to a different message.
+ */
+interface QueuedMessage {
+  id: string;
+  threadId: string;
+  text: string;
+  contextFiles: ContextFile[];
+  attachments: File[];
+  images: { image: PastedImage; preview: string }[];
+  directories: string[];
+  tools: Tool[];
+}
 
 export function Chat() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
@@ -148,7 +166,7 @@ export function Chat() {
   const [attachedContextFiles, setAttachedContextFiles] = useState<ContextFile[]>([]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  // Microservices attachable via the `#` trigger. `/tools` already returns this
+  // Services attachable via the `#` trigger. `/tools` already returns this
   // workspace's tools plus global ones (workspace_id === null).
   const [toolItems, setToolItems] = useState<Tool[]>([]);
   const [attachedTools, setAttachedTools] = useState<Tool[]>([]);
@@ -396,7 +414,7 @@ export function Chat() {
       mediaAnchorRef.current = null;
     }
 
-    // Detect # trigger for attaching Microservices (only at the start of the input or
+    // Detect # trigger for attaching Services (only at the start of the input or
     // after whitespace, so `#` inside a word or a markdown heading is ignored).
     const toolMatch = textBefore.match(/(^|\s)#([\w-]*)$/);
     if (toolMatch) {
@@ -574,6 +592,21 @@ export function Chat() {
   const [routingIndicator, setRoutingIndicator] = useState<string | null>(null);
   const [activeAgentSlug, setActiveAgentSlug] = useState<string | null>(null);
   const [subAgentTasks, setSubAgentTasks] = useState<SubAgentTask[]>([]);
+
+  // Messages typed while a turn was running, in the order they were typed.
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const isStreaming = streamActive || streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
+  // One flag for "a turn is in flight". `sending` only covers the POST — the AI
+  // keeps working after that until the 'done' event, which is why this is the
+  // same condition that swaps the send button for Stop.
+  const busy = sending || thinking || isStreaming;
+  // The queue is per-thread: a message typed into one chat should not land in
+  // whichever chat happens to be open when the current turn ends.
+  const threadQueue = useMemo(
+    () => queue.filter(q => q.threadId === activeThread),
+    [queue, activeThread],
+  );
+
   const activeThreadRef = useRef(activeThread);
   activeThreadRef.current = activeThread;
   const todoExpandedListRef = useRef(todoExpandedList);
@@ -1131,21 +1164,45 @@ export function Chat() {
     return () => stopPolling();
   }, [activeThread]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sendMessage = async () => {
-    // Block a new turn until the current one fully finishes: `sending` only
-    // covers the POST, but the AI keeps streaming after that (thinking /
-    // streamActive) until the 'done' event.
-    if (!input.trim() || !activeThread || sending || thinking || streamActive) return;
-    const typed = input.trim();
-    const threadId = activeThread;
+  /**
+   * Empty the composer into a self-contained message.
+   *
+   * Clearing here rather than inside the send is what makes queueing work: the
+   * composer is free the instant you hit Enter, whether the message goes out
+   * now or waits its turn.
+   */
+  const takeComposerSnapshot = (): QueuedMessage | null => {
+    if (!input.trim() || !activeThread) return null;
+    const snapshot: QueuedMessage = {
+      id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      threadId: activeThread,
+      text: input.trim(),
+      contextFiles: attachedContextFiles,
+      attachments: pendingAttachments,
+      images: pastedImages,
+      directories: attachedDirectories,
+      tools: attachedTools,
+    };
+    setInput('');
+    setAttachedContextFiles([]);
+    setPendingAttachments([]);
+    setPastedImages([]);
+    setAttachedDirectories([]);
+    setAttachedTools([]);
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
+    return snapshot;
+  };
+
+  const deliverMessage = async (msg: QueuedMessage) => {
+    const typed = msg.text;
+    const threadId = msg.threadId;
     const isFirstMessage = messages.length === 0;
 
-    // Snapshot attachments before clearing the composer state below.
-    const ctxFiles = attachedContextFiles;
-    const attachFiles = pendingAttachments;
-    const images = pastedImages;
-    const dirs = attachedDirectories;
-    const toolIds = attachedTools.map(t => t.id);
+    const ctxFiles = msg.contextFiles;
+    const attachFiles = msg.attachments;
+    const images = msg.images;
+    const dirs = msg.directories;
+    const toolIds = msg.tools.map(t => t.id);
     const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0 || images.length > 0;
 
     // Reset streaming state
@@ -1156,15 +1213,10 @@ export function Chat() {
     hadToolSinceLastTextRef.current = false;
     toolInputMapRef.current.clear();
 
-    // Clear the composer and surface the pending state IMMEDIATELY — reading a
-    // large attached context file can take a while and must not look frozen.
-    setInput('');
-    setAttachedContextFiles([]);
-    setPendingAttachments([]);
-    setPastedImages([]);
-    setAttachedDirectories([]);
-    setAttachedTools([]);
-    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
+    // Surface the pending state IMMEDIATELY — reading a large attached context
+    // file can take a while and must not look frozen. Setting these before the
+    // first await also closes the queue-drain window: the drain effect sees the
+    // turn as busy again on the very next render.
     setSending(true); setThinking(true);
     setWorkStatus(hasAttachments ? 'Reading attached files…' : 'Preparing response...');
 
@@ -1244,6 +1296,32 @@ export function Chat() {
     }
   };
 
+  const sendMessage = () => {
+    const msg = takeComposerSnapshot();
+    if (!msg) return;
+    // A turn already running doesn't block the composer any more — the message
+    // lines up instead. Queue rather than send whenever anything is in flight.
+    if (busy) {
+      setQueue(prev => [...prev, msg]);
+      return;
+    }
+    deliverMessage(msg);
+  };
+
+  // Drain one queued message per completed turn.
+  //
+  // Deliberately one at a time: the point of a queue is that each message is
+  // answered in the context the previous answer created, which sending them
+  // together would destroy. `deliverMessage` marks the turn busy synchronously,
+  // so this effect re-runs and stops rather than racing through the rest.
+  useEffect(() => {
+    if (busy || !activeThread) return;
+    const next = queue.find(q => q.threadId === activeThread);
+    if (!next) return;
+    setQueue(prev => prev.filter(q => q.id !== next.id));
+    deliverMessage(next);
+  }, [busy, activeThread, queue]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pinThread = async (thread: ChatThread) => {
     setPinning(true);
     try {
@@ -1291,6 +1369,7 @@ export function Chat() {
     try {
       await api.delete(`/chat/threads/${thread.id}`);
       setThreads(prev => prev.filter(t => t.id !== thread.id));
+      setQueue(prev => prev.filter(q => q.threadId !== thread.id));
       if (activeThread === thread.id) {
         setActiveThread(null);
         setMessages([]);
@@ -1347,7 +1426,6 @@ export function Chat() {
     (activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : undefined) ??
     (lastAssistantSlug ? roles.find(r => r.slug === lastAssistantSlug) : undefined) ??
     activeRole;
-  const isStreaming = streamActive || streamingText.length > 0 || streamingTools.length > 0 || subAgentTasks.length > 0;
   // Provider-aware usage bar: CLI subscription providers (Claude Code / Codex) have
   // no per-token cost and a 1M context window; OpenRouter uses the model's window.
   const isSubscription = balance.subscription;
@@ -1717,21 +1795,21 @@ export function Chat() {
               <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
                   <TmuxSessionCard threadId={activeThread} />
-                  {/* Microservices # autocomplete dropdown */}
+                  {/* Services # autocomplete dropdown */}
                   {/* Shown when there are matches, or when the workspace genuinely
                       has no tools. A filter that matches nothing just closes,
                       so typing "#5" in prose isn't interrupted. */}
                   {toolPickerVisible && (
-                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Attach microservices">
+                    <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-border-1 bg-surface-1 shadow-xl shadow-black/20 overflow-hidden z-50 max-h-64 overflow-y-auto" role="listbox" aria-label="Attach services">
                       {flatTools.length === 0 ? (
                         <div className="px-4 py-3 text-sm text-text-3">
-                          No microservices available. Add microservices in Settings.
+                          No services available. Add services in Settings.
                         </div>
                       ) : (
                         <>
                           {workspaceTools.length > 0 && (
                             <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0">
-                              Workspace Microservices
+                              Workspace Services
                             </div>
                           )}
                           {workspaceTools.map((tool, i) => (
@@ -1744,7 +1822,7 @@ export function Chat() {
                           ))}
                           {globalTools.length > 0 && (
                             <div className="px-4 py-1.5 text-[11px] font-semibold text-text-3 uppercase tracking-wider border-b border-border-0 border-t">
-                              Global Microservices
+                              Global Services
                             </div>
                           )}
                           {globalTools.map((tool, i) => (
@@ -1852,6 +1930,46 @@ export function Chat() {
                           </div>
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {/* Queued messages — above the composer, in send order, so
+                      what is waiting is visible without opening anything. */}
+                  {threadQueue.length > 0 && (
+                    <div className="mb-2 space-y-1">
+                      <p className="flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
+                        <Clock className="w-3 h-3" aria-hidden="true" />
+                        {threadQueue.length} queued — sent one at a time as each reply finishes
+                      </p>
+                      {threadQueue.map((q, i) => {
+                        const extras =
+                          q.contextFiles.length + q.attachments.length + q.images.length +
+                          q.directories.length + q.tools.length;
+                        return (
+                          <div
+                            key={q.id}
+                            className="group flex items-center gap-2 rounded-lg border border-border-0 border-dashed bg-surface-2/60 pl-2 pr-1 py-1.5"
+                          >
+                            <span className="flex-shrink-0 w-4 text-center text-[10px] font-semibold text-text-3 tabular-nums">
+                              {i + 1}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs text-text-2">{q.text}</span>
+                            {extras > 0 && (
+                              <span className="flex-shrink-0 flex items-center gap-1 text-[10px] text-text-3">
+                                <Paperclip className="w-3 h-3" aria-hidden="true" />
+                                {extras}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => setQueue(prev => prev.filter(x => x.id !== q.id))}
+                              className="flex-shrink-0 p-1 rounded text-text-3 hover:text-danger hover:bg-surface-3 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              title="Remove from queue"
+                              aria-label={`Remove queued message: ${q.text}`}
+                            >
+                              <X className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <div
@@ -1962,10 +2080,11 @@ export function Chat() {
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
                     onPaste={handlePaste}
-                    placeholder="Ask anything... (@ agents, # microservices, !! context, @@ media)"
+                    placeholder="Ask anything... (@ agents, # services, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
-                    disabled={sending}
+                    /* Never disabled: typing ahead is the point of the queue,
+                       and Enter during a turn queues rather than double-sends. */
                     rows={2}
                     className="w-full resize-none bg-transparent text-text-0 text-base placeholder:text-text-3 px-4 pt-3 pb-1 focus:outline-none focus:ring-0 focus:border-transparent border-none shadow-none min-h-[56px]"
                     style={{ maxHeight: '350px' }}
@@ -2008,14 +2127,29 @@ export function Chat() {
                       <ProviderSwitcher />
                     </div>
                     {(thinking || isStreaming) ? (
-                      <button
-                        onClick={stopThread}
-                        className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-3 text-text-1 transition-all cursor-pointer flex-shrink-0 hover:bg-danger hover:text-white"
-                        title="Stop"
-                        aria-label="Stop generation"
-                      >
-                        <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {/* Queueing keeps its own button rather than replacing
+                            Stop: interrupting and lining up the next message are
+                            opposite intents and must not share a target. */}
+                        {input.trim() && (
+                          <button
+                            onClick={sendMessage}
+                            className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-3 text-text-1 hover:bg-accent-primary hover:text-white transition-all cursor-pointer flex-shrink-0"
+                            title="Queue — sends when this reply finishes"
+                            aria-label="Queue message"
+                          >
+                            <CornerDownLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                        <button
+                          onClick={stopThread}
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-3 text-text-1 transition-all cursor-pointer flex-shrink-0 hover:bg-danger hover:text-white"
+                          title="Stop"
+                          aria-label="Stop generation"
+                        >
+                          <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={sendMessage}

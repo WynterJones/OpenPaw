@@ -407,10 +407,10 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
     setLoading(action);
     try {
       await api.post(`/tools/${tool.id}/${action}`);
-      toast("success", `Microservice ${label}`);
+      toast("success", `Service ${label}`);
       onRefresh();
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : `Failed to ${label} microservice`);
+      toast("error", err instanceof Error ? err.message : `Failed to ${label} service`);
     } finally {
       setLoading(null);
     }
@@ -419,7 +419,7 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
   const updateField = async (field: string, value: string) => {
     try {
       await api.put(`/tools/${tool.id}`, { [field]: value });
-      toast("success", `Microservice ${field} updated`);
+      toast("success", `Service ${field} updated`);
       onRefresh();
     } catch (err) {
       toast("error", err instanceof Error ? err.message : `Failed to update ${field}`);
@@ -432,10 +432,10 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
     setLoading("toggle");
     try {
       await api.post(`/tools/${tool.id}/${action}`);
-      toast("success", `Microservice ${action}d`);
+      toast("success", `Service ${action}d`);
       onRefresh();
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to update microservice");
+      toast("error", err instanceof Error ? err.message : "Failed to update service");
     } finally {
       setLoading(null);
     }
@@ -445,10 +445,10 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
     setLoading("delete");
     try {
       await api.delete(`/tools/${tool.id}`);
-      toast("success", "Microservice deleted");
+      toast("success", "Service deleted");
       onDelete();
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to delete microservice");
+      toast("error", err instanceof Error ? err.message : "Failed to delete service");
     } finally {
       setLoading(null);
       setConfirmDelete(false);
@@ -462,7 +462,7 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
 
   const copyId = () => {
     navigator.clipboard.writeText(tool.id);
-    toast("success", "Microservice ID copied");
+    toast("success", "Service ID copied");
   };
 
   const endpoints = (tool.manifest?.endpoints ?? []).filter(
@@ -623,7 +623,7 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
       </div>
 
       <Card>
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3">Microservice Info</h4>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-text-3 mb-3">Service Info</h4>
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm">
             <Info className="w-3.5 h-3.5 text-text-3 flex-shrink-0" />
@@ -681,7 +681,7 @@ function ToolDetail({ tool, allFolders, onBack, onRefresh, onDelete }: { tool: T
             ))}
           </div>
         ) : (
-          <p className="text-sm text-text-3 italic">No endpoints registered. Endpoints are defined in the microservice's manifest.json.</p>
+          <p className="text-sm text-text-3 italic">No endpoints registered. Endpoints are defined in the service's manifest.json.</p>
         )}
       </Card>
 
@@ -808,7 +808,7 @@ export function Tools() {
     if (!file) return;
     try {
       await toolExtra.importTool(file);
-      toast("success", "Microservice imported and compiled");
+      toast("success", "Service imported and compiled");
       loadTools();
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Import failed");
@@ -851,7 +851,7 @@ export function Tools() {
         <thead>
           <tr className="border-b border-border-0">
             {[
-              { label: "Microservice", hideOnMobile: false },
+              { label: "Service", hideOnMobile: false },
               { label: "Status", hideOnMobile: false },
               { label: "Port", hideOnMobile: true },
               { label: "PID", hideOnMobile: true },
@@ -885,7 +885,7 @@ export function Tools() {
   if (selectedTool)
     return (
       <div className="flex flex-col h-full">
-        <Header title="Microservices" />
+        <Header title="Services" />
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <ToolDetail
             tool={selectedTool}
@@ -900,10 +900,10 @@ export function Tools() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Microservices" />
+      <Header title="Services" />
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
             <div className="flex items-center gap-3 mb-4">
-              <SearchBar value={search} onChange={handleSearch} placeholder="Search microservices..." className="flex-1" />
+              <SearchBar value={search} onChange={handleSearch} placeholder="Search services..." className="flex-1" />
               <input
                 ref={importRef}
                 type="file"
@@ -940,11 +940,11 @@ export function Tools() {
             ) : searchFiltered.length === 0 ? (
               <EmptyState
                 icon={<Wrench className="w-8 h-8" />}
-                title={search ? "No microservices found" : "No microservices yet"}
+                title={search ? "No services found" : "No services yet"}
                 description={
                   search
                     ? "Try a different search term"
-                    : "Install from Templates or chat with Gateway to build a custom microservice."
+                    : "Install from Templates or chat with Gateway to build a custom service."
                 }
               />
             ) : showFolderSections ? (
@@ -974,7 +974,7 @@ export function Tools() {
               </div>
             ) : (
               <>
-                <Pagination page={page} totalPages={totalPages} total={searchFiltered.length} onPageChange={setPage} label="microservices" />
+                <Pagination page={page} totalPages={totalPages} total={searchFiltered.length} onPageChange={setPage} label="services" />
                 {renderContent(paginated)}
               </>
             )}

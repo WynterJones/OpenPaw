@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { SearchBar } from '../components/SearchBar';
 import { useToast } from '../components/Toast';
 import { useWebSocket } from '../lib/useWebSocket';
+import { parseDuration, secondsToDurationStr, formatInterval } from '../lib/duration';
 import {
   api,
   heartbeatApi,
@@ -50,48 +51,6 @@ function parseActions(s: string): string[] {
   try { return JSON.parse(s); } catch (e) { console.warn('parseActions: failed to parse JSON:', e); return []; }
 }
 
-function formatInterval(sec: number): string {
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-function parseDuration(input: string): number | null {
-  const trimmed = input.trim().toLowerCase();
-  if (!trimmed) return null;
-
-  // Pure number = treat as seconds
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-
-  let total = 0;
-  let matched = false;
-  const regex = /(\d+)\s*(h|m|s)/g;
-  let match;
-  while ((match = regex.exec(trimmed)) !== null) {
-    matched = true;
-    const val = parseInt(match[1], 10);
-    switch (match[2]) {
-      case 'h': total += val * 3600; break;
-      case 'm': total += val * 60; break;
-      case 's': total += val; break;
-    }
-  }
-  return matched ? total : null;
-}
-
-function secondsToDurationStr(sec: number): string {
-  if (sec <= 0) return '0s';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const parts: string[] = [];
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0) parts.push(`${m}m`);
-  if (s > 0) parts.push(`${s}s`);
-  return parts.join(' ');
-}
 
 function DurationInput({ value, onSave }: { value: string; onSave: (seconds: string) => void }) {
   const numericValue = Number(value) || 0;
@@ -427,6 +386,14 @@ export function HeartbeatMonitor() {
                         <p className="text-sm font-medium text-text-0 truncate">{agent.name}</p>
                         <p className="text-[11px] text-text-3 truncate">{agent.description || agent.slug}</p>
                       </div>
+                      {/* An agent on its own interval no longer matches the
+                          summary above, so say so here rather than leaving the
+                          page claiming everyone runs on the global schedule. */}
+                      {agent.heartbeat_enabled && agent.heartbeat_interval_sec > 0 && (
+                        <span className="flex-shrink-0 text-[11px] text-text-3 tabular-nums">
+                          every {formatInterval(agent.heartbeat_interval_sec)}
+                        </span>
+                      )}
                       <Toggle enabled={agent.heartbeat_enabled} onChange={() => handleToggleAgent(agent.slug, agent.heartbeat_enabled)} label={`Enable heartbeat for ${agent.name}`} />
                     </div>
                   ))}

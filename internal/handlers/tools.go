@@ -38,7 +38,7 @@ func (h *ToolsHandler) List(w http.ResponseWriter, r *http.Request) {
 		h.db.ActiveWorkspaceID(),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list microservices")
+		writeError(w, http.StatusInternalServerError, "failed to list services")
 		return
 	}
 	defer rows.Close()
@@ -48,7 +48,7 @@ func (h *ToolsHandler) List(w http.ResponseWriter, r *http.Request) {
 		var t models.Tool
 		var workspaceID sql.NullString
 		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.Folder, &workspaceID, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to scan microservice")
+			writeError(w, http.StatusInternalServerError, "failed to scan service")
 			return
 		}
 		if workspaceID.Valid && workspaceID.String != "" {
@@ -103,7 +103,7 @@ func (h *ToolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		id, req.Name, req.Description, req.Type, req.Config, enabled, status, req.Folder, req.WorkspaceID, now, now,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create microservice")
+		writeError(w, http.StatusInternalServerError, "failed to create service")
 		return
 	}
 
@@ -145,7 +145,7 @@ func (h *ToolsHandler) spawnToolBuilder(toolID, name, description, config, userI
 	if err != nil {
 		now := time.Now().UTC()
 		if _, dbErr := h.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID); dbErr != nil {
-			logger.Error("Failed to update microservice status: %v", dbErr)
+			logger.Error("Failed to update service status: %v", dbErr)
 		}
 	}
 }
@@ -159,7 +159,7 @@ func (h *ToolsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		id,
 	).Scan(&t.ID, &t.Name, &t.Description, &t.Type, &t.Config, &t.Enabled, &t.Status, &t.Port, &t.PID, &t.Capabilities, &t.OwnerAgentSlug, &t.LibrarySlug, &t.LibraryVersion, &t.SourceHash, &t.BinaryHash, &t.Folder, &workspaceID, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 	if workspaceID.Valid && workspaceID.String != "" {
@@ -190,7 +190,7 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", id,
 	).Scan(&existing.ID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
@@ -253,19 +253,19 @@ func (h *ToolsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	result, err := h.db.Exec("UPDATE tools SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL", now, now, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete microservice")
+		writeError(w, http.StatusInternalServerError, "failed to delete service")
 		return
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_deleted", "tool", "tool", id, "")
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "microservice deleted"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "service deleted"})
 }
 
 func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
@@ -276,11 +276,11 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 		"SELECT id, name, type, config, enabled FROM tools WHERE id = ? AND deleted_at IS NULL", id,
 	).Scan(&t.ID, &t.Name, &t.Type, &t.Config, &t.Enabled)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 	if !t.Enabled {
-		writeError(w, http.StatusBadRequest, "microservice is disabled")
+		writeError(w, http.StatusBadRequest, "service is disabled")
 		return
 	}
 
@@ -303,7 +303,7 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(userID, "tool_called", "tool", "tool", id, endpoint)
 
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
@@ -337,8 +337,8 @@ func (h *ToolsHandler) Call(w http.ResponseWriter, r *http.Request) {
 
 	data, err := h.toolMgr.CallTool(id, endpoint, callPayload)
 	if err != nil {
-		logger.Error("Microservice call failed for %s endpoint %s: %v", id, endpoint, err)
-		writeError(w, http.StatusBadGateway, "microservice call failed: "+err.Error())
+		logger.Error("Service call failed for %s endpoint %s: %v", id, endpoint, err)
+		writeError(w, http.StatusBadGateway, "service call failed: "+err.Error())
 		return
 	}
 
@@ -357,17 +357,17 @@ func (h *ToolsHandler) Enable(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	result, err := h.db.Exec("UPDATE tools SET enabled = 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL", now, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enable microservice")
+		writeError(w, http.StatusInternalServerError, "failed to enable service")
 		return
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_enabled", "tool", "tool", id, "")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "microservice enabled"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "service enabled"})
 }
 
 func (h *ToolsHandler) Disable(w http.ResponseWriter, r *http.Request) {
@@ -375,29 +375,29 @@ func (h *ToolsHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	result, err := h.db.Exec("UPDATE tools SET enabled = 0, updated_at = ? WHERE id = ? AND deleted_at IS NULL", now, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to disable microservice")
+		writeError(w, http.StatusInternalServerError, "failed to disable service")
 		return
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_disabled", "tool", "tool", id, "")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "microservice disabled"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "service disabled"})
 }
 
 func (h *ToolsHandler) Compile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
 	var exists string
 	if err := h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", id).Scan(&exists); err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
@@ -408,19 +408,19 @@ func (h *ToolsHandler) Compile(w http.ResponseWriter, r *http.Request) {
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_compiled", "tool", "tool", id, "")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "microservice compiled"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "service compiled"})
 }
 
 func (h *ToolsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
 	var exists string
 	if err := h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", id).Scan(&exists); err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
@@ -437,7 +437,7 @@ func (h *ToolsHandler) Start(w http.ResponseWriter, r *http.Request) {
 func (h *ToolsHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
@@ -448,19 +448,19 @@ func (h *ToolsHandler) Stop(w http.ResponseWriter, r *http.Request) {
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "tool_stopped", "tool", "tool", id, "")
-	writeJSON(w, http.StatusOK, map[string]string{"message": "microservice stopped"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "service stopped"})
 }
 
 func (h *ToolsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
 	var exists string
 	if err := h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", id).Scan(&exists); err != nil {
-		writeError(w, http.StatusNotFound, "microservice not found")
+		writeError(w, http.StatusNotFound, "service not found")
 		return
 	}
 
@@ -477,7 +477,7 @@ func (h *ToolsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 func (h *ToolsHandler) Status(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 	writeJSON(w, http.StatusOK, h.toolMgr.GetStatus(id))
@@ -486,7 +486,7 @@ func (h *ToolsHandler) Status(w http.ResponseWriter, r *http.Request) {
 func (h *ToolsHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 
@@ -512,7 +512,7 @@ func (h *ToolsHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 func (h *ToolsHandler) WidgetJS(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.toolMgr == nil {
-		writeError(w, http.StatusServiceUnavailable, "microservice manager not available")
+		writeError(w, http.StatusServiceUnavailable, "service manager not available")
 		return
 	}
 

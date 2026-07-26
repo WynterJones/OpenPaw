@@ -54,15 +54,18 @@ const navGroups: NavGroup[] = [
       { to: "/inbox", icon: InboxIcon, label: "Inbox" },
       { to: "/terminal", icon: TerminalSquare, label: "Terminal" },
       { to: "/studio", icon: Clapperboard, label: "Studio" },
+      // Context and Tasks are things you open while working, not settings —
+      // they belong beside Chats and Studio rather than behind the System
+      // dropdown with the pages you configure once and forget.
+      { to: "/knowledge-base", icon: Database, label: "Context" },
+      { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
     ],
   },
 ];
 
 const systemItems: NavItem[] = [
-  { to: "/knowledge-base", icon: Database, label: "Context" },
-  { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
   { to: "/agents", icon: Bot, label: "Agents" },
-  { to: "/microservices", icon: Wrench, label: "Microservices" },
+  { to: "/services", icon: Wrench, label: "Services" },
   { to: "/skills", icon: Sparkles, label: "Skills" },
   { to: "/scheduler", icon: Clock, label: "Scheduler" },
   { to: "/heartbeat", icon: Heart, label: "Heartbeat" },

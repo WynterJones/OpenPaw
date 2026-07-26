@@ -225,9 +225,14 @@ func (h *SchedulesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reload schedule in cron if the expression or workspace target changed so
-	// the live cron entry carries the new values.
-	if req.CronExpr != nil || req.WorkspaceID != nil {
+	// Reload the live cron entry whenever any field it carries changed.
+	//
+	// This used to reload only on cron_expr or workspace_id, but the entry also
+	// holds the agent, prompt and target thread — so editing the prompt saved to
+	// the database and then kept running the old prompt until the next restart,
+	// which looks exactly like the edit not saving at all.
+	if req.CronExpr != nil || req.WorkspaceID != nil || req.AgentRoleSlug != nil ||
+		req.PromptContent != nil || req.ThreadID != nil {
 		var s models.Schedule
 		var workspaceID sql.NullString
 		h.db.QueryRow(

@@ -47,9 +47,9 @@ func (h *ChatHandler) saveConfirmationMessage(threadID, userID string, resp *age
 	actionLabel := resp.Action
 	switch resp.Action {
 	case "build_tool":
-		actionLabel = "New Microservice"
+		actionLabel = "New Service"
 	case "update_tool":
-		actionLabel = "Update Microservice"
+		actionLabel = "Update Service"
 	case "build_dashboard", "build_custom_dashboard":
 		if isUpdate {
 			actionLabel = "Update Dashboard"

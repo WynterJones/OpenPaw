@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { Toggle } from '../components/Toggle';
 import { FolderAssign } from '../components/FolderAssign';
 import { AvailabilitySelect } from '../components/AvailabilitySelect';
+import { HeartbeatOverride } from '../components/HeartbeatOverride';
 import { api, agentFiles, agentMemories, agentSkills, agentTasks, skills as skillsApi, type AgentRole, type Skill, type MemoryItem, type Tool, type AgentTask, type AgentTaskStatus } from '../lib/api';
 
 interface AgentTool extends Tool {
@@ -62,6 +63,7 @@ export function AgentEdit() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const [role, setRole] = useState<AgentRole | null>(null);
+  const [globalIntervalSec, setGlobalIntervalSec] = useState(3600);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -173,6 +175,29 @@ export function AgentEdit() {
       .then(setAvailableModels)
       .catch((e) => { console.warn('loadAvailableModels failed:', e); });
   }, []);
+
+  // The global interval, so the per-agent fields can show what "inherit"
+  // actually resolves to rather than just saying "global".
+  useEffect(() => {
+    api.get<Record<string, string>>('/heartbeat/config')
+      .then(cfg => {
+        const sec = Number(cfg.heartbeat_interval_sec);
+        if (Number.isFinite(sec) && sec > 0) setGlobalIntervalSec(sec);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveHeartbeat = async (patch: Record<string, number>) => {
+    if (!slug) return;
+    try {
+      const updated = await api.put<AgentRole>(`/agent-roles/${slug}`, patch);
+      setRole(updated);
+      toast('success', 'Heartbeat updated');
+    } catch (e) {
+      console.warn('saveHeartbeat failed:', e);
+      toast('error', 'Failed to update heartbeat');
+    }
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -375,7 +400,7 @@ export function AgentEdit() {
       await api.post(`/agent-roles/${slug}/tools/${toolId}/grant`);
       await loadTools(slug);
       setShowToolPicker(false);
-      toast('success', 'Microservice access granted');
+      toast('success', 'Service access granted');
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Failed to grant access');
     }
@@ -386,7 +411,7 @@ export function AgentEdit() {
     try {
       await api.delete(`/agent-roles/${slug}/tools/${toolId}/revoke`);
       setAgentTools(prev => prev.filter(t => !(t.id === toolId && t.access_type === 'granted')));
-      toast('success', 'Microservice access revoked');
+      toast('success', 'Service access revoked');
     } catch (err) {
       toast('error', err instanceof Error ? err.message : 'Failed to revoke access');
     }
@@ -559,7 +584,7 @@ export function AgentEdit() {
     { key: 'heartbeat', label: 'Heartbeat' },
     { key: 'memory', label: 'Memory', badge: memories.length || undefined },
     { key: 'skills', label: 'Skills', badge: agentSkillList.length || undefined },
-    { key: 'tools', label: 'Microservices' },
+    { key: 'tools', label: 'Services' },
     { key: 'work', label: 'Work', badge: activeTaskCount || undefined },
   ];
 
@@ -812,6 +837,37 @@ export function AgentEdit() {
                   label="Enable heartbeat"
                 />
               </div>
+
+              {/* Overrides only matter once the heartbeat runs at all, so they
+                  stay hidden until it is on. */}
+              {role?.heartbeat_enabled && (
+                <div className="mt-4 pt-4 border-t border-border-0 space-y-4">
+                  <HeartbeatOverride
+                    label="Interval"
+                    hint="How often this agent wakes. Blank follows the global heartbeat setting."
+                    value={role.heartbeat_interval_sec ?? 0}
+                    globalHint={globalIntervalSec}
+                    kind="duration"
+                    onSave={v => saveHeartbeat({ heartbeat_interval_sec: v })}
+                  />
+                  <HeartbeatOverride
+                    label="Run length"
+                    hint="How long a single wake-up may take before it is cut off. Raise it for an agent that does real work, not just a check-in."
+                    value={role.heartbeat_timeout_sec ?? 0}
+                    globalHint={120}
+                    kind="duration"
+                    onSave={v => saveHeartbeat({ heartbeat_timeout_sec: v })}
+                  />
+                  <HeartbeatOverride
+                    label="Max turns"
+                    hint="Tool-calling rounds per wake-up. Finishing a task usually needs more than the default."
+                    value={role.heartbeat_max_turns ?? 0}
+                    globalHint={5}
+                    kind="count"
+                    onSave={v => saveHeartbeat({ heartbeat_max_turns: v })}
+                  />
+                </div>
+              )}
             </Card>
 
             {/* Metadata */}
@@ -1227,7 +1283,7 @@ export function AgentEdit() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Wrench className="w-4 h-4 text-accent-primary" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3">Agent Microservices</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-3">Agent Services</h3>
               </div>
               <Button size="sm" onClick={() => setShowToolPicker(!showToolPicker)} icon={<Plus className="w-3.5 h-3.5" />}>
                 Grant Access
@@ -1238,7 +1294,7 @@ export function AgentEdit() {
               const grantable = allTools.filter(t => !agentToolIds.has(t.id));
               return grantable.length > 0 ? (
                 <div className="mb-4 p-3 rounded-lg border border-border-1 bg-surface-1">
-                  <p className="text-xs text-text-3 mb-2">Grant access to a microservice:</p>
+                  <p className="text-xs text-text-3 mb-2">Grant access to a service:</p>
                   <div className="space-y-1">
                     {grantable.map(tool => (
                       <button key={tool.id} onClick={() => handleGrantTool(tool.id)} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-surface-2 transition-colors cursor-pointer">
@@ -1253,12 +1309,12 @@ export function AgentEdit() {
                 </div>
               ) : (
                 <div className="mb-4 p-3 rounded-lg border border-border-1 bg-surface-1">
-                  <p className="text-xs text-text-3">No additional microservices available to grant.</p>
+                  <p className="text-xs text-text-3">No additional services available to grant.</p>
                 </div>
               );
             })()}
             {agentTools.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-xs text-text-3">No microservices assigned. Grant access to microservices from Templates.</div>
+              <div className="flex items-center justify-center py-16 text-xs text-text-3">No services assigned. Grant access to services from Templates.</div>
             ) : (
               <div className="space-y-2">
                 {agentTools.map(tool => (

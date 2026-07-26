@@ -31,7 +31,7 @@ const moreItems = [
   { to: '/inbox', icon: Inbox, label: 'Inbox' },
   { to: '/knowledge-base', icon: Database, label: 'Context' },
   { to: '/todo-lists', icon: ListTodo, label: 'Tasks' },
-  { to: '/microservices', icon: Wrench, label: 'Microservices' },
+  { to: '/services', icon: Wrench, label: 'Services' },
   { to: '/terminal', icon: TerminalSquare, label: 'Terminal' },
   { to: '/studio', icon: Clapperboard, label: 'Studio' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },

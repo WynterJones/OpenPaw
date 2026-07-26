@@ -29,13 +29,13 @@ const features = [
     icon: Boxes,
     name: 'Workspaces',
     id: 'workspaces',
-    description: 'Organize your work into isolated workspaces, each scoping its own chats, dashboards, context, tasks, and a real on-disk files directory shown in the Directory tab. Switch the active workspace from the sidebar, attach existing folders (like cloned repos) for agents to work in, and set a workspace image. Agents, microservices, and skills can each be shared across all workspaces or bound to a single one.',
+    description: 'Organize your work into isolated workspaces, each scoping its own chats, dashboards, context, tasks, and a real on-disk files directory shown in the Directory tab. Switch the active workspace from the sidebar, attach existing folders (like cloned repos) for agents to work in, and set a workspace image. Agents, services, and skills can each be shared across all workspaces or bound to a single one.',
   },
   {
     icon: Bot,
     name: 'AI Agents',
     id: 'ai-agents',
-    description: 'Create multiple AI agents with unique personalities, system prompts, and microservice access. Each agent can specialize in different tasks — from coding to research to customer support.',
+    description: 'Create multiple AI agents with unique personalities, system prompts, and service access. Each agent can specialize in different tasks — from coding to research to customer support.',
   },
   {
     icon: MessageSquare,
@@ -45,15 +45,15 @@ const features = [
   },
   {
     icon: Wrench,
-    name: 'Microservice System',
-    id: 'microservice-system',
-    description: 'Install microservices from the built-in library or create custom ones. Microservices are compiled Go binaries with HTTP endpoints that agents can call during conversations.',
+    name: 'Service System',
+    id: 'service-system',
+    description: 'Install services from the built-in library or create custom ones. Services are compiled Go binaries with HTTP endpoints that agents can call during conversations.',
   },
   {
     icon: Sparkles,
     name: 'Skills',
     id: 'skills',
-    description: 'Reusable prompt templates that agents can use for common tasks. Install from the library or create your own with custom microservice access permissions.',
+    description: 'Reusable prompt templates that agents can use for common tasks. Install from the library or create your own with custom service access permissions.',
   },
   {
     icon: BookOpen,
@@ -65,13 +65,13 @@ const features = [
     icon: KeyRound,
     name: 'Secrets Management',
     id: 'secrets',
-    description: 'Securely store API keys and credentials. Secrets are encrypted at rest and scoped to specific microservices, preventing unauthorized access.',
+    description: 'Securely store API keys and credentials. Secrets are encrypted at rest and scoped to specific services, preventing unauthorized access.',
   },
   {
     icon: Clock,
     name: 'Scheduler',
     id: 'scheduler',
-    description: 'Set up cron-based automation for recurring tasks. Schedule microservice actions or agent prompts to run on any interval — hourly, daily, or custom cron expressions.',
+    description: 'Set up cron-based automation for recurring tasks. Schedule service actions or agent prompts to run on any interval — hourly, daily, or custom cron expressions.',
   },
   {
     icon: Heart,
@@ -83,7 +83,7 @@ const features = [
     icon: LayoutDashboard,
     name: 'Dashboards',
     id: 'dashboards',
-    description: 'Build custom dashboards with widgets that pull data from microservices. Metric cards, charts, tables, and more — all configurable and real-time.',
+    description: 'Build custom dashboards with widgets that pull data from services. Metric cards, charts, tables, and more — all configurable and real-time.',
   },
   {
     icon: Globe,
@@ -119,7 +119,7 @@ const features = [
     icon: Shield,
     name: 'Security',
     id: 'security',
-    description: 'JWT authentication with HttpOnly cookies, CSRF protection, encrypted secrets, microservice integrity verification, and rate limiting.',
+    description: 'JWT authentication with HttpOnly cookies, CSRF protection, encrypted secrets, service integrity verification, and rate limiting.',
   },
 ];
 

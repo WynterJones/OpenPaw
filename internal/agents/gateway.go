@@ -38,8 +38,8 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	if m.ToolMgr != nil {
 		toolsSection := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
 		if toolsSection != "" {
-			gatewayPrompt += "\n\n## SYSTEM MICROSERVICES (read-only info for routing decisions)\n\n" + toolsSection
-			gatewayPrompt += "\nWhen a user's request requires a microservice (e.g. weather data, API calls), route to an agent that can use the microservice — do NOT try to answer directly.\n"
+			gatewayPrompt += "\n\n## SYSTEM SERVICES (read-only info for routing decisions)\n\n" + toolsSection
+			gatewayPrompt += "\nWhen a user's request requires a service (e.g. weather data, API calls), route to an agent that can use the service — do NOT try to answer directly.\n"
 		}
 	}
 
@@ -498,6 +498,14 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 	}
 	for name, handler := range MakeTodoToolHandlers(m.db, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+
+	// Secret names (never values) so an agent can answer "is that key set yet?"
+	// itself instead of asking the user to go and look.
+	cfg.System += "\n\n---\n\n" + buildSecretsPromptSection(m.db)
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildSecretToolDefs()...)
+	for name, handler := range MakeSecretToolHandlers(m.db) {
 		cfg.ExtraHandlers[name] = handler
 	}
 

@@ -20,7 +20,7 @@ const sourceLabels: Record<string, string> = {
   fal: 'FAL',
   dalle: 'DALL-E',
   upload: 'Upload',
-  tool: 'Microservice',
+  tool: 'Service',
 };
 
 const sourceBadgeColors: Record<string, string> = {

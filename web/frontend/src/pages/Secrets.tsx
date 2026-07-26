@@ -104,7 +104,7 @@ export function Secrets() {
           <EmptyState
             icon={<KeyRound className="w-8 h-8" />}
             title={search ? 'No secrets found' : 'No secrets yet'}
-            description={search ? 'Try a different search term.' : 'Add secrets for your microservices to use API keys, passwords, and other credentials securely.'}
+            description={search ? 'Try a different search term.' : 'Add secrets for your services to use API keys, passwords, and other credentials securely.'}
           />
         ) : view === 'grid' ? (
           <>
@@ -143,7 +143,7 @@ export function Secrets() {
                 columns={[
                   { key: 'name', header: 'Name', render: (s: Secret) => (<div className="flex items-center gap-2"><Shield className="w-4 h-4 text-accent-primary flex-shrink-0" /><div className="min-w-0"><span className="font-medium text-text-0 block truncate">{s.name}</span><span className="text-xs text-text-3 md:hidden">{s.tool_name || 'Global'}</span></div></div>) },
                   { key: 'value', header: 'Value', hideOnMobile: true, render: () => (<span className="text-sm text-text-3 font-mono tracking-wider">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>) },
-                  { key: 'tool', header: 'Microservice', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{s.tool_name || 'Global'}</span>) },
+                  { key: 'tool', header: 'Service', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{s.tool_name || 'Global'}</span>) },
                   { key: 'updated', header: 'Updated', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{new Date(s.updated_at).toLocaleDateString()}</span>) },
                   { key: 'actions', header: '', className: 'text-right', render: (s: Secret) => (
                     <div className="flex items-center justify-end gap-1">
@@ -155,7 +155,7 @@ export function Secrets() {
                 ]}
                 data={paginated} keyExtractor={s => s.id}
                 emptyState={<EmptyState icon={<KeyRound className="w-8 h-8" />} title={search ? 'No secrets found' : 'No secrets yet'}
-                  description={search ? 'Try a different search term.' : 'Add secrets for your microservices to use API keys, passwords, and other credentials securely.'} />}
+                  description={search ? 'Try a different search term.' : 'Add secrets for your services to use API keys, passwords, and other credentials securely.'} />}
               />
             </Card>
           </>
@@ -175,7 +175,7 @@ export function Secrets() {
               {showValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          <Select label="Associated Microservice" value={toolId} onChange={e => setToolId(e.target.value)} options={toolOptions} />
+          <Select label="Associated Service" value={toolId} onChange={e => setToolId(e.target.value)} options={toolOptions} />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button onClick={addSecret} loading={saving} disabled={!name.trim() || !value.trim()}>Add Secret</Button>
@@ -196,7 +196,7 @@ export function Secrets() {
               {showEditValue ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          <Select label="Associated Microservice" value={editToolId} onChange={e => setEditToolId(e.target.value)} options={toolOptions} />
+          <Select label="Associated Service" value={editToolId} onChange={e => setEditToolId(e.target.value)} options={toolOptions} />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setEditId(null); setEditValue(''); setEditToolId(''); setShowEditValue(false); }}>Cancel</Button>
             <Button onClick={saveEdit} loading={saving}>Save</Button>
@@ -205,7 +205,7 @@ export function Secrets() {
       </Modal>
       <Modal open={!!deleteId} onClose={() => setDeleteId(null)} title="Delete Secret" size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-text-1">Are you sure you want to delete this secret? This action cannot be undone. Any microservices using this secret will lose access.</p>
+          <p className="text-sm text-text-1">Are you sure you want to delete this secret? This action cannot be undone. Any services using this secret will lose access.</p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button variant="danger" onClick={deleteSecret}>Delete</Button>

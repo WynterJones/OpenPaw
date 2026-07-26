@@ -201,7 +201,7 @@ export function EngineModels() {
         {field(
           'engine-builder-model',
           'Builder model',
-          'Does the actual work: writing code, running microservices, long tasks. Worth the strongest model you are willing to pay for.',
+          'Does the actual work: writing code, running services, long tasks. Worth the strongest model you are willing to pay for.',
           builder,
           setBuilder,
         )}

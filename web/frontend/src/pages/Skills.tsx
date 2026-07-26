@@ -209,11 +209,11 @@ export function Skills() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {editing ? (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setEditing(null)} icon={<X className="w-3.5 h-3.5" />}>
-                Close
-              </Button>
-              <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
+            {/* The skill's name owns its own row above the controls. Sharing a
+                row with two labelled selects left it wedged between a button
+                and a field label, reading as neither a heading nor a value. */}
+            <h2 className="text-base font-semibold text-text-0 font-mono">{editing.name}</h2>
+            <div className="flex flex-wrap items-end gap-2">
               <div className="w-[160px]">
                 <label className="text-xs font-medium text-text-2 mb-1.5 flex items-center gap-1.5">
                   <FolderOpen className="w-3.5 h-3.5" />
@@ -232,7 +232,12 @@ export function Skills() {
                 />
               </div>
               <div className="flex-1" />
+              {/* Close sits with the other actions rather than alone on the
+                  left — leaving is an action on this editor, same as saving. */}
               <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setEditing(null)} icon={<X className="w-3.5 h-3.5" />}>
+                  Close
+                </Button>
                 <Button size="sm" variant="danger" onClick={() => setDeleteTarget(editing.name)} icon={<Trash2 className="w-3.5 h-3.5" />}>
                   Delete
                 </Button>

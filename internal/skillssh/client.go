@@ -36,18 +36,27 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
+type repoEntry struct {
+	branch    string
+	paths     []string // every "…/SKILL.md" in the repo
+	truncated bool
+	expiresAt time.Time
+}
+
 type Client struct {
 	httpClient *http.Client
 	mu         sync.RWMutex
 	cache      map[string]cacheEntry
-	dirCache   map[string]string // maps "source/skillName" -> directory name
+	pathCache  map[string]string    // "source/skillId" -> full in-repo path to SKILL.md
+	repoCache  map[string]repoEntry // "owner/repo"      -> branch + SKILL.md paths
 }
 
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 15 * time.Second},
 		cache:      make(map[string]cacheEntry),
-		dirCache:   make(map[string]string),
+		pathCache:  make(map[string]string),
+		repoCache:  make(map[string]repoEntry),
 	}
 }
 
@@ -111,120 +120,202 @@ func (c *Client) fetchRaw(rawURL string) (string, int, error) {
 	return string(body), resp.StatusCode, nil
 }
 
+// FetchSkillContent returns the SKILL.md body for a published skill.
+//
+// The path is resolved from the repository's actual file tree rather than
+// assumed. The previous version built "skills/<skillId>/SKILL.md" on the main
+// branch, which only holds for flat repos like anthropics/skills. Real
+// catalogues nest by category — the published `google-ads` skill lives at
+// skills/paid-ads/platforms/google-ads/SKILL.md — so every non-flat repo 404'd,
+// the fetch reported "no published skill", and the caller silently wrote the
+// model's own improvised stub instead of the real thing.
 func (c *Client) FetchSkillContent(source, skillID string) (string, error) {
-	// Check directory name cache first.
 	cacheKey := source + "/" + skillID
+
 	c.mu.RLock()
-	dirName, cached := c.dirCache[cacheKey]
+	path, cached := c.pathCache[cacheKey]
 	c.mu.RUnlock()
 
 	if cached {
-		rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/skills/%s/SKILL.md", source, dirName)
-		content, status, err := c.fetchRaw(rawURL)
-		if err != nil {
-			return "", fmt.Errorf("fetch skill: %w", err)
-		}
-		if status == http.StatusOK {
+		if content, ok := c.fetchAtPath(source, path); ok {
 			return content, nil
 		}
 	}
 
-	// Try skillID as-is (it may match the directory name directly).
-	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/skills/%s/SKILL.md", source, skillID)
-	content, status, err := c.fetchRaw(rawURL)
+	path, err := c.resolveSkillPath(source, skillID)
 	if err != nil {
-		return "", fmt.Errorf("fetch skill: %w", err)
-	}
-	if status == http.StatusOK {
-		c.mu.Lock()
-		c.dirCache[cacheKey] = skillID
-		c.mu.Unlock()
-		return content, nil
+		return "", err
 	}
 
-	// Direct path didn't work. The skillID is the frontmatter name, not the
-	// directory name. List the skills/ directory via GitHub API and find the
-	// directory whose SKILL.md has a matching name in its frontmatter.
-	resolved, err := c.resolveSkillDir(source, skillID)
-	if err != nil {
-		return "", fmt.Errorf("resolve skill directory for %s/%s: %w", source, skillID, err)
-	}
-
-	rawURL = fmt.Sprintf("https://raw.githubusercontent.com/%s/main/skills/%s/SKILL.md", source, resolved)
-	content, status, err = c.fetchRaw(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("fetch skill: %w", err)
-	}
-	if status != http.StatusOK {
-		return "", fmt.Errorf("GitHub raw returned %d for %s/skills/%s", status, source, resolved)
+	content, ok := c.fetchAtPath(source, path)
+	if !ok {
+		return "", fmt.Errorf("fetch %s/%s: raw content unavailable", source, path)
 	}
 
 	c.mu.Lock()
-	c.dirCache[cacheKey] = resolved
+	c.pathCache[cacheKey] = path
 	c.mu.Unlock()
-
 	return content, nil
 }
 
-type ghContentEntry struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+// fetchAtPath reads one file from a repo, trying the resolved default branch
+// first. The branch comes from the repo listing, so "main" is not assumed.
+func (c *Client) fetchAtPath(source, path string) (string, bool) {
+	branch := "main"
+	if repo, ok := c.repo(source); ok && repo.branch != "" {
+		branch = repo.branch
+	}
+	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", source, branch, path)
+	content, status, err := c.fetchRaw(rawURL)
+	if err != nil || status != http.StatusOK || strings.TrimSpace(content) == "" {
+		return "", false
+	}
+	return content, true
 }
 
-// resolveSkillDir lists the skills/ directory in the GitHub repo and checks
-// each subdirectory's SKILL.md frontmatter to find the one whose name matches
-// the given skillID.
-func (c *Client) resolveSkillDir(source, skillID string) (string, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/skills", source)
-	resp, err := c.httpClient.Get(apiURL)
-	if err != nil {
-		return "", fmt.Errorf("list skills directory: %w", err)
+// resolveSkillPath finds the in-repo path of a skill's SKILL.md.
+//
+// Matching is on the containing directory name first — that is how skills are
+// named in every catalogue seen so far and it costs no extra requests. Only if
+// that fails does it read frontmatter, which needs one fetch per candidate.
+func (c *Client) resolveSkillPath(source, skillID string) (string, error) {
+	repo, ok := c.repo(source)
+	if !ok {
+		return "", fmt.Errorf("could not list %s", source)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned %d listing skills/", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read directory listing: %w", err)
+	if len(repo.paths) == 0 {
+		if repo.truncated {
+			return "", fmt.Errorf("%s is too large to list", source)
+		}
+		return "", fmt.Errorf("no SKILL.md files in %s", source)
 	}
 
-	var entries []ghContentEntry
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return "", fmt.Errorf("parse directory listing: %w", err)
+	want := SanitizeSkillName(skillID)
+
+	for _, p := range repo.paths {
+		if SanitizeSkillName(dirNameOf(p)) == want {
+			return p, nil
+		}
 	}
 
-	// Check each subdirectory's SKILL.md for a matching name.
-	for _, entry := range entries {
-		if entry.Type != "dir" {
+	// Fall back to frontmatter, since a skill's declared name need not match
+	// its directory. Bounded: an unbounded scan of a 170-file catalogue would
+	// exhaust GitHub's unauthenticated rate limit on a single lookup.
+	const maxProbes = 25
+	probes := 0
+	for _, p := range repo.paths {
+		if probes >= maxProbes {
+			break
+		}
+		probes++
+		content, ok := c.fetchAtPath(source, p)
+		if !ok {
 			continue
 		}
-
-		rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/skills/%s/SKILL.md", source, entry.Name)
-		content, status, err := c.fetchRaw(rawURL)
-		if err != nil || status != http.StatusOK {
-			continue
-		}
-
-		name := parseFrontmatterName(content)
-		if name == "" {
-			continue
-		}
-
-		// Cache this mapping for future lookups.
-		key := source + "/" + name
-		c.mu.Lock()
-		c.dirCache[key] = entry.Name
-		c.mu.Unlock()
-
-		if name == skillID {
-			return entry.Name, nil
+		if SanitizeSkillName(parseFrontmatterName(content)) == want {
+			return p, nil
 		}
 	}
 
 	return "", fmt.Errorf("skill %q not found in %s", skillID, source)
+}
+
+// dirNameOf returns the directory holding a file — "a/b/c/SKILL.md" -> "c".
+func dirNameOf(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-2]
+}
+
+type ghRepo struct {
+	DefaultBranch string `json:"default_branch"`
+}
+
+type ghTree struct {
+	Tree []struct {
+		Path string `json:"path"`
+		Type string `json:"type"`
+	} `json:"tree"`
+	Truncated bool `json:"truncated"`
+}
+
+// repo lists a repository's SKILL.md files, cached for 15 minutes.
+//
+// One recursive tree request covers the whole repo. The old approach walked
+// skills/ one directory at a time and fetched a SKILL.md per entry, which both
+// missed anything nested deeper and burned GitHub's 60-requests-per-hour
+// unauthenticated budget on a single lookup.
+func (c *Client) repo(source string) (repoEntry, bool) {
+	c.mu.RLock()
+	entry, ok := c.repoCache[source]
+	c.mu.RUnlock()
+	if ok && time.Now().Before(entry.expiresAt) {
+		return entry, true
+	}
+
+	branch := c.defaultBranch(source)
+	if branch == "" {
+		return repoEntry{}, false
+	}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/%s?recursive=1", source, url.PathEscape(branch))
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return repoEntry{}, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return repoEntry{}, false
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return repoEntry{}, false
+	}
+
+	var tree ghTree
+	if err := json.Unmarshal(body, &tree); err != nil {
+		return repoEntry{}, false
+	}
+
+	var paths []string
+	for _, t := range tree.Tree {
+		if t.Type == "blob" && strings.HasSuffix(t.Path, "/SKILL.md") {
+			paths = append(paths, t.Path)
+		}
+	}
+
+	entry = repoEntry{
+		branch:    branch,
+		paths:     paths,
+		truncated: tree.Truncated,
+		expiresAt: time.Now().Add(15 * time.Minute),
+	}
+	c.mu.Lock()
+	c.repoCache[source] = entry
+	c.mu.Unlock()
+	return entry, true
+}
+
+func (c *Client) defaultBranch(source string) string {
+	resp, err := c.httpClient.Get("https://api.github.com/repos/" + source)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	var r ghRepo
+	if err := json.Unmarshal(body, &r); err != nil || r.DefaultBranch == "" {
+		return "main"
+	}
+	return r.DefaultBranch
 }
 
 // parseFrontmatterName extracts the "name:" field from YAML frontmatter.

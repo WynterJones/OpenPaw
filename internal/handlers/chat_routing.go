@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -364,11 +365,11 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 		switch resp.Action {
 		case "build_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", gwName+" is building the microservice…")
+			h.broadcastStatus(threadID, "spawning", gwName+" is building the service…")
 			h.handleBuildTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "update_tool":
 			h.broadcastRoutingIndicator(threadID, "builder")
-			h.broadcastStatus(threadID, "spawning", gwName+" is updating the microservice…")
+			h.broadcastStatus(threadID, "spawning", gwName+" is updating the service…")
 			h.handleUpdateTool(parentCtx, threadID, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		case "build_dashboard", "build_custom_dashboard":
 			h.broadcastRoutingIndicator(threadID, "builder")
@@ -519,8 +520,8 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		systemPrompt += fmt.Sprintf("The user is referencing project **%s**.\n", projectCtx.ProjectName)
 		systemPrompt += fmt.Sprintf("- **Directory**: `%s`\n", projectCtx.Directory)
 		if projectCtx.ToolID != "" {
-			systemPrompt += fmt.Sprintf("- **Coding CLI Microservice ID**: `%s`\n", projectCtx.ToolID)
-			systemPrompt += "\nUse `call_tool` with this microservice ID and directory for any file operations, code analysis, or modifications in this project.\n"
+			systemPrompt += fmt.Sprintf("- **Coding CLI Service ID**: `%s`\n", projectCtx.ToolID)
+			systemPrompt += "\nUse `call_tool` with this service ID and directory for any file operations, code analysis, or modifications in this project.\n"
 		}
 	}
 
@@ -744,7 +745,7 @@ func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID str
 		).Scan(&toolID)
 	}
 	if toolID == "" {
-		h.saveAssistantMessage(threadID, "", "Could not find an existing microservice named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
+		h.saveAssistantMessage(threadID, "", "Could not find an existing service named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
 		h.endAgentWork(threadID)
 		return
 	}
@@ -1070,9 +1071,26 @@ func skillsShBase(name string) (content string, source string, ok bool) {
 	}
 
 	want := skillssh.SanitizeSkillName(name)
+	var matches []skillssh.SkillResult
 	for _, r := range results {
-		if skillssh.SanitizeSkillName(r.SkillID) != want && skillssh.SanitizeSkillName(r.Name) != want {
-			continue
+		if skillssh.SanitizeSkillName(r.SkillID) == want || skillssh.SanitizeSkillName(r.Name) == want {
+			matches = append(matches, r)
+		}
+	}
+
+	// The same skill name is published by dozens of repos with wildly varying
+	// quality. Install count is the only signal available and a good one, so
+	// try the most-installed first rather than whatever search happened to
+	// return first. It also usually succeeds on the first fetch, which matters:
+	// each miss costs GitHub API calls against an unauthenticated rate limit.
+	sort.SliceStable(matches, func(i, j int) bool { return matches[i].Installs > matches[j].Installs })
+
+	// Bounded so a name published by fifty repos, none of them fetchable
+	// (non-GitHub sources appear in results), cannot stall skill creation.
+	const maxCandidates = 5
+	for i, r := range matches {
+		if i >= maxCandidates {
+			break
 		}
 		body, err := client.FetchSkillContent(r.Source, r.SkillID)
 		if err != nil || strings.TrimSpace(body) == "" {

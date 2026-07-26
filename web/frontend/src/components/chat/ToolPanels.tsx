@@ -39,7 +39,9 @@ export function ToolActivityPanel({ tools, isStreaming, defaultExpanded }: {
         <ChevronDown className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (
-        <div className="border-t border-border-1 px-3 py-2 space-y-2">
+        // Capped and scrolled: a long run produces dozens of calls, and an
+        // unbounded list pushes whatever follows it off the screen.
+        <div className="border-t border-border-1 px-3 py-2 space-y-2 max-h-[400px] overflow-y-auto">
           {groups.map(g => {
             const sample = g.items[0];
             const display = toolDisplayName(sample.tool_name, sample.endpoint);
@@ -128,7 +130,9 @@ export function StreamingToolPanel({ tools }: { tools: StreamingTool[] }) {
         )}
       </button>
       {expanded && (
-        <div className="border-t border-border-1 px-3 py-2 space-y-2">
+        // Capped and scrolled: a long run produces dozens of calls, and an
+        // unbounded list pushes whatever follows it off the screen.
+        <div className="border-t border-border-1 px-3 py-2 space-y-2 max-h-[400px] overflow-y-auto">
           {groups.map(g => {
             const sample = g.items[0];
             const display = toolDisplayName(sample.name, sample.endpoint);
