@@ -47,7 +47,7 @@ export function CollapsibleCode({ language, children, raw }: CollapsibleCodeProp
 
   if (!isJson && !isLong) {
     return (
-      <pre className="rounded-lg bg-surface-2/50 border border-border-1 p-3 overflow-x-auto text-xs">
+      <pre className="op-code-raw rounded-lg bg-surface-2/50 border border-border-1 p-3 overflow-x-auto text-xs">
         <code>{children}</code>
       </pre>
     );
@@ -83,7 +83,7 @@ export function CollapsibleCode({ language, children, raw }: CollapsibleCodeProp
       </button>
       {expanded && (
         <div className="border-t border-border-1">
-          <pre className="p-3 overflow-x-auto text-xs max-h-80 overflow-y-auto">
+          <pre className="op-code-raw p-3 overflow-x-auto text-xs max-h-80 overflow-y-auto">
             <code>{children}</code>
           </pre>
         </div>

@@ -161,10 +161,48 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   );
 }
 
+/**
+ * Splits the AI-only pasted-image footer off a user message.
+ *
+ * Sending a pasted image appends a block of absolute on-disk paths so the agent
+ * can read the file — every provider gets a real path rather than an upload.
+ * That block is machinery, not something the user wrote, and it is what they
+ * would see instead of their screenshot. It also cannot render as markdown:
+ * the paths contain a space ("Application Support"), which is not a valid
+ * unbracketed link destination, so it degrades to raw text.
+ *
+ * The stored message keeps the block — only the display drops it.
+ */
+const PASTED_BLOCK_RE = /\n\n---\n\*\*Pasted image\(s\)\*\*[^\n]*\n([\s\S]*)$/;
+const PASTED_LINK_RE = /\[([^\]]*)\]\(([^)]+)\)/g;
+
+function splitPastedImages(content: string): {
+  text: string;
+  images: { name: string; path: string }[];
+} {
+  const match = content.match(PASTED_BLOCK_RE);
+  if (!match) return { text: content, images: [] };
+
+  const images: { name: string; path: string }[] = [];
+  for (const m of match[1].matchAll(PASTED_LINK_RE)) {
+    images.push({ name: m[1] || 'image', path: m[2] });
+  }
+  if (images.length === 0) return { text: content, images: [] };
+
+  return { text: content.slice(0, match.index).trimEnd(), images };
+}
+
+/** Local absolute paths are served through the file endpoint. */
+function localFileSrc(path: string) {
+  return `/api/v1/openclaw/file?path=${encodeURIComponent(path)}`;
+}
+
 function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const { text, images } = splitPastedImages(message.content);
 
   useEffect(() => {
     const el = contentRef.current;
@@ -182,8 +220,22 @@ function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; 
             ref={contentRef}
             className={`prose-chat prose-chat-user ${!expanded ? 'line-clamp-5' : ''}`}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>{text}</ReactMarkdown>
           </div>
+          {images.length > 0 && (
+            <div className={`flex flex-wrap gap-2 ${text ? 'mt-2.5' : ''}`}>
+              {images.map(img => (
+                <img
+                  key={img.path}
+                  src={localFileSrc(img.path)}
+                  alt={img.name}
+                  title={img.name}
+                  loading="lazy"
+                  className="max-h-40 max-w-[220px] rounded-lg border border-border-1 object-cover"
+                />
+              ))}
+            </div>
+          )}
           {clamped && (
             <button className="text-xs text-accent-primary mt-1 hover:underline cursor-pointer">
               {expanded ? 'Show less' : 'Show more'}

@@ -280,6 +280,18 @@ body {
   overflow-x: auto;
 }
 
+/* CollapsibleCode draws its own bordered, padded container. The generic
+   .prose-chat pre chrome above would nest a second one inside it — hence the
+   box-in-a-box with doubled padding. Inside that component the <pre> is just
+   a scroll container. */
+.prose-chat pre.op-code-raw {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+}
+
 .prose-chat pre code {
   background: none;
   padding: 0;
@@ -864,18 +876,33 @@ body {
   margin-inline: auto;
 }
 
-/* Justification is limited to body copy. Applying it to the whole block would
-   also stretch headings and table cells, and justified code is unreadable.
-   hyphens: auto is what keeps justified text from opening rivers of
-   whitespace in the narrower column. */
+/* Left-aligned, not justified. Justification looked tidy in a mockup but at
+   this measure it opens visible rivers of whitespace between words, and the
+   ragged right edge is what actually helps the eye find the next line. */
 .prose-measure p,
 .prose-measure li {
-  text-align: justify;
-  hyphens: auto;
-  -webkit-hyphens: auto;
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
 }
 
-/* Short lines can't be justified without absurd word spacing. */
-.prose-measure li > p:only-child {
-  text-align: left;
+/* Headings in long-form archive copy carry far more space above than below, so
+   each one reads as the start of its section rather than floating between two
+   equal gaps. The generic prose spacing is tuned for short chat replies, where
+   this much air would be absurd. */
+.prose-measure h1,
+.prose-measure h2,
+.prose-measure h3,
+.prose-measure h4 {
+  margin-top: 2.2em;
+  margin-bottom: 0.5em;
+  line-height: 1.25;
+}
+
+.prose-measure h1 { font-size: 1.45em; }
+.prose-measure h2 { font-size: 1.25em; }
+
+/* Nothing to separate from at the very top. */
+.prose-measure > :first-child {
+  margin-top: 0;
 }

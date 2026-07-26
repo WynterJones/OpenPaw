@@ -1589,7 +1589,9 @@ export function Chat() {
                     )}
                   </div>
                 )}
-                {activePin?.pinned && (
+                {activePin?.pinned && (() => {
+                  const pinnedThread = threads.find(t => t.id === activeThread);
+                  return (
                   <div className="mb-6">
                     <div className="rounded-2xl border-2 border-accent-primary bg-surface-0/95 overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-accent-primary/40 bg-black/30">
@@ -1598,6 +1600,33 @@ export function Chat() {
                         <span className="text-[10px] text-text-3 ml-auto">Read-only archive</span>
                       </div>
                       <div className="px-6 py-6 md:px-8 md:py-7 text-base font-medium text-text-1">
+                        {/* Masthead. A pinned chat is a finished document rather
+                            than a live thread, so it opens like one: title,
+                            then who wrote it and when, then a rule. */}
+                        <header className="prose-measure mb-7 pb-5 border-b border-border-1">
+                          <h1 className="text-2xl md:text-3xl font-bold text-text-0 leading-tight tracking-tight">
+                            {pinnedThread?.title || 'Untitled conversation'}
+                          </h1>
+                          <p className="mt-2.5 text-[11px] uppercase tracking-[0.14em] text-text-3">
+                            {pinnedThread?.agent ? `By ${pinnedThread.agent}` : 'Archived conversation'}
+                            {activePin.pinned_at && (
+                              <>
+                                <span className="mx-2 text-text-3/50">·</span>
+                                {new Date(activePin.pinned_at).toLocaleDateString(undefined, {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                })}
+                              </>
+                            )}
+                            {pinnedThread?.message_count ? (
+                              <>
+                                <span className="mx-2 text-text-3/50">·</span>
+                                {pinnedThread.message_count} messages
+                              </>
+                            ) : null}
+                          </p>
+                        </header>
                         {activePin.pin_summary ? (
                           <div className="prose-chat prose-measure">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>{activePin.pin_summary}</ReactMarkdown>
@@ -1618,7 +1647,8 @@ export function Chat() {
                       {transcriptOpen ? 'Hide full conversation' : `Show full conversation (${messages.length} messages)`}
                     </button>
                   </div>
-                )}
+                  );
+                })()}
                 {(!activePin?.pinned || transcriptOpen) &&
                   messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} onReact={handleReaction} />)}
                 {isStreaming && (
@@ -1825,7 +1855,11 @@ export function Chat() {
                     </div>
                   )}
                   <div
-                    className="rounded-2xl border border-border-1 bg-surface-1 shadow-lg shadow-black/10 overflow-hidden focus-within:border-text-3 transition-colors"
+                    /* overflow-visible, not hidden: the attachment strips are
+                       pulled above the top edge and would otherwise be clipped.
+                       Nothing inside paints into the rounded corners, so there
+                       is nothing left for the clip to do. */
+                    className="rounded-2xl border border-border-1 bg-surface-1 shadow-lg shadow-black/10 focus-within:border-text-3 transition-colors"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -1838,7 +1872,9 @@ export function Chat() {
                       filename chips, because the whole point of pasting a
                       screenshot is seeing that the right one landed. */}
                   {(pastedImages.length > 0 || pastingImage) && (
-                    <div className="flex flex-wrap gap-2 px-3 pt-2.5">
+                    // -mt-4 against the h-16 thumbnails lifts them by exactly
+                    // a quarter of their height, so they straddle the top edge.
+                    <div className="relative z-10 flex flex-wrap gap-2 px-3 -mt-4 mb-1">
                       {pastedImages.map(({ image, preview }) => (
                         <div key={image.id} className="relative group">
                           <img
@@ -1866,7 +1902,8 @@ export function Chat() {
 
                   {/* Pending attachments / context files strip */}
                   {(pendingAttachments.length > 0 || attachedContextFiles.length > 0 || attachedDirectories.length > 0 || attachedTools.length > 0) && (
-                    <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+                    // Same quarter-height lift, scaled to the ~26px chips.
+                    <div className="relative z-10 flex flex-wrap gap-1.5 px-3 -mt-1.5 mb-1">
                       {attachedTools.map(tool => (
                         <span key={`tool-${tool.id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-muted text-accent-text text-xs font-medium">
                           <Wrench className="w-3 h-3" />
