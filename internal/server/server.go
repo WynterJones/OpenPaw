@@ -105,6 +105,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	toolsHandler := handlers.NewToolsHandler(s.DB, s.AgentManager, toolMgr, toolsDir)
 	secretsHandler := handlers.NewSecretsHandler(s.DB, s.Secrets, toolMgr)
 	schedulesHandler := handlers.NewSchedulesHandler(s.DB, s.Scheduler)
+	automationHandler := handlers.NewAutomationHandler(s.DB)
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
 	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS, s.AgentManager)
@@ -301,6 +302,9 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/toggle", schedulesHandler.Toggle)
 				r.Get("/{id}/executions", schedulesHandler.Executions)
 			})
+
+			// Background automation status (schedules + heartbeats in flight)
+			r.Get("/automation/active", automationHandler.Active)
 
 			// Dashboards
 			r.Route("/dashboards", func(r chi.Router) {

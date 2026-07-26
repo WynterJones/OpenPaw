@@ -9,8 +9,8 @@ import (
 
 func TestBuildTmuxToolDefs_ShapeIsValid(t *testing.T) {
 	defs := BuildTmuxToolDefs()
-	if len(defs) != 4 {
-		t.Fatalf("got %d tool defs, want 4", len(defs))
+	if len(defs) != 5 {
+		t.Fatalf("got %d tool defs, want 5", len(defs))
 	}
 
 	seen := map[string]bool{}
@@ -33,7 +33,7 @@ func TestBuildTmuxToolDefs_ShapeIsValid(t *testing.T) {
 		seen[d.Function.Name] = true
 	}
 
-	for _, want := range []string{"tmux_list", "tmux_status", "tmux_watch", "tmux_unwatch"} {
+	for _, want := range []string{"tmux_run", "tmux_list", "tmux_status", "tmux_watch", "tmux_unwatch"} {
 		if !seen[want] {
 			t.Errorf("missing tool %q", want)
 		}
@@ -105,5 +105,64 @@ func TestHandleTmuxUnwatch_NoThreadIsNotAnError(t *testing.T) {
 	res := m.handleTmuxUnwatch("")(context.Background(), "", json.RawMessage(`{}`))
 	if res.IsError {
 		t.Errorf("unwatch with no thread should be a no-op, got %+v", res)
+	}
+}
+
+func TestHandleTmuxRun_RequiresCommand(t *testing.T) {
+	m := &Manager{}
+	res := m.handleTmuxRun("thread-1")(context.Background(), "", json.RawMessage(`{}`))
+	if !res.IsError {
+		t.Fatalf("expected an error result, got %+v", res)
+	}
+}
+
+// The default has to be "run it detached and tell me when it's done" — an
+// unwatched session is work the agent starts and then forgets about.
+func TestTmuxRunDef_DefaultsToWatching(t *testing.T) {
+	var schema struct {
+		Properties map[string]struct {
+			Default interface{} `json:"default"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(buildTmuxRunDef().Function.Parameters, &schema); err != nil {
+		t.Fatalf("parameters are not valid JSON: %v", err)
+	}
+	if got := schema.Properties["watch"].Default; got != true {
+		t.Errorf("watch default = %v, want true", got)
+	}
+	if len(schema.Required) != 1 || schema.Required[0] != "command" {
+		t.Errorf("required = %v, want [command]", schema.Required)
+	}
+}
+
+// The description is what actually steers the choice at call time, so it has to
+// say to prefer tmux over an inline run.
+func TestTmuxRunDef_TellsTheAgentToPreferIt(t *testing.T) {
+	desc := strings.ToLower(buildTmuxRunDef().Function.Description)
+	for _, want := range []string{"prefer this", "turn ends", "inline"} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("tmux_run description missing %q: %s", want, desc)
+		}
+	}
+}
+
+func TestFirstWords_BuildsReadableSessionName(t *testing.T) {
+	if got := firstWords("npm run build --workspace web", 4); got != "npm-run-build---workspace" {
+		t.Errorf("firstWords = %q", got)
+	}
+	if got := firstWords("ls", 4); got != "ls" {
+		t.Errorf("firstWords = %q, want ls", got)
+	}
+}
+
+// The prompt directive is only injected for CLI engines, so it has to name the
+// tool and the reason inline runs die.
+func TestTmuxPromptSection_NamesToolAndReason(t *testing.T) {
+	s := buildTmuxPromptSection()
+	for _, want := range []string{"tmux_run", "turn ends", "builds"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("prompt section missing %q", want)
+		}
 	}
 }

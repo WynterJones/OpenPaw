@@ -1,14 +1,17 @@
 // Package tmux inspects running tmux sessions so the UI can show what a
 // long-lived CLI coding session (Claude Code, Codex) is doing.
 //
-// Everything here is read-only and best-effort: tmux may not be installed, the
-// session may be a plain shell, and the CLI's status line is presentation, not
-// an API. Callers get whatever could be parsed plus the raw tail, and nothing
-// fails hard just because a field was missing.
+// Inspection here is best-effort: tmux may not be installed, the session may be
+// a plain shell, and the CLI's status line is presentation, not an API. Callers
+// get whatever could be parsed plus the raw tail, and nothing fails hard just
+// because a field was missing. Start is the one write — it launches work that
+// needs to outlive the request that asked for it.
 package tmux
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -65,8 +68,14 @@ func List(ctx context.Context) ([]Session, error) {
 		return nil, nil
 	}
 
+	// Fields are space-separated with the name LAST, because tmux's format
+	// expansion rewrites non-printable bytes: a \x1f separator comes back as a
+	// literal "_", so every line failed to split and the list silently came back
+	// empty. The numeric fields can't contain spaces, and putting the
+	// user-controlled name at the end means a name with a space in it survives
+	// intact rather than corrupting the parse.
 	out, err := run(ctx, "list-sessions", "-F",
-		"#{session_name}\x1f#{session_windows}\x1f#{session_created}\x1f#{session_attached}")
+		"#{session_windows} #{session_created} #{session_attached} #{session_name}")
 	if err != nil {
 		// No server running is the normal "nothing to show" case, not an error.
 		return nil, nil
@@ -77,16 +86,16 @@ func List(ctx context.Context) ([]Session, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		parts := strings.Split(line, "\x1f")
+		parts := strings.SplitN(line, " ", 4)
 		if len(parts) < 4 {
 			continue
 		}
-		s := Session{Name: parts[0], Kind: "shell"}
-		s.Windows, _ = strconv.Atoi(parts[1])
-		if secs, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+		s := Session{Name: parts[3], Kind: "shell"}
+		s.Windows, _ = strconv.Atoi(parts[0])
+		if secs, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
 			s.Created = time.Unix(secs, 0)
 		}
-		s.Attached = parts[3] != "0"
+		s.Attached = parts[2] != "0"
 
 		if pane, err := run(ctx, "capture-pane", "-p", "-t", s.Name); err == nil {
 			s.Tail = tail(pane, tailLines)
@@ -99,8 +108,44 @@ func List(ctx context.Context) ([]Session, error) {
 }
 
 // Capture returns the current pane text for one session.
+//
+// Once a command exits, tmux paints "Pane is dead (status N)" over the pane and
+// a plain capture returns mostly that overlay — the command's own output has
+// scrolled into history. So for a finished pane we read the scrollback too,
+// which is precisely when the output matters most: it is the only record of
+// what the run actually did.
 func Capture(ctx context.Context, name string) (string, error) {
+	if dead, _, ok := Finished(ctx, name); ok && dead {
+		if out, err := run(ctx, "capture-pane", "-p", "-S", "-", "-t", name); err == nil {
+			return out, nil
+		}
+	}
 	return run(ctx, "capture-pane", "-p", "-t", name)
+}
+
+// Finished reports whether a session's command has exited and with what status.
+// ok is false when tmux could not answer (no session, no server, old tmux), so
+// callers can tell "still running" apart from "cannot tell".
+func Finished(ctx context.Context, name string) (dead bool, status int, ok bool) {
+	if !Available() {
+		return false, 0, false
+	}
+	// Space-separated for the same reason as List: tmux mangles non-printable
+	// separators. Both fields are numeric, and pane_dead_status is empty while
+	// the pane is still alive.
+	out, err := run(ctx, "list-panes", "-t", name, "-F", "#{pane_dead} #{pane_dead_status}")
+	if err != nil {
+		return false, 0, false
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return false, 0, false
+	}
+	if len(fields) > 1 {
+		status, _ = strconv.Atoi(fields[1])
+	}
+	return fields[0] == "1", status, true
 }
 
 // Exists reports whether a session is still running — the signal a watcher uses
@@ -111,6 +156,67 @@ func Exists(ctx context.Context, name string) bool {
 	}
 	_, err := run(ctx, "has-session", "-t", name)
 	return err == nil
+}
+
+// Start launches command in a new detached session named name, in workDir.
+//
+// The one write in this package, and the reason it exists: an agent's turn ends
+// when it replies, so a build started as a plain subprocess dies with the turn.
+// Detached in tmux it keeps running, the user can attach to it, and tmux_watch
+// can report back when it finishes.
+//
+// The session stays alive after the command exits (remain-on-exit) so the exit
+// status and last output are still readable — a session that vanished on
+// completion would be indistinguishable from one that never started.
+func Start(ctx context.Context, name, workDir, command string) error {
+	if !Available() {
+		return errors.New("tmux is not installed")
+	}
+	if strings.TrimSpace(name) == "" {
+		return errors.New("session name is required")
+	}
+	if strings.TrimSpace(command) == "" {
+		return errors.New("command is required")
+	}
+	if Exists(ctx, name) {
+		return fmt.Errorf("a tmux session named %q is already running", name)
+	}
+
+	args := []string{"new-session", "-d", "-s", name}
+	if workDir != "" {
+		args = append(args, "-c", workDir)
+	}
+	args = append(args, command)
+
+	if _, err := run(ctx, args...); err != nil {
+		return fmt.Errorf("tmux new-session failed: %w", err)
+	}
+	// Best-effort: an old tmux without the option just leaves the default.
+	run(ctx, "set-option", "-t", name, "remain-on-exit", "on")
+	return nil
+}
+
+// SessionName turns an agent's requested label into a tmux-safe session name.
+// tmux treats "." and ":" as window/pane separators, so a name containing them
+// cannot be targeted afterwards.
+func SessionName(label string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(label) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ', r == '.', r == ':', r == '/':
+			b.WriteRune('-')
+		}
+	}
+	name := strings.Trim(b.String(), "-")
+	if name == "" {
+		name = "op-task"
+	}
+	if len(name) > 60 {
+		name = strings.Trim(name[:60], "-")
+	}
+	return name
 }
 
 func run(ctx context.Context, args ...string) (string, error) {

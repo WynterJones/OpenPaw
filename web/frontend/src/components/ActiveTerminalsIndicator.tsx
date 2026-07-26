@@ -19,6 +19,19 @@ interface ActiveTerminal {
   workspace_id?: string;
 }
 
+/**
+ * The Terminal screen opens the first workbench unless told otherwise, so a
+ * plain "/terminal" link lands on the wrong workbench tab whenever the clicked
+ * terminal lives in another one. Name both the workbench and the session so the
+ * jump arrives on the terminal that was actually clicked.
+ */
+function terminalPath(s: ActiveTerminal): string {
+  const params = new URLSearchParams();
+  if (s.workbench_id) params.set('workbench', s.workbench_id);
+  params.set('session', s.session_id);
+  return `/terminal?${params.toString()}`;
+}
+
 export function ActiveTerminalsIndicator() {
   const [sessions, setSessions] = useState<ActiveTerminal[]>([]);
 
@@ -57,7 +70,7 @@ export function ActiveTerminalsIndicator() {
           {sessions.map((s) => (
             <button
               key={s.session_id}
-              onClick={() => jumpToWorkspace(s.workspace_id, '/terminal')}
+              onClick={() => jumpToWorkspace(s.workspace_id, terminalPath(s))}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors cursor-pointer"
               title={`Open "${s.title}"`}
             >

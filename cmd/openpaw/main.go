@@ -340,6 +340,7 @@ func main() {
 	// Create heartbeat manager (broadcast will be wired after wsHub is available)
 	heartbeatMgr := heartbeat.New(db, agentMgr, broadcastFn, cfg.DataDir)
 	heartbeatMgr.LoadConfig()
+	heartbeatMgr.ReapOrphanedExecutions()
 
 	// Create backup manager
 	backupMgr := backup.New(db, secretsMgr, cfg.DataDir, broadcastFn)

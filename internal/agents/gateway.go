@@ -515,6 +515,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		for name, handler := range m.MakeTmuxToolHandlers(threadID) {
 			cfg.ExtraHandlers[name] = handler
 		}
+		// Only the CLI engines can actually build — they have a real shell in
+		// the workspace. Telling an OpenRouter agent to prefer tmux would just
+		// describe a workflow it has no way to start.
+		if provider.Name() != llm.ProviderOpenRouter {
+			cfg.System += "\n\n---\n\n" + buildTmuxPromptSection()
+		}
 	}
 
 	// Inject memory tools so agents can save/search memories across conversations

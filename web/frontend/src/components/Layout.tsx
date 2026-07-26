@@ -5,6 +5,7 @@ import { BackgroundImage } from './BackgroundImage';
 import { ChatCompanions } from './companion/ChatCompanions';
 import { ActiveChatsIndicator } from './ActiveChatsIndicator';
 import { ActiveTerminalsIndicator } from './ActiveTerminalsIndicator';
+import { ActiveAutomationIndicator } from './ActiveAutomationIndicator';
 import { ViewTogglesProvider } from '../contexts/ViewTogglesContext';
 import { useViewToggles } from '../contexts/viewToggles';
 
@@ -26,9 +27,11 @@ function LayoutInner() {
       </main>
       <BottomNav />
       {onChat && <ChatCompanions />}
-      {/* One bottom-right stack: terminals sit above chats, and each card hides
-          itself when empty so the survivor keeps the same spot. */}
+      {/* One bottom-right stack: background automation on top, then terminals,
+          then chats — each card hides itself when empty so the survivors keep
+          the same spot. */}
       <div className="fixed bottom-4 right-4 z-30 flex flex-col gap-2 items-end pointer-events-none">
+        <ActiveAutomationIndicator />
         <ActiveTerminalsIndicator />
         <ActiveChatsIndicator />
       </div>

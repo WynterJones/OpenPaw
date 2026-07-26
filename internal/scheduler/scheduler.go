@@ -17,6 +17,9 @@ import (
 // PromptSender sends a scheduled prompt to an AI agent.
 type PromptSender interface {
 	SendScheduledPrompt(ctx context.Context, slug, prompt, threadID, workspaceID, provider string) (response, usedThreadID string, err error)
+	// AgentTimeout is how long a single agent run may take. A scheduled run is
+	// the same work as a chat turn and gets the same budget.
+	AgentTimeout() time.Duration
 }
 
 // NotifyFunc creates a notification and broadcasts it.
@@ -62,8 +65,30 @@ func (s *Scheduler) SetNotifyFunc(fn NotifyFunc) {
 }
 
 func (s *Scheduler) Start() {
+	s.reapOrphanedExecutions()
 	s.cron.Start()
 	logger.Success("Scheduler started")
+}
+
+// reapOrphanedExecutions closes out runs left mid-flight by a crash or restart.
+//
+// Nothing else ever finishes those rows, so they stay 'running' forever — the
+// Executions tab shows a run that will never end, and the live-activity
+// indicator reports work that isn't happening. Anything still marked running at
+// boot cannot be: the process that owned it is gone.
+func (s *Scheduler) reapOrphanedExecutions() {
+	result, err := s.db.Exec(
+		`UPDATE schedule_executions SET status = 'error', error = ?, finished_at = ?
+		 WHERE status = 'running'`,
+		"Interrupted — OpenPaw restarted while this run was in progress.", time.Now().UTC(),
+	)
+	if err != nil {
+		logger.Error("Failed to reap orphaned schedule executions: %v", err)
+		return
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		logger.Info("Reaped %d interrupted schedule execution(s)", n)
+	}
 }
 
 func (s *Scheduler) Stop() {
@@ -225,7 +250,11 @@ func (s *Scheduler) executePrompt(cfg ScheduleConfig) (output, threadID string, 
 		return "", "", nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Use the configured agent timeout rather than a fixed five minutes. A
+	// scheduled prompt asks an agent to actually do work — with a CLI engine
+	// like Claude Code that routinely runs longer, and the old cap killed the
+	// subprocess mid-task, surfacing as "signal: killed" with nothing done.
+	ctx, cancel := context.WithTimeout(context.Background(), s.promptSender.AgentTimeout())
 	defer cancel()
 
 	return s.promptSender.SendScheduledPrompt(ctx, cfg.AgentRoleSlug, cfg.PromptContent, cfg.ThreadID, cfg.WorkspaceID, cfg.Provider)

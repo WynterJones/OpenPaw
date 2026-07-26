@@ -181,6 +181,45 @@ function layoutKey(workbenchId: string): string {
   return `${LAYOUT_KEY}:${workbenchId}`;
 }
 
+/** Focus a session inside the tree: make it the active tab of its own leaf. */
+function focusSessionInTree(node: PanelNode, sessionId: string): PanelNode {
+  if (node.type === 'leaf') {
+    if (!node.tabs?.includes(sessionId)) return node;
+    return { ...node, activeTab: sessionId };
+  }
+  if (!node.children) return node;
+  const newChildren = node.children.map((c) => focusSessionInTree(c, sessionId));
+  if (newChildren.every((c, i) => c === node.children![i])) return node;
+  return { ...node, children: newChildren };
+}
+
+/**
+ * Read the workbench/session a jump-in link is asking us to open.
+ *
+ * The bottom-right terminal indicator links here from anywhere in the app, and
+ * the target terminal may live in any workbench — not the first one, which is
+ * what mount would otherwise select. The params are consumed once and stripped
+ * so a later refresh doesn't keep re-pinning a terminal the user has moved on
+ * from.
+ */
+interface JumpTarget {
+  workbenchId: string | null;
+  sessionId: string | null;
+}
+
+function takeJumpTarget(): JumpTarget {
+  const params = new URLSearchParams(window.location.search);
+  const workbenchId = params.get('workbench');
+  const sessionId = params.get('session');
+  if (workbenchId || sessionId) {
+    params.delete('workbench');
+    params.delete('session');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }
+  return { workbenchId, sessionId };
+}
+
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [workbenches, setWorkbenches] = useState<Workbench[]>([]);
@@ -189,6 +228,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Filled once at mount. Held in a ref rather than re-read because reading
+  // strips the params, so a second read (StrictMode's double-invoke) returns
+  // nothing and would lose the target.
+  const jumpTargetRef = useRef<JumpTarget | null>(null);
 
   // ── Sync terminal themes when design config changes ──
   const { config } = useDesign();
@@ -218,6 +261,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   // ── Load workbenches + sessions + restore layout ──
   useEffect(() => {
     let cancelled = false;
+    if (!jumpTargetRef.current) jumpTargetRef.current = takeJumpTarget();
     (async () => {
       try {
         // Ensure at least one workbench exists
@@ -229,29 +273,40 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setWorkbenches(wbs);
 
-        const firstWb = wbs[0];
-        setActiveWorkbenchId(firstWb.id);
+        // Open the workbench the link asked for, not just the first one — a
+        // terminal linked from elsewhere in the app usually lives in another.
+        const target = jumpTargetRef.current;
+        const openWb = wbs.find((w) => w.id === target?.workbenchId) ?? wbs[0];
+        setActiveWorkbenchId(openWb.id);
 
-        // Load sessions for first workbench
-        const fetchedSessions = await terminalApi.list(firstWb.id);
+        // Load sessions for the workbench being opened
+        const fetchedSessions = await terminalApi.list(openWb.id);
         if (cancelled) return;
         setSessions(fetchedSessions);
+
+        const wantsSession =
+          target?.sessionId && fetchedSessions.some((s) => s.id === target.sessionId)
+            ? target.sessionId
+            : null;
 
         // Try to restore layout
         let restoredLayout: PanelNode | null = null;
         try {
-          const raw = localStorage.getItem(layoutKey(firstWb.id));
+          const raw = localStorage.getItem(layoutKey(openWb.id));
           if (raw) restoredLayout = JSON.parse(raw) as PanelNode;
         } catch {
           // corrupt data
         }
 
         if (restoredLayout && fetchedSessions.length > 0) {
-          const reconciled = reconcileLayout(restoredLayout, fetchedSessions);
+          let reconciled = reconcileLayout(restoredLayout, fetchedSessions);
+          if (reconciled && wantsSession) {
+            reconciled = focusSessionInTree(reconciled, wantsSession);
+          }
           setRootPanel(reconciled);
           if (reconciled) {
             const leaf = findFirstLeaf(reconciled);
-            setActiveSessionId(leaf?.activeTab ?? null);
+            setActiveSessionId(wantsSession ?? leaf?.activeTab ?? null);
           }
         } else if (fetchedSessions.length > 0) {
           // No saved layout, create default
@@ -259,10 +314,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
             id: nextPanelId(),
             type: 'leaf',
             tabs: fetchedSessions.map((s) => s.id),
-            activeTab: fetchedSessions[0].id,
+            activeTab: wantsSession ?? fetchedSessions[0].id,
           };
           setRootPanel(panel);
-          setActiveSessionId(fetchedSessions[0].id);
+          setActiveSessionId(wantsSession ?? fetchedSessions[0].id);
         }
       } catch {
         // API error

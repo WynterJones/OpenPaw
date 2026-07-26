@@ -214,6 +214,21 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 			continue
 		}
 
+		// A session started by tmux_run outlives its command so the output stays
+		// readable, so "finished" can't be inferred from the session vanishing.
+		// Without this the run would be reported as *stalled* three checks later
+		// — and with no exit status, which is the one thing worth knowing.
+		if dead, status, ok := tmux.Finished(ctx, wch.Session); ok && dead {
+			outcome := "finished successfully"
+			if status != 0 {
+				outcome = fmt.Sprintf("failed with exit status %d", status)
+			}
+			h.reportTmux(wch, fmt.Sprintf(
+				"The tmux session `%s` %s.\n\n%s",
+				wch.Session, outcome, tmux.Describe(wch.Session, pane)))
+			return
+		}
+
 		if pane == lastPane {
 			unchanged++
 		} else {

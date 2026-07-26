@@ -3,7 +3,6 @@ package agents
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -35,8 +34,14 @@ func BuildReactionToolDefs() []llm.ToolDef {
 		{
 			Type: "function",
 			Function: llm.FunctionDef{
-				Name:        "react_to_message",
-				Description: "React to a message with emoji(s). Use this to acknowledge, appreciate, or respond to a message without a full reply. Keep it natural and occasional.",
+				Name: "react_to_message",
+				// The description used to end with "keep it natural and
+				// occasional", which contradicted the mandatory-reaction system
+				// prompt. CLI engines surface OpenPaw tools over MCP, where the
+				// description is the text the model reads closest to the call —
+				// so "occasional" won, and reactions quietly dried up.
+				Description: "React to a message with emoji(s). Call this FIRST, before writing your reply, " +
+					"on every user message — reacting is expected, not optional.",
 				Parameters:  params,
 			},
 		},
@@ -151,7 +156,7 @@ func loadReactions(db *database.DB, messageID string) []models.Reaction {
 
 // buildReactionPromptSection returns a prompt section telling agents when to use reactions.
 func buildReactionPromptSection() string {
-	return fmt.Sprintf(`## MESSAGE REACTIONS — MANDATORY
+	return `## MESSAGE REACTIONS — MANDATORY
 
 **CRITICAL REQUIREMENT**: Before you respond to ANY user message, you MUST first call the react_to_message tool to react with an emoji.
 This is not optional. Every single user message gets an emoji reaction from you.
@@ -161,5 +166,7 @@ Steps for every user message:
 2. Call react_to_message with that message_id and a fitting emoji
 3. Then write your text response
 
-Pick emojis that match the mood: 👍 for requests, 😂 for humor, ❤️ for appreciation, 🔥 for excitement, 🤔 for questions, 🎉 for celebrations, etc.`)
+CLI engines expose OpenPaw tools over MCP, so this one may be listed as ` + "`mcp__openpaw__react_to_message`" + ` — same tool. Use whichever name appears in your tool list.
+
+Pick emojis that match the mood: 👍 for requests, 😂 for humor, ❤️ for appreciation, 🔥 for excitement, 🤔 for questions, 🎉 for celebrations, etc.`
 }

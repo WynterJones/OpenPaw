@@ -70,6 +70,26 @@ func New(db *database.DB, agentMgr *agents.Manager, broadcast BroadcastFunc, dat
 	}
 }
 
+// ReapOrphanedExecutions closes out cycles left mid-flight by a crash or
+// restart. Nothing else finishes those rows, so they stay 'running' forever —
+// the history shows a cycle that never ends and the live-activity indicator
+// reports work that isn't happening. Anything still running at boot cannot be:
+// the process that owned it is gone.
+func (m *Manager) ReapOrphanedExecutions() {
+	result, err := m.db.Exec(
+		`UPDATE heartbeat_executions SET status = 'failed', error = ?, finished_at = ?
+		 WHERE status = 'running'`,
+		"Interrupted — OpenPaw restarted while this heartbeat was in progress.", time.Now().UTC(),
+	)
+	if err != nil {
+		logger.Error("Failed to reap orphaned heartbeat executions: %v", err)
+		return
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		logger.Info("Reaped %d interrupted heartbeat execution(s)", n)
+	}
+}
+
 // LoadConfig reads heartbeat settings from the database.
 func (m *Manager) LoadConfig() {
 	m.mu.Lock()
