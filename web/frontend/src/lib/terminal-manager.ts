@@ -127,7 +127,13 @@ class TerminalManager {
     // Try WebGL addon
     try {
       const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => webglAddon.dispose());
+      webglAddon.onContextLoss(() => {
+        // Disposing drops back to the DOM renderer, which starts empty — the
+        // canvas that held the output is gone. Repaint into the new renderer,
+        // or the terminal sits blank until something writes to it.
+        webglAddon.dispose();
+        this.repaint(sessionId, true);
+      });
       term.loadAddon(webglAddon);
     } catch {
       // WebGL not available
@@ -292,8 +298,10 @@ class TerminalManager {
     if (!instance) return;
 
     // Reparent the terminal's container div
-    if (instance.containerEl.parentElement !== container) {
+    const reparented = instance.containerEl.parentElement !== container;
+    if (reparented) {
       container.appendChild(instance.containerEl);
+      this.repaint(sessionId, true);
     }
 
     // Set up ResizeObserver
@@ -309,6 +317,40 @@ class TerminalManager {
     // Set up drag-and-drop and image paste
     this.setupDragDrop(sessionId, container);
     this.setupImagePaste(sessionId);
+  }
+
+  /**
+   * Force a repaint of a terminal's viewport.
+   *
+   * A terminal that was hidden or removed from the DOM comes back blank. Its
+   * WebGL context does not survive being detached (and the browser reclaims
+   * contexts under pressure — every terminal holds one), and xterm only paints
+   * rows that changed, so a terminal sitting at an idle prompt has nothing to
+   * redraw and stays empty until the next keystroke. The session was never
+   * gone: switching workbenches, or leaving the page and coming back, just left
+   * an empty canvas over a live shell. fit() alone does not fix it — with the
+   * container the same size it computes the same dimensions and no-ops.
+   *
+   * Deferred a frame so the element has been laid out and has real dimensions
+   * before the renderer measures it. Pass clearAtlas after a context loss or a
+   * DOM move, where the glyph atlas belongs to a context that is gone.
+   */
+  repaint(sessionId: string, clearAtlas = false): void {
+    requestAnimationFrame(() => {
+      const instance = this.instances.get(sessionId);
+      if (!instance || !instance.containerEl.isConnected) return;
+      try {
+        instance.fitAddon.fit();
+      } catch {
+        /* container not sized yet — the refresh below still repaints */
+      }
+      try {
+        if (clearAtlas) instance.term.clearTextureAtlas?.();
+        instance.term.refresh(0, instance.term.rows - 1);
+      } catch {
+        /* terminal disposed */
+      }
+    });
   }
 
   detach(sessionId: string): void {

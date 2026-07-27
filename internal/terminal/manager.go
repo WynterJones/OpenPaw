@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -271,8 +273,17 @@ func (m *Manager) Shutdown() {
 }
 
 // ListWorkbenches returns all workbenches ordered by sort_order then created_at.
+// ListWorkbenches returns the workbenches belonging to the active workspace.
+//
+// Workspace scoping is the point of the workspace: a client project's terminals
+// have no business appearing while you are working on something else. The
+// column has been on the table since 055 but nothing filtered on it, so every
+// workspace showed the same terminals.
 func (m *Manager) ListWorkbenches() ([]Workbench, error) {
-	rows, err := m.db.Query("SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at")
+	rows, err := m.db.Query(
+		"SELECT id, name, color, sort_order, created_at FROM workbenches WHERE workspace_id = ? ORDER BY sort_order, created_at",
+		m.db.ActiveWorkspaceID(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -288,11 +299,17 @@ func (m *Manager) ListWorkbenches() ([]Workbench, error) {
 	return result, rows.Err()
 }
 
-// CreateWorkbench creates a new workbench with the given name.
+// CreateWorkbench creates a new workbench in the active workspace.
+//
+// The insert used to omit workspace_id and lean on the column default, which
+// put every workbench in the Default workspace no matter where it was created.
 func (m *Manager) CreateWorkbench(name string) (*Workbench, error) {
 	id := uuid.New().String()
 	now := time.Now().UTC()
-	_, err := m.db.Exec("INSERT INTO workbenches (id, name, color, created_at) VALUES (?, ?, '', ?)", id, name, now)
+	_, err := m.db.Exec(
+		"INSERT INTO workbenches (id, name, color, workspace_id, created_at) VALUES (?, ?, '', ?, ?)",
+		id, name, m.db.ActiveWorkspaceID(), now,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -345,20 +362,19 @@ func (m *Manager) DeleteWorkbench(id string) error {
 	return err
 }
 
-// EnsureDefaultWorkbench returns the first workbench or creates one named "Default".
+// EnsureDefaultWorkbench returns the active workspace's first workbench, or
+// creates one named "Default" for it.
 func (m *Manager) EnsureDefaultWorkbench() (*Workbench, error) {
-	var count int
-	err := m.db.QueryRow("SELECT COUNT(*) FROM workbenches").Scan(&count)
-	if err != nil {
-		return nil, err
-	}
-	if count > 0 {
-		var w Workbench
-		err := m.db.QueryRow("SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at LIMIT 1").Scan(&w.ID, &w.Name, &w.Color, &w.SortOrder, &w.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
+	var w Workbench
+	err := m.db.QueryRow(
+		"SELECT id, name, color, sort_order, created_at FROM workbenches WHERE workspace_id = ? ORDER BY sort_order, created_at LIMIT 1",
+		m.db.ActiveWorkspaceID(),
+	).Scan(&w.ID, &w.Name, &w.Color, &w.SortOrder, &w.CreatedAt)
+	if err == nil {
 		return &w, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 	return m.CreateWorkbench("Default")
 }

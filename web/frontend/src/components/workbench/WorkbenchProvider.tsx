@@ -330,10 +330,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Save layout whenever rootPanel changes
+  // Save layout whenever rootPanel changes.
+  //
+  // Not while loading: switching workbenches sets the new id and clears the
+  // panel in the same batch, so this would fire as (null, incoming id) and,
+  // if the session fetch took longer than the save debounce, delete the layout
+  // of the workbench being opened — its splits would silently collapse back to
+  // a single panel. Nothing is worth persisting mid-switch anyway.
   useEffect(() => {
+    if (loading) return;
     saveLayout(rootPanel, activeWorkbenchId);
-  }, [rootPanel, activeWorkbenchId, saveLayout]);
+  }, [rootPanel, activeWorkbenchId, loading, saveLayout]);
 
   // ── Switch workbench ──
   const switchWorkbench = useCallback(async (id: string) => {

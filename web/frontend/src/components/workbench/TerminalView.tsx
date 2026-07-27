@@ -34,12 +34,19 @@ export function TerminalView({
     };
   }, [sessionId, onExit]);
 
-  // Handle active state — fit and focus
+  // Handle active state — fit, repaint and focus.
+  //
+  // The repaint is what makes a tab you come back to show its contents. An
+  // inactive tab is hidden rather than unmounted, so its terminal is alive and
+  // still taking output, but a hidden canvas can lose its WebGL context and
+  // xterm only paints rows that change — so a quiet shell reappears blank and
+  // only fills in once you type.
   useEffect(() => {
     if (!isActive) return;
 
     const timer = setTimeout(() => {
       terminalManager.fit(sessionId);
+      terminalManager.repaint(sessionId);
       terminalManager.focus(sessionId);
     }, 50);
 
@@ -55,6 +62,9 @@ export function TerminalView({
         terminalManager.ensureConnected(sessionId);
         setTimeout(() => {
           terminalManager.fit(sessionId);
+          // A backgrounded browser tab is where the GPU is most likely to have
+          // taken the context back.
+          terminalManager.repaint(sessionId, true);
           terminalManager.focus(sessionId);
         }, 100);
       }
