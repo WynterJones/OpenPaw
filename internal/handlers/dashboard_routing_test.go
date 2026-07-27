@@ -266,6 +266,34 @@ func TestServeAssets_SDKComesFromEmbed(t *testing.T) {
 	}
 }
 
+// The traversal guard compared a bare prefix, so a dashboard could read out of
+// any sibling directory whose name it prefixes — on a public route.
+func TestServeAssets_RejectsSiblingDirectory(t *testing.T) {
+	db := newTestDB(t)
+	dir := t.TempDir()
+	h := &DashboardsHandler{db: db, dashboardsDir: dir}
+	insertTestDashboard(t, db, "dash", "Mine", "custom")
+
+	if err := os.MkdirAll(filepath.Join(dir, "dash-other"), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dash-other", "secret.txt"), []byte("private"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Get("/d/{id}/assets/*", h.ServeAssets)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/d/dash/assets/../dash-other/secret.txt", nil))
+
+	if rec.Code == http.StatusOK {
+		t.Errorf("read a sibling dashboard's file: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "private") {
+		t.Errorf("leaked sibling file contents")
+	}
+}
+
 // Storage rows are addressed by dashboard ID, so an unknown ID must be rejected
 // rather than quietly accumulating orphan rows.
 func TestDashboardStorage_UnknownDashboard(t *testing.T) {

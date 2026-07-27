@@ -516,6 +516,10 @@ function ScheduleDetail({
                   header: "Duration",
                   hideOnMobile: true,
                   render: (ex: ScheduleExecution) => {
+                    // A missed run spans from when it was due to when OpenPaw
+                    // came back — that gap is downtime, not a duration.
+                    if (ex.status === "missed")
+                      return <span className="text-sm text-text-3">--</span>;
                     if (!ex.finished_at)
                       return (
                         <span className="text-sm text-text-2">Running...</span>

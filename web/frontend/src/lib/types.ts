@@ -272,7 +272,8 @@ export interface Schedule {
 export interface ScheduleExecution {
   id: string;
   schedule_id: string;
-  status: 'success' | 'error' | 'running';
+  /** 'missed' = the run was due while OpenPaw wasn't running. */
+  status: 'success' | 'error' | 'running' | 'missed';
   output: string;
   error: string;
   started_at: string;

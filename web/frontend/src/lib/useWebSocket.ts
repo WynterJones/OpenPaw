@@ -79,41 +79,13 @@ function maybeDisconnect() {
   }
 }
 
-/** Send a raw JSON message to the shared WebSocket (e.g. subscribe/unsubscribe). */
-function sendWsMessage(msg: Record<string, unknown>) {
-  if (sharedWs && sharedWs.readyState === WebSocket.OPEN) {
-    sharedWs.send(JSON.stringify(msg));
-  }
-}
-
-/** Subscribe to a topic for filtered server broadcasts. */
-function subscribeTopic(topic: string) {
-  sendWsMessage({ type: 'subscribe', topic });
-}
-
-/** Unsubscribe from a topic. */
-function unsubscribeTopic(topic: string) {
-  sendWsMessage({ type: 'unsubscribe', topic });
-}
-
-// Track pending subscriptions to replay after reconnect
-const activeTopics = new Set<string>();
-// Patch ensureConnection to replay topic subscriptions after reconnect
-const _origOnOpen = Symbol();
-function patchReplayTopics() {
-  if (!sharedWs) return;
-  const ws = sharedWs;
-  if ((ws as unknown as Record<symbol, unknown>)[_origOnOpen]) return;
-  const prevOnOpen = ws.onopen;
-  (ws as unknown as Record<symbol, unknown>)[_origOnOpen] = true;
-  ws.onopen = (ev) => {
-    if (prevOnOpen) (prevOnOpen as (ev: Event) => void).call(ws, ev);
-    // Replay active topic subscriptions
-    for (const topic of activeTopics) {
-      sendWsMessage({ type: 'subscribe', topic });
-    }
-  };
-}
+// Topic subscriptions used to live here — a useWsTopic hook, subscribe/
+// unsubscribe senders, and a monkey-patch of ws.onopen to replay them after a
+// reconnect. Nothing ever called any of it: no component subscribed and the
+// server never called BroadcastToTopic either, so every connection paid for the
+// patch to replay an always-empty set. The server half (Hub.BroadcastToTopic
+// and the subscribe/unsubscribe message handling in hub.go) is still there if
+// filtered broadcasts are ever wanted.
 
 export function useWebSocket({ onMessage, enabled = true }: UseWebSocketOptions) {
   const [connected, setConnected] = useState(sharedConnected);
@@ -132,7 +104,6 @@ export function useWebSocket({ onMessage, enabled = true }: UseWebSocketOptions)
     messageListeners.add(handler);
     connectionListeners.add(connHandler);
     ensureConnection();
-    patchReplayTopics();
 
     return () => {
       messageListeners.delete(handler);
@@ -142,17 +113,4 @@ export function useWebSocket({ onMessage, enabled = true }: UseWebSocketOptions)
   }, [enabled]);
 
   return { connected };
-}
-
-/** Hook to subscribe to a WebSocket topic while the component is mounted. */
-export function useWsTopic(topic: string | null) {
-  useEffect(() => {
-    if (!topic) return;
-    activeTopics.add(topic);
-    subscribeTopic(topic);
-    return () => {
-      activeTopics.delete(topic);
-      unsubscribeTopic(topic);
-    };
-  }, [topic]);
 }

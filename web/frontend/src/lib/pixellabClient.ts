@@ -24,7 +24,7 @@ interface ProxyEnvelope {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiResponse = Record<string, any>;
 
-export interface ImageSize {
+interface ImageSize {
   width: number;
   height: number;
 }
@@ -94,12 +94,12 @@ function extractBase64(image: unknown): string | null {
 }
 
 /** Ensure a base64 payload is a usable data URI for an <img> src. */
-export function toDataUri(base64: string): string {
+function toDataUri(base64: string): string {
   return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
 }
 
 /** The inverse: PixelLab's Base64Image wants bare base64, not a data URI. */
-export function stripDataUri(value: string): string {
+function stripDataUri(value: string): string {
   const comma = value.indexOf(',');
   return value.startsWith('data:') && comma >= 0 ? value.slice(comma + 1) : value;
 }
@@ -173,7 +173,7 @@ export interface CreateImageOptions {
 }
 
 /** One synchronous pixflux image. */
-export async function createPixelImage(
+async function createPixelImage(
   {
     description,
     size = { width: 64, height: 64 },
@@ -259,7 +259,7 @@ export interface AnimateOptions {
   directions?: string[];
 }
 
-export async function animateCharacter(
+async function animateCharacter(
   { characterId, action, frameCount = 4, directions = ['south'] }: AnimateOptions
 ): Promise<string[]> {
   const data = await request<ApiResponse>('/animate-character', 'POST', {

@@ -9,7 +9,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 
-export interface DocsNavItem {
+interface DocsNavItem {
   label: string;
   href: string;
   icon: LucideIcon;

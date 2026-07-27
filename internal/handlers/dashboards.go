@@ -281,11 +281,20 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 		assetPath = "index.html"
 	}
 
-	// Construct the full path and prevent traversal
-	dashDir := filepath.Join(h.dashboardsDir, id)
-	fullPath := filepath.Join(dashDir, assetPath)
-	resolved, err := filepath.Abs(fullPath)
-	if err != nil || !strings.HasPrefix(resolved, dashDir) {
+	// Construct the full path and prevent traversal.
+	//
+	// Both sides are resolved to absolute paths before comparing: the configured
+	// dashboards dir can be relative (OPENPAW_DATA_DIR, or the ./data fallback),
+	// and comparing a relative prefix against an absolute path rejects every
+	// asset. The separator matters too — a bare prefix check lets dashboard "abc"
+	// read out of a sibling "abc-other" directory, and this route is public.
+	dashDir, err := filepath.Abs(filepath.Join(h.dashboardsDir, id))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "dashboards directory not configured")
+		return
+	}
+	resolved, err := filepath.Abs(filepath.Join(dashDir, assetPath))
+	if err != nil || (resolved != dashDir && !strings.HasPrefix(resolved, dashDir+string(os.PathSeparator))) {
 		writeError(w, http.StatusForbidden, "invalid path")
 		return
 	}

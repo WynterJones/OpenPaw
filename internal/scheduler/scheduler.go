@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,97 @@ func (s *Scheduler) reapOrphanedExecutions() {
 	}
 }
 
+// cronParser mirrors the parser cron.WithSeconds() installs on the scheduler, so
+// the next-run times recorded here agree with when cron will actually fire.
+var cronParser = cron.NewParser(
+	cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+)
+
+// maxMissedRunScan bounds the walk over fire times that were missed. A per-second
+// schedule that was down for a week would otherwise count to half a million; the
+// exact number stops being interesting long before that.
+const maxMissedRunScan = 10000
+
+// setNextRun records when this schedule fires next.
+//
+// The column existed from the beginning but nothing ever wrote it, so the
+// Scheduler page's "Next run" read a value that was always NULL and every
+// schedule, however active, reported "Not scheduled".
+func (s *Scheduler) setNextRun(id, expr string) {
+	schedule, err := cronParser.Parse(expr)
+	if err != nil {
+		logger.Error("Schedule %s has an unparseable cron expression %q: %v", id, expr, err)
+		s.db.Exec("UPDATE schedules SET next_run_at = NULL WHERE id = ?", id)
+		return
+	}
+	s.db.Exec("UPDATE schedules SET next_run_at = ? WHERE id = ?", schedule.Next(time.Now().UTC()), id)
+}
+
+// clearNextRun drops the next-run time for a schedule that is no longer
+// registered, so a paused schedule doesn't keep advertising a run that won't
+// happen — and so re-enabling it later isn't read as a missed run.
+func (s *Scheduler) clearNextRun(id string) {
+	s.db.Exec("UPDATE schedules SET next_run_at = NULL WHERE id = ?", id)
+}
+
+// syncNextRun registers a schedule's next fire time and, when the time already
+// recorded has passed, files the runs that were missed while it was unregistered.
+//
+// cron has no catch-up: a 9am daily prompt on a laptop that was asleep simply
+// never happened, and nothing anywhere said so — no execution row, no error, a
+// silent gap in the history. Recording it as a missed run makes the gap visible
+// where the user already looks for runs.
+func (s *Scheduler) syncNextRun(id, expr string) {
+	schedule, err := cronParser.Parse(expr)
+	if err != nil {
+		s.setNextRun(id, expr) // logs and clears
+		return
+	}
+
+	var due sql.NullTime
+	s.db.QueryRow("SELECT next_run_at FROM schedules WHERE id = ?", id).Scan(&due)
+	now := time.Now().UTC()
+	if due.Valid && due.Time.Before(now) {
+		s.recordMissedRuns(id, schedule, due.Time.UTC(), now)
+	}
+
+	s.db.Exec("UPDATE schedules SET next_run_at = ? WHERE id = ?", schedule.Next(now), id)
+}
+
+// recordMissedRuns files one execution row covering every fire between the time
+// this schedule was due and now. One row rather than one per fire: a minutely
+// schedule offline overnight would otherwise bury the history under 500 entries
+// that all say the same thing.
+func (s *Scheduler) recordMissedRuns(id string, schedule cron.Schedule, due, now time.Time) {
+	missed := 0
+	last := due
+	for t := due; t.Before(now) && missed < maxMissedRunScan; t = schedule.Next(t) {
+		missed++
+		last = t
+	}
+	if missed == 0 {
+		return
+	}
+
+	msg := "OpenPaw wasn't running when this was due, so the run was skipped."
+	if missed > 1 {
+		msg = fmt.Sprintf(
+			"OpenPaw wasn't running, so %d runs were skipped (from %s to %s).",
+			missed, due.Format("Jan 2 3:04 PM"), last.Format("Jan 2 3:04 PM"),
+		)
+	}
+
+	if _, err := s.db.Exec(
+		`INSERT INTO schedule_executions (id, schedule_id, status, error, started_at, finished_at)
+		 VALUES (?, ?, 'missed', ?, ?, ?)`,
+		uuid.New().String(), id, msg, due, now,
+	); err != nil {
+		logger.Error("Failed to record missed runs for schedule %s: %v", id, err)
+		return
+	}
+	logger.Warn("Schedule %s missed %d run(s) while OpenPaw was not running", id, missed)
+}
+
 func (s *Scheduler) Stop() {
 	if s.retentionStop != nil {
 		close(s.retentionStop)
@@ -117,6 +209,7 @@ func (s *Scheduler) AddSchedule(cfg ScheduleConfig) {
 	}
 
 	s.entries[cfg.ID] = entryID
+	s.syncNextRun(cfg.ID, cfg.CronExpr)
 	logger.Success("Added schedule %s (prompt) with cron=%s", cfg.ID, cfg.CronExpr)
 }
 
@@ -127,6 +220,7 @@ func (s *Scheduler) RemoveSchedule(id string) {
 	if entryID, exists := s.entries[id]; exists {
 		s.cron.Remove(entryID)
 		delete(s.entries, id)
+		s.clearNextRun(id)
 		logger.Info("Removed schedule %s", id)
 	}
 }
@@ -141,6 +235,11 @@ func (s *Scheduler) executeSchedule(cfg ScheduleConfig) {
 	)
 
 	s.db.Exec("UPDATE schedules SET last_run_at = ?, updated_at = ? WHERE id = ?", now, now, cfg.ID)
+
+	// Advance the next-run time up front rather than after the run: a long run
+	// would otherwise leave "Next run" showing a time in the past for its whole
+	// duration, and a crash mid-run would look like a missed fire at next boot.
+	s.setNextRun(cfg.ID, cfg.CronExpr)
 
 	output, threadID, execErr := s.executePrompt(cfg)
 

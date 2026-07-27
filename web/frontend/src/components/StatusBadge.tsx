@@ -1,4 +1,4 @@
-type Status = 'ready' | 'building' | 'disabled' | 'error' | 'success' | 'running' | 'pending' | 'active' | 'stopped' | 'starting' | 'compiling';
+type Status = 'ready' | 'building' | 'disabled' | 'error' | 'success' | 'running' | 'pending' | 'active' | 'stopped' | 'starting' | 'compiling' | 'missed';
 
 const statusConfig: Record<Status, { bg: string; text: string; dot: string; label: string }> = {
   ready: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Ready' },
@@ -12,6 +12,9 @@ const statusConfig: Record<Status, { bg: string; text: string; dot: string; labe
   success: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Success' },
   running: { bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-400', label: 'Running' },
   pending: { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400', label: 'Pending' },
+  // A run that was due while OpenPaw wasn't running. Not an error — nothing
+  // broke — but it didn't happen either, so it can't read as success.
+  missed: { bg: 'bg-orange-500/10', text: 'text-orange-400', dot: 'bg-orange-400', label: 'Missed' },
 };
 
 interface StatusBadgeProps {

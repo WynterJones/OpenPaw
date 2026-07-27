@@ -186,6 +186,10 @@ func main() {
 		logger.Error("Gateway dir initialization failed: %v", err)
 	}
 
+	// Close out builds the last process died in the middle of, before anything
+	// can read them as still running.
+	agents.ReapOrphanedWork(db)
+
 	// Tools directory
 	toolsDir := filepath.Join(cfg.DataDir, "..", "tools")
 	os.MkdirAll(toolsDir, 0755)
