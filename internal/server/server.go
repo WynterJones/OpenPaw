@@ -143,6 +143,10 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			return err
 		}
 		s.AgentManager.TmuxUnwatchFn = chatHandler.StopWatch
+		// Back request_build, so a specialist agent can hand a service or
+		// dashboard to the builder itself rather than telling the user to go and
+		// ask the gateway for it.
+		s.AgentManager.BuildRequestFn = chatHandler.RequestBuild
 	}
 	updateBroadcast := func(msgType string, payload interface{}) {
 		data, _ := json.Marshal(payload)

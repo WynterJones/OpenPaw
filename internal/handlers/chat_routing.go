@@ -335,6 +335,71 @@ func (h *ChatHandler) handleAgentRouting(threadID, content, userID, agentRoleSlu
 	h.handleGatewayAction(parentCtx, threadID, content, userID, resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 }
 
+// resolveGatewayAssignment replaces the agents the gateway named with real,
+// enabled slugs, dropping any that resolve to nothing.
+//
+// The gateway writes the slug from memory and gets it wrong often enough to
+// matter: a display name instead of a slug, a plausible invention, an agent
+// that has since been disabled. Every one of those used to end the turn with an
+// apology about a missing agent role, which reads to the user as the assistant
+// refusing — the reason "I asked again and it worked" is a real experience of
+// this app.
+func (h *ChatHandler) resolveGatewayAssignment(resp *agents.GatewayResponse) {
+	if resp == nil {
+		return
+	}
+	resp.AssignedAgent = h.resolveAgentSlug(resp.AssignedAgent)
+
+	if len(resp.AssignedAgents) > 0 {
+		seen := map[string]bool{}
+		valid := make([]string, 0, len(resp.AssignedAgents))
+		for _, slug := range resp.AssignedAgents {
+			resolved := h.resolveAgentSlug(slug)
+			if resolved == "" || seen[resolved] {
+				continue
+			}
+			seen[resolved] = true
+			valid = append(valid, resolved)
+		}
+		resp.AssignedAgents = valid
+		// A list that collapsed to one is a single assignment, and one that
+		// collapsed to none has to fall through to the default routing.
+		if len(valid) == 1 && resp.AssignedAgent == "" {
+			resp.AssignedAgent = valid[0]
+		}
+	}
+}
+
+// resolveAgentSlug maps whatever the gateway said to a real enabled agent slug,
+// or "" if there is no such agent. Tolerant of the near-misses a model actually
+// produces — wrong case, the display name, spaces instead of hyphens.
+func (h *ChatHandler) resolveAgentSlug(slug string) string {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return ""
+	}
+
+	var found string
+	h.db.QueryRow("SELECT slug FROM agent_roles WHERE slug = ? AND enabled = 1", slug).Scan(&found)
+	if found != "" {
+		return found
+	}
+
+	// Case-insensitive slug, then the display name, then the name run through
+	// the same slugification the app uses when creating agents.
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(slug), " ", "-"))
+	h.db.QueryRow(
+		`SELECT slug FROM agent_roles
+		 WHERE enabled = 1 AND (LOWER(slug) = ? OR LOWER(name) = ? OR LOWER(REPLACE(name, ' ', '-')) = ?)
+		 LIMIT 1`,
+		normalized, strings.ToLower(slug), normalized,
+	).Scan(&found)
+	if found == "" {
+		logger.Warn("Gateway assigned unknown agent %q — falling back to thread routing", slug)
+	}
+	return found
+}
+
 // getDefaultAgentSlug returns the slug of the first enabled agent (excluding builder).
 func (h *ChatHandler) getDefaultAgentSlug() string {
 	var slug string
@@ -355,6 +420,12 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 			go agents.SaveGatewayMemoryNote(h.dataDir, resp.MemoryNote)
 		}
 	}
+
+	// Drop any agent the gateway named that isn't a real, enabled one. Left in
+	// place it dead-ends the turn on "I couldn't find that agent role or it's
+	// disabled" — the user's message is simply lost, and the fix is to say it
+	// again. Cleared, routing falls through to the thread's own agent below.
+	h.resolveGatewayAssignment(resp)
 
 	// If a work order is needed, spawn the appropriate agent (attributed to gateway/builder).
 	if resp.WorkOrder != nil {

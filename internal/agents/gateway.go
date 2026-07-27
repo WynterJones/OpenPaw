@@ -536,6 +536,20 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.System += "\n\n---\n\n" + buildCanvasPromptSection()
 	}
 
+	// Building is collaborative: the agent that gathered the spec files the work
+	// order itself. Without this an agent mid-conversation could only answer
+	// "I can't build that, ask the Gateway" — with all the context in hand.
+	if threadID != "" && m.BuildRequestFn != nil {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildRequestToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeBuildRequestHandler(threadID) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + buildRequestPromptSection()
+	}
+
 	// Inject memory tools so agents can save/search memories across conversations
 	if m.MemoryMgr != nil {
 		m.MemoryMgr.EnsureMigrated(agentRoleSlug)

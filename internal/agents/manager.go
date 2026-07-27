@@ -82,6 +82,10 @@ type Manager struct {
 	// lives in handlers — and handlers already imports this package.
 	TmuxWatchFn     TmuxWatchStarter
 	TmuxUnwatchFn   TmuxWatchStopper
+	// BuildRequestFn backs request_build, letting a specialist agent hand a
+	// service or dashboard to the builder instead of telling the user to go and
+	// ask the gateway for it. Injected for the same reason as TmuxWatchFn.
+	BuildRequestFn BuildRequester
 	// MediaRegistry backs the studio_* tools. Nil disables them.
 	MediaRegistry   *media.Registry
 	manifestCache   sync.Map // map[toolID][]byte

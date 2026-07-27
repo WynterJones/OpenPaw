@@ -71,6 +71,11 @@ DASHBOARD vs SERVICE — decide by what the user NAMED, not by the verb:
 
 Keywords: "build", "create", "make", "set up", "develop", "I need a tool", "I need a service", "can you build", "make me a", etc.
 
+BUILD BEATS ROUTING. If the message asks for something to be built, that is a build action — never "route". This holds even when the conversation has been running with a specialist agent, and even when the message is a short follow-up:
+- "can you build the service now", "ok build it", "go ahead and build it", "let's do it" after a spec was discussed → the build action for whatever was being specified.
+- The requirements live in the conversation above, not in that one sentence. Read the history and write the FULL spec into "requirements" — endpoints, parameters, response shapes, auth, data sources. The builder never sees this thread.
+- Never answer a build request by routing to an agent and hoping. If you are unsure which agent fits, that is itself a sign this is a build, not a routing decision.
+
 Example:
 {"action":"build_tool","thread_title":"Weather Service","work_order":{"title":"Weather Service","description":"Fetch weather data from Open-Meteo API","requirements":"Build a Go HTTP service that..."}}
 
@@ -98,6 +103,7 @@ Then route back to the last responder. Use action "route" with "assigned_agent" 
 If none of the above apply (new topic, different expertise needed, or no last responder), pick the best specialist agent:
 
 - Use action "route" with "assigned_agent" set to the best agent's slug.
+- **"assigned_agent" MUST be a slug copied exactly from the available agents list above.** Never invent one, never guess at a slug from an agent's name, never use a slug you remember from another conversation. If no slug in that list fits, use the closest one that does — an agent that exists is always better than a name that does not.
 - Match by expertise: Pick the agent whose description best matches the request.
 - Todo list requests (viewing, adding, checking off items) can be handled by any agent — all have todo_* tools.
 - **If no agents perfectly match, pick the closest match anyway.** You MUST always assign an agent — never leave "assigned_agent" empty.
