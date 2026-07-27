@@ -501,6 +501,14 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{
 				"call_tool": m.makeCallToolHandler(),
 			}
+
+			// Being able to call a service but not fix one made every stopped
+			// service the user's problem to go and solve on the Services page.
+			cfg.ExtraTools = append(cfg.ExtraTools, BuildServiceControlToolDefs()...)
+			for name, handler := range m.MakeServiceControlHandlers() {
+				cfg.ExtraHandlers[name] = handler
+			}
+			cfg.System += "\n\n---\n\n" + buildServiceControlPromptSection()
 		}
 	}
 

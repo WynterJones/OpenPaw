@@ -46,6 +46,14 @@ func (m *Manager) postBuildLifecycle(toolID, toolDir, workOrderID, builderOutput
 		return m.fallbackSummary(workOrderID, builderOutput)
 	}
 
+	// An update rebuilds a service that is almost always still running. Left
+	// alive it holds the port the new process needs — the build then reported
+	// "failed to start: service already running", while the old binary kept
+	// serving, so a successful update looked like a failure and silently didn't
+	// take effect. It also keeps `go build -o tool` from writing over a running
+	// executable. Best effort: "not running" is the normal case on a first build.
+	_ = m.ToolMgr.StopTool(toolID)
+
 	if err := m.ToolMgr.CompileTool(toolID); err != nil {
 		now := time.Now().UTC()
 		m.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID)
@@ -56,13 +64,16 @@ func (m *Manager) postBuildLifecycle(toolID, toolDir, workOrderID, builderOutput
 	if err := m.ToolMgr.StartTool(toolID); err != nil {
 		now := time.Now().UTC()
 		m.db.Exec("UPDATE tools SET status = 'error', updated_at = ? WHERE id = ?", now, toolID)
-		return fmt.Sprintf("Build and compile succeeded but **failed to start**: %s", err.Error())
+		return fmt.Sprintf("Build and compile succeeded but **failed to start**: %s%s",
+			err.Error(), m.serviceLogTail(toolID))
 	}
 
 	// 5. Wait for health (10s timeout)
 	healthy := true
 	if err := m.ToolMgr.WaitForHealth(toolID, 10*time.Second); err != nil {
-		logger.Warn("Service %s health check failed after build: %v", toolID, err)
+		// The service's own output says why; without it the only record of a
+		// service that started and fell over is a health-check timeout.
+		logger.Warn("Service %s health check failed after build: %v%s", toolID, err, m.serviceLogTail(toolID))
 		healthy = false
 	}
 

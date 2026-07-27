@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 	llm "github.com/openpaw/openpaw/internal/llm"
-	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/media"
 	"github.com/openpaw/openpaw/internal/models"
 )
 
@@ -24,6 +24,8 @@ type BroadcastFunc func(msgType string, payload interface{})
 type ToolManager interface {
 	CompileTool(toolID string) error
 	StartTool(toolID string) error
+	StopTool(toolID string) error
+	RestartTool(toolID string) error
 	WaitForHealth(toolID string, timeout time.Duration) error
 	GetStatus(toolID string) map[string]interface{}
 	CallTool(toolID, endpoint string, payload []byte) ([]byte, error)
@@ -80,8 +82,8 @@ type Manager struct {
 	// TmuxWatchFn / TmuxUnwatchFn back the tmux_watch and tmux_unwatch tools.
 	// Injected because starting a watch has to post into a chat thread, which
 	// lives in handlers — and handlers already imports this package.
-	TmuxWatchFn     TmuxWatchStarter
-	TmuxUnwatchFn   TmuxWatchStopper
+	TmuxWatchFn   TmuxWatchStarter
+	TmuxUnwatchFn TmuxWatchStopper
 	// BuildRequestFn backs request_build, letting a specialist agent hand a
 	// service or dashboard to the builder instead of telling the user to go and
 	// ask the gateway for it. Injected for the same reason as TmuxWatchFn.
