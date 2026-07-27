@@ -103,6 +103,22 @@ func ScaffoldToolDir(targetDir string, data TemplateData) error {
 	})
 }
 
+// DashboardSDKFilename is the system file every custom dashboard loads to reach
+// the host app (services, theme, storage).
+const DashboardSDKFilename = "openpaw-sdk.js"
+
+// DashboardSDK returns the canonical dashboard SDK source. It is served in
+// place of whatever copy sits in a dashboard's directory, so dashboards built
+// before an SDK change still get the current API — and a builder that edited
+// the file despite being told not to cannot break the bridge.
+func DashboardSDK() []byte {
+	content, err := dashboardTemplateFS.ReadFile("dashboard_template/" + DashboardSDKFilename)
+	if err != nil {
+		return nil
+	}
+	return content
+}
+
 // DashboardTemplateData holds the values injected into dashboard .tmpl files.
 type DashboardTemplateData struct {
 	DashboardID string

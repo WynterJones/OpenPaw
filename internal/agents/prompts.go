@@ -63,6 +63,12 @@ Does the user want to build, create, or update something? These actions are hand
 
 IMPORTANT: To UPDATE a dashboard, use "build_custom_dashboard" with the existing "dashboard_id" — NEVER use "update_tool" for dashboards. "update_tool" is ONLY for services/APIs/services listed in SYSTEM SERVICES. Check EXISTING DASHBOARDS section first when the user mentions a dashboard by name.
 
+DASHBOARD vs SERVICE — decide by what the user NAMED, not by the verb:
+- If the name they used appears in EXISTING DASHBOARDS, it is a dashboard. Use "build_custom_dashboard" with that "dashboard_id", even when they say "fix", "update", or "change".
+- If the name appears in SYSTEM SERVICES, it is a service. Use "update_tool".
+- If the name they used ends in "Dashboard", or they call it a dashboard/page/view/report, it is a dashboard — never "update_tool".
+- Bugs the user reports about a dashboard (data not saving, wrong title, broken layout) are dashboard work orders. Put the full bug description in "requirements" so the builder can fix it.
+
 Keywords: "build", "create", "make", "set up", "develop", "I need a tool", "I need a service", "can you build", "make me a", etc.
 
 Example:
@@ -450,7 +456,7 @@ Requirements: %s
 
 ## SCAFFOLD (already exists — read first)
 - index.html — HTML shell with theme CSS vars, SDK and dashboard.js imports. Modify the <body> structure as needed.
-- openpaw-sdk.js — API client: OpenPaw.callTool(), OpenPaw.getTools(), OpenPaw.refresh(), OpenPaw.theme. DO NOT MODIFY THIS FILE.
+- openpaw-sdk.js — API client: OpenPaw.callTool(), OpenPaw.getTools(), OpenPaw.storage, OpenPaw.refresh(), OpenPaw.theme. DO NOT MODIFY THIS FILE.
 - dashboard.js — Empty starter. This is your main file to build the dashboard.
 - style.css — Base styles using --op-* design tokens. Add your styles here or create new CSS files.
 
@@ -471,6 +477,32 @@ const stop = OpenPaw.refresh(callback, intervalMs)
 
 // Current theme colors as JS object
 OpenPaw.theme.surface0, .text0, .accent, etc.
+
+## SAVING DATA (OpenPaw.storage) — READ THIS IF THE DASHBOARD HAS ANY INPUT
+
+localStorage, sessionStorage, IndexedDB and cookies DO NOT WORK in this dashboard.
+It runs in a sandboxed frame with an opaque origin — they throw or silently lose everything
+on reload. A dashboard that "saves" to localStorage looks like it worked and loses the
+user's data the moment they navigate away. NEVER use them.
+
+Use OpenPaw.storage instead. It is a persistent per-dashboard key/value store kept on the
+server. Every method is async — always await:
+
+await OpenPaw.storage.set(key, value)     // value: any JSON value (object, array, string, number)
+await OpenPaw.storage.get(key, fallback?) // returns fallback (default null) when the key is unset
+await OpenPaw.storage.remove(key)
+await OpenPaw.storage.all()               // { key: value, ... } — every stored key at once
+await OpenPaw.storage.keys()
+await OpenPaw.storage.clear()
+
+Limits: 500 keys per dashboard, 512KB per value. Store a whole list under one key
+(e.g. 'products') rather than one key per row.
+
+RULES for any dashboard with forms, inputs, toggles, or editable lists:
+1. Load saved state on startup, BEFORE first render, and render from it.
+2. await the set() call and only then show a "Saved" confirmation. Never show success
+   optimistically — if the write throws, tell the user it failed.
+3. Re-read after reload to confirm the round-trip actually works.
 
 ## CRITICAL: payload keys MUST match the service's query_params names exactly.
 If a service documents param "lat", you MUST use { lat: 44.23 }, NOT { latitude: 44.23 }.
@@ -542,6 +574,24 @@ await OpenPaw.callTool(toolId, endpoint, payload?)
 await OpenPaw.getTools()
 OpenPaw.refresh(callback, intervalMs) → returns stop function
 OpenPaw.theme — current CSS vars as JS object
+
+## SAVING DATA (OpenPaw.storage)
+
+localStorage, sessionStorage, IndexedDB and cookies DO NOT WORK here — the dashboard runs in a
+sandboxed frame with an opaque origin, so they throw or silently drop everything on reload.
+If the existing code saves through any of them, that is the bug: the user sees "saved" and
+finds their data gone when they come back. Replace it with OpenPaw.storage (all async):
+
+await OpenPaw.storage.set(key, value)     // value: any JSON value
+await OpenPaw.storage.get(key, fallback?) // fallback (default null) when unset
+await OpenPaw.storage.remove(key)
+await OpenPaw.storage.all()               // { key: value, ... }
+await OpenPaw.storage.keys()
+await OpenPaw.storage.clear()
+
+Limits: 500 keys per dashboard, 512KB per value — keep a list under a single key.
+Load saved state on startup before first render, and only confirm "Saved" after the
+set() call resolves.
 
 ## LIBRARIES via esm.sh
 

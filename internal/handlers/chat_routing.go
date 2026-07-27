@@ -358,6 +358,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 
 	// If a work order is needed, spawn the appropriate agent (attributed to gateway/builder).
 	if resp.WorkOrder != nil {
+		h.retargetDashboardWorkOrder(resp)
 		h.addThreadMember(threadID, "builder")
 		majorActions := map[string]bool{"build_tool": true, "update_tool": true, "build_dashboard": true, "build_custom_dashboard": true}
 		if majorActions[resp.Action] && h.isConfirmationEnabled() {
@@ -737,6 +738,99 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 		h.saveAssistantMessage(threadID, "", "Build failed: "+err.Error(), 0, 0, 0)
 		h.endAgentWork(threadID)
 	}
+}
+
+// findWorkOrderToolID resolves the service a work order points at — the ID the
+// gateway supplied if it is real, otherwise a lookup by name. Returns "" when
+// no such service exists.
+func (h *ChatHandler) findWorkOrderToolID(wo *agents.GatewayWorkOrder) string {
+	var toolID string
+	if wo.ToolID != "" {
+		h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", wo.ToolID).Scan(&toolID)
+		if toolID != "" {
+			return toolID
+		}
+	}
+	if wo.Title == "" {
+		return ""
+	}
+	h.db.QueryRow(
+		"SELECT id FROM tools WHERE name = ? AND deleted_at IS NULL LIMIT 1", wo.Title,
+	).Scan(&toolID)
+	if toolID == "" {
+		h.db.QueryRow(
+			"SELECT id FROM tools WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' ESCAPE '\\' AND deleted_at IS NULL LIMIT 1",
+			escapeLike(wo.Title),
+		).Scan(&toolID)
+	}
+	return toolID
+}
+
+// findDashboardByTitle resolves a dashboard from a work order title — exact
+// name first, then a contains match, preferring custom dashboards. Returns the
+// dashboard's ID and type ("custom" or "config"), or ""/"" when none matches.
+func (h *ChatHandler) findDashboardByTitle(title string) (string, string) {
+	if title == "" {
+		return "", ""
+	}
+	var id, dashType string
+	h.db.QueryRow(
+		"SELECT id, dashboard_type FROM dashboards WHERE LOWER(name) = LOWER(?) ORDER BY dashboard_type = 'custom' DESC LIMIT 1",
+		title,
+	).Scan(&id, &dashType)
+	if id == "" {
+		h.db.QueryRow(
+			"SELECT id, dashboard_type FROM dashboards WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' ESCAPE '\\' ORDER BY dashboard_type = 'custom' DESC LIMIT 1",
+			escapeLike(title),
+		).Scan(&id, &dashType)
+	}
+	return id, dashType
+}
+
+// retargetDashboardWorkOrder repoints service work orders that actually name a
+// dashboard. The gateway routinely picks "update_tool" for "fix my X Dashboard"
+// even though the prompt forbids it, and the tool lookup then dead-ends on
+// "could not find an existing service" — the user's dashboard request is simply
+// dropped. A dashboard that matches the title (and no service that does) is
+// unambiguous, so correct the action here, before the confirmation card is
+// written, so the card reads "Update Dashboard" too.
+func (h *ChatHandler) retargetDashboardWorkOrder(resp *agents.GatewayResponse) {
+	if resp.WorkOrder == nil {
+		return
+	}
+	if resp.Action != "update_tool" && resp.Action != "build_tool" {
+		return
+	}
+
+	dashID, dashType := "", ""
+	if resp.WorkOrder.DashboardID != "" {
+		// The gateway named a dashboard and a service action in the same breath —
+		// the dashboard ID is the more specific signal, so trust it.
+		h.db.QueryRow(
+			"SELECT id, dashboard_type FROM dashboards WHERE id = ?", resp.WorkOrder.DashboardID,
+		).Scan(&dashID, &dashType)
+	}
+	if dashID == "" {
+		// Only fall back to the title when no real service matches it — an
+		// existing service is the gateway getting it right.
+		if h.findWorkOrderToolID(resp.WorkOrder) != "" {
+			return
+		}
+		dashID, dashType = h.findDashboardByTitle(resp.WorkOrder.Title)
+	}
+	if dashID == "" {
+		return
+	}
+
+	from := resp.Action
+	if dashType == "custom" || dashType == "" {
+		resp.Action = "build_custom_dashboard"
+	} else {
+		resp.Action = "build_dashboard"
+	}
+	resp.WorkOrder.DashboardID = dashID
+	resp.WorkOrder.ToolID = ""
+	logger.Info("Retargeted %s work order %q to %s (dashboard %s)", from, resp.WorkOrder.Title, resp.Action, dashID)
 }
 
 func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {

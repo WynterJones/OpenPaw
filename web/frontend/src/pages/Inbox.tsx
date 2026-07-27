@@ -11,7 +11,7 @@
  * nothing at all, so a broken prompt failed silently.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -28,6 +28,8 @@ import {
   RefreshCw,
   ArrowLeft,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -404,6 +406,64 @@ export function Inbox() {
   );
 }
 
+/**
+ * The prompt that produced this report. Scheduled prompts are often a full
+ * research brief — printed in full it pushed the report itself off the screen,
+ * so it is clamped to a few lines and expands on demand.
+ */
+function RequestBlock({ prompt }: { prompt: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const textRef = useRef<HTMLParagraphElement>(null);
+
+  // Only offer the toggle when the text actually overflows — a two-line prompt
+  // with a "Show more" under it reads as broken. Measured only while collapsed;
+  // expanded, the element is its full height and would always report no overflow.
+  useEffect(() => {
+    if (expanded) return;
+    const el = textRef.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [prompt, expanded]);
+
+  return (
+    <div className="mb-6 rounded-xl border border-border-0 bg-surface-1/60 px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">
+        The request
+      </p>
+      <p
+        ref={textRef}
+        className={`text-sm text-text-2 leading-relaxed whitespace-pre-wrap ${expanded ? '' : 'line-clamp-3'}`}
+      >
+        {prompt}
+      </p>
+      {(overflows || expanded) && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-text-3 hover:text-text-1 transition-colors cursor-pointer"
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <>
+              Show less
+              <ChevronUp className="w-3 h-3" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              View full request
+              <ChevronDown className="w-3 h-3" aria-hidden="true" />
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ReadingPaneProps {
   report: AppNotification;
   sender: { name: string; avatar: string; initial: string };
@@ -498,14 +558,7 @@ function ReadingPane({
 
       <div className="flex-1 overflow-y-auto px-4 py-5 md:px-8 md:py-7">
         <div className="max-w-3xl mx-auto">
-          {report.prompt && (
-            <div className="mb-6 rounded-xl border border-border-0 bg-surface-1/60 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-text-3 mb-1.5">
-                The request
-              </p>
-              <p className="text-sm text-text-2 leading-relaxed whitespace-pre-wrap">{report.prompt}</p>
-            </div>
-          )}
+          {report.prompt && <RequestBlock prompt={report.prompt} />}
 
           <div className="prose-chat">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>{report.detail || report.body}</ReactMarkdown>

@@ -69,43 +69,94 @@ export function Dashboards() {
   const isCustom = selected?.dashboard_type === 'custom';
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // The bridge below is mounted once, so it reads the current dashboard from a
+  // ref rather than closing over a selectedId that would go stale. The parent
+  // supplies the ID — a dashboard can only ever reach its own stored data.
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
   useEffect(() => {
     function handleIframeMessage(e: MessageEvent) {
       const iframe = iframeRef.current;
       if (!iframe?.contentWindow || e.source !== iframe.contentWindow) return;
 
-      const { type, id, action, toolId, endpoint, payload } = e.data || {};
+      const { type, id, action, toolId, endpoint, payload, key, value } = e.data || {};
 
       if (type === 'openpaw_request') {
         const hdrs: Record<string, string> = { 'Content-Type': 'application/json' };
         const csrfMatch = document.cookie.match(/(?:^|;\s*)openpaw_csrf=([^;]*)/);
         if (csrfMatch) hdrs['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]);
 
-        let promise: Promise<unknown>;
+        const json = (r: Response) => {
+          if (!r.ok) throw new Error('API error: ' + r.status);
+          return r.json();
+        };
+        // Sandboxed dashboards have no localStorage, so persistence runs through
+        // the host: /dashboards/{id}/storage is this dashboard's key/value store.
+        const storageUrl = (k?: string) => {
+          const dashId = selectedIdRef.current;
+          if (!dashId) throw new Error('No dashboard selected');
+          const base = `/api/v1/dashboards/${dashId}/storage`;
+          return k === undefined ? base : `${base}/${encodeURIComponent(k)}`;
+        };
 
-        switch (action) {
-          case 'callTool':
-            promise = fetch(`/api/v1/tools/${toolId}/call`, {
-              method: 'POST',
-              headers: hdrs,
-              body: JSON.stringify({ endpoint, payload: payload ? JSON.stringify(payload) : undefined }),
-              credentials: 'same-origin',
-            }).then(r => { if (!r.ok) throw new Error('API error: ' + r.status); return r.json(); });
-            break;
-          case 'getTools':
-            promise = fetch('/api/v1/tools', { headers: hdrs, credentials: 'same-origin' })
-              .then(r => { if (!r.ok) throw new Error('API error: ' + r.status); return r.json(); });
-            break;
-          default:
-            iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, error: 'Unknown action: ' + action }, window.location.origin);
-            return;
+        // Use '*' because the sandboxed iframe has a null origin and cannot
+        // receive messages targeted at a specific origin.
+        const reply = (body: Record<string, unknown>) =>
+          iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, ...body }, '*');
+
+        let promise: Promise<unknown> | null = null;
+
+        try {
+          switch (action) {
+            case 'callTool':
+              promise = fetch(`/api/v1/tools/${toolId}/call`, {
+                method: 'POST',
+                headers: hdrs,
+                body: JSON.stringify({ endpoint, payload: payload ? JSON.stringify(payload) : undefined }),
+                credentials: 'same-origin',
+              }).then(json);
+              break;
+            case 'getTools':
+              promise = fetch('/api/v1/tools', { headers: hdrs, credentials: 'same-origin' }).then(json);
+              break;
+            case 'storageGet':
+              promise = fetch(storageUrl(key), { headers: hdrs, credentials: 'same-origin' }).then(json);
+              break;
+            case 'storageSet':
+              promise = fetch(storageUrl(key), {
+                method: 'PUT',
+                headers: hdrs,
+                body: JSON.stringify({ value: value === undefined ? null : value }),
+                credentials: 'same-origin',
+              }).then(json);
+              break;
+            case 'storageRemove':
+              promise = fetch(storageUrl(key), { method: 'DELETE', headers: hdrs, credentials: 'same-origin' })
+                .then(json);
+              break;
+            case 'storageAll':
+              promise = fetch(storageUrl(), { headers: hdrs, credentials: 'same-origin' }).then(json);
+              break;
+            case 'storageClear':
+              promise = fetch(storageUrl(), { method: 'DELETE', headers: hdrs, credentials: 'same-origin' })
+                .then(json);
+              break;
+            default:
+              reply({ error: 'Unknown action: ' + action });
+              return;
+          }
+        } catch (err) {
+          reply({ error: err instanceof Error ? err.message : String(err) });
+          return;
         }
+        if (!promise) return;
 
-        // Use '*' because the sandboxed iframe has a null origin and cannot receive
-        // messages targeted at a specific origin.
         promise
-          .then(result => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, result }, '*'))
-          .catch(err => iframe.contentWindow?.postMessage({ type: 'openpaw_response', id, error: err.message }, '*'));
+          .then(result => reply({ result }))
+          .catch(err => reply({ error: err.message }));
       }
 
       if (type === 'openpaw_theme_request') {

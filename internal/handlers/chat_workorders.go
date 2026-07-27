@@ -20,7 +20,9 @@ func (h *ChatHandler) saveConfirmationMessage(threadID, userID string, resp *age
 		woType = agents.WorkOrderToolBuild
 	case "update_tool":
 		woType = agents.WorkOrderToolUpdate
-	case "build_dashboard", "build_custom_dashboard":
+	case "build_dashboard":
+		woType = agents.WorkOrderDashboardBuild
+	case "build_custom_dashboard":
 		woType = agents.WorkOrderDashboardCustomBuild
 	default:
 		return
@@ -149,28 +151,45 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 			h.threadCancels.Delete(threadID)
 		}()
 		resp := &agents.GatewayResponse{
-			Action: wo.Type,
 			WorkOrder: &agents.GatewayWorkOrder{
 				Title:        wo.Title,
 				Description:  wo.Description,
 				Requirements: wo.Requirements,
-				DashboardID:  wo.ToolID,
 			},
 		}
-		gwName := h.agentManager.GatewayName()
-		buildingMsg := gwName + " is building..."
+		// The work order stashes the target's ID in tool_id regardless of kind —
+		// hand it back to the field the handler for this kind actually reads.
 		switch wo.Type {
 		case string(agents.WorkOrderToolBuild):
 			resp.Action = "build_tool"
-			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleBuildTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
+			resp.WorkOrder.ToolID = wo.ToolID
 		case string(agents.WorkOrderToolUpdate):
 			resp.Action = "update_tool"
-			h.broadcastStatus(threadID, "spawning", buildingMsg)
-			h.handleUpdateTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
-		case string(agents.WorkOrderDashboardBuild), string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
+			resp.WorkOrder.ToolID = wo.ToolID
+		case string(agents.WorkOrderDashboardBuild):
+			resp.Action = "build_dashboard"
+			resp.WorkOrder.DashboardID = wo.ToolID
+		case string(agents.WorkOrderDashboardCustomBuild), string(agents.WorkOrderDashboardCustomUpdate):
 			resp.Action = "build_custom_dashboard"
-			h.broadcastStatus(threadID, "spawning", buildingMsg)
+			resp.WorkOrder.DashboardID = wo.ToolID
+		default:
+			return
+		}
+		// Catches rows written before routing learned to tell dashboards from
+		// services, so an old "update service" card still lands on the dashboard.
+		h.retargetDashboardWorkOrder(resp)
+
+		gwName := h.agentManager.GatewayName()
+		buildingMsg := gwName + " is building..."
+		h.broadcastStatus(threadID, "spawning", buildingMsg)
+		switch resp.Action {
+		case "build_tool":
+			h.handleBuildTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
+		case "update_tool":
+			h.handleUpdateTool(confirmCtx, threadID, userID, resp, 0, 0, 0)
+		case "build_dashboard":
+			h.handleBuildDashboard(confirmCtx, threadID, userID, resp)
+		case "build_custom_dashboard":
 			h.handleBuildCustomDashboard(confirmCtx, threadID, userID, resp, 0, 0, 0)
 		}
 	}()

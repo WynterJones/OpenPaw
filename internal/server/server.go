@@ -317,6 +317,12 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/refresh", dashboardsHandler.RefreshData)
 				r.Get("/{id}/data/{widgetId}", dashboardsHandler.GetWidgetData)
 				r.Post("/{id}/collect", dashboardsHandler.CollectData)
+				// Per-dashboard key/value store (OpenPaw.storage in the dashboard SDK)
+				r.Get("/{id}/storage", dashboardsHandler.ListStorage)
+				r.Delete("/{id}/storage", dashboardsHandler.ClearStorage)
+				r.Get("/{id}/storage/{key}", dashboardsHandler.GetStorageItem)
+				r.Put("/{id}/storage/{key}", dashboardsHandler.SetStorageItem)
+				r.Delete("/{id}/storage/{key}", dashboardsHandler.DeleteStorageItem)
 			})
 
 			// Agent Roles

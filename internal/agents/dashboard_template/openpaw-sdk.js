@@ -59,6 +59,44 @@
       return request('getTools');
     },
 
+    // Persistent per-dashboard key/value store. This dashboard runs in a
+    // sandboxed frame where localStorage and cookies do not work — anything
+    // that must survive a reload goes here. Values are any JSON-serialisable
+    // value (string, number, object, array).
+    storage: {
+      async get(key, fallback) {
+        var res = await request('storageGet', { key: String(key) });
+        if (!res || res.value === null || res.value === undefined) {
+          return fallback === undefined ? null : fallback;
+        }
+        return res.value;
+      },
+
+      async set(key, value) {
+        await request('storageSet', { key: String(key), value: value === undefined ? null : value });
+        return value;
+      },
+
+      async remove(key) {
+        await request('storageRemove', { key: String(key) });
+      },
+
+      // Every stored key at once, as a plain object: { key: value, ... }
+      async all() {
+        var res = await request('storageAll');
+        return (res && res.items) || {};
+      },
+
+      async keys() {
+        var items = await this.all();
+        return Object.keys(items);
+      },
+
+      async clear() {
+        await request('storageClear');
+      },
+    },
+
     refresh(callback, intervalMs) {
       if (typeof callback !== 'function') return;
       callback();

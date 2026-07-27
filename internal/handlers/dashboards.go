@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"mime"
@@ -244,6 +245,7 @@ func (h *DashboardsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	// Cleanup related data (CASCADE handles data_points, but clean up schedules too)
 	h.db.Exec("DELETE FROM schedules WHERE dashboard_id = ?", id)
+	h.db.Exec("DELETE FROM dashboard_storage WHERE dashboard_id = ?", id)
 
 	// Remove custom dashboard files from disk
 	if dashType == "custom" && h.dashboardsDir != "" {
@@ -288,9 +290,14 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// The SDK is a system file — always serve the canonical embedded copy rather
+	// than the one on disk, so dashboards built before an SDK change still pick
+	// up new APIs (storage, in particular) without being rebuilt.
+	isSDK := assetPath == agents.DashboardSDKFilename
+
 	// Check file exists
 	info, err := os.Stat(resolved)
-	if err != nil || info.IsDir() {
+	if !isSDK && (err != nil || info.IsDir()) {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
@@ -338,6 +345,16 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 	// and remove credentials header since * is incompatible with credentials
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Del("Access-Control-Allow-Credentials")
+
+	if isSDK {
+		sdk := agents.DashboardSDK()
+		if len(sdk) == 0 {
+			writeError(w, http.StatusInternalServerError, "dashboard SDK unavailable")
+			return
+		}
+		http.ServeContent(w, r, agents.DashboardSDKFilename, time.Time{}, bytes.NewReader(sdk))
+		return
+	}
 
 	// ServeContent rather than ServeFile: ServeFile 301-redirects any request
 	// whose path ends in "/index.html", which the iframe has to chase on every
