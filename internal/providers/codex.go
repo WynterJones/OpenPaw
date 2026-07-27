@@ -13,14 +13,14 @@ import (
 	"github.com/openpaw/openpaw/internal/mcp"
 )
 
-// Codex model IDs per canonical tier. ChatGPT-subscription accounts only
-// support the mainline gpt-5.x models (verified live against codex-cli
-// 0.139: gpt-5.4-mini, gpt-5.4, and gpt-5.5 work; -codex variants do not).
+// Codex model IDs per canonical tier. These match the current Codex CLI
+// catalog: Luna is optimized for speed, Terra for everyday balance, and Sol
+// for the most capable coding work.
 var codexModels = map[string]string{
-	"haiku":  "gpt-5.4-mini",
-	"sonnet": "gpt-5.4",
-	"opus":   "gpt-5.5",
-	"fable":  "gpt-5.5",
+	"haiku":  "gpt-5.6-luna",
+	"sonnet": "gpt-5.6-terra",
+	"opus":   "gpt-5.6-sol",
+	"fable":  "gpt-5.6-sol",
 }
 
 // CodexProvider runs inference through the OpenAI Codex CLI in headless mode
@@ -108,9 +108,12 @@ func (p *CodexProvider) ResolveModel(name, fallback string) string {
 
 func (p *CodexProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	return []llm.ModelInfo{
+		{ID: "gpt-5.6-sol", Name: "GPT-5.6 Sol (frontier)"},
+		{ID: "gpt-5.6-terra", Name: "GPT-5.6 Terra (balanced)"},
+		{ID: "gpt-5.6-luna", Name: "GPT-5.6 Luna (fast)"},
+		{ID: "gpt-5.5", Name: "GPT-5.5"},
+		{ID: "gpt-5.4", Name: "GPT-5.4"},
 		{ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini (fast)"},
-		{ID: "gpt-5.4", Name: "GPT-5.4 (balanced)"},
-		{ID: "gpt-5.5", Name: "GPT-5.5 (latest, most capable)"},
 	}, nil
 }
 
@@ -125,7 +128,18 @@ func (p *CodexProvider) RunAgentLoop(ctx context.Context, cfg llm.AgentConfig, u
 
 	var resumeID string
 	if cfg.Session != nil && p.store != nil {
-		resumeID = p.store.GetProviderSession(cfg.Session.ThreadID, cfg.Session.AgentSlug, p.Name())
+		storedID := p.store.GetProviderSession(cfg.Session.ThreadID, cfg.Session.AgentSlug, p.Name())
+		if len(cfg.ExtraHandlers) == 0 {
+			resumeID = storedID
+		} else if storedID != "" {
+			// A resumed Codex thread keeps the MCP binding from its original
+			// turn, while OpenPaw bridge credentials are deliberately
+			// single-run. Codex can list tools from the replacement bridge but
+			// executes them against the expired binding, reporting "user
+			// cancelled MCP tool call". Start tool-enabled turns fresh and
+			// replay OpenPaw history instead.
+			p.store.DeleteProviderSession(cfg.Session.ThreadID, cfg.Session.AgentSlug, p.Name())
+		}
 	}
 
 	result, sessionID, err := p.runOnce(ctx, cfg, userMessage, resumeID)
@@ -138,32 +152,15 @@ func (p *CodexProvider) RunAgentLoop(ctx context.Context, cfg llm.AgentConfig, u
 		return result, err
 	}
 
-	if cfg.Session != nil && p.store != nil && sessionID != "" {
+	if cfg.Session != nil && p.store != nil && sessionID != "" && len(cfg.ExtraHandlers) == 0 {
 		p.store.PutProviderSession(cfg.Session.ThreadID, cfg.Session.AgentSlug, p.Name(), sessionID)
 	}
 	return result, nil
 }
 
 func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMessage, resumeID string) (*llm.AgentResult, string, error) {
-	args := []string{"exec"}
-	if resumeID != "" {
-		args = append(args, "resume", resumeID)
-	}
-	args = append(args, "--json", "--skip-git-repo-check")
-
-	if model := p.ResolveModel(cfg.Model, ""); model != "" {
-		args = append(args, "-m", model)
-	}
-
-	// Mirror the trust level of the native loop: sandboxed agents get
-	// workspace-write (cwd-restricted), unsandboxed agents get full access.
-	if len(cfg.SandboxPaths) > 0 {
-		args = append(args, "--sandbox", "workspace-write")
-	} else {
-		args = append(args, "--sandbox", "danger-full-access")
-	}
-
 	var mcpSession *mcp.Session
+	var mcpURL string
 	if len(cfg.ExtraHandlers) > 0 && p.registry != nil && p.mcpBaseURL != "" {
 		mcpSession = p.registry.Create(&mcp.Session{
 			AgentSlug: sessionAgentSlug(cfg),
@@ -173,7 +170,7 @@ func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMe
 			Handlers:  cfg.ExtraHandlers,
 		})
 		defer p.registry.Release(mcpSession.Token)
-		args = append(args, "-c", fmt.Sprintf(`mcp_servers.openpaw.url=%q`, p.mcpBaseURL+mcpSession.Token))
+		mcpURL = p.mcpBaseURL + mcpSession.Token
 	}
 
 	// Codex has no system-prompt flag: embed system + history in the prompt.
@@ -189,8 +186,7 @@ func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMe
 		prompt = sb.String()
 	}
 
-	// "-" makes codex read the prompt from stdin (avoids ARG_MAX limits).
-	args = append(args, "-")
+	args := p.buildArgs(cfg, resumeID, mcpURL)
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
 	if dir := p.resolveWorkDir(cfg.WorkspaceDir, cfg.WorkDir); dir != "" {
@@ -313,6 +309,56 @@ func (p *CodexProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userMe
 	})
 
 	return result, sessionID, nil
+}
+
+// buildArgs assembles one Codex invocation. Execution policy is passed through
+// config overrides instead of `--sandbox`: `codex exec` accepts that flag, but
+// `codex exec resume` does not. The old flag made every resumed OpenPaw turn
+// fail immediately and silently fall back to a fresh Codex session.
+func (p *CodexProvider) buildArgs(cfg llm.AgentConfig, resumeID, mcpURL string) []string {
+	args := []string{"exec"}
+	if resumeID != "" {
+		args = append(args, "resume", resumeID)
+	}
+	args = append(args, "--json", "--skip-git-repo-check")
+
+	if model := p.ResolveModel(cfg.Model, ""); model != "" {
+		args = append(args, "-m", model)
+	}
+
+	// Mirror the trust level of the native loop. Approval is always "never"
+	// because this is a headless process: there is no terminal where a user can
+	// approve an MCP or shell action, so a prompt becomes "cancelled by client".
+	sandboxMode := "danger-full-access"
+	if len(cfg.SandboxPaths) > 0 {
+		sandboxMode = "workspace-write"
+	}
+	args = append(args,
+		"-c", fmt.Sprintf(`sandbox_mode=%q`, sandboxMode),
+		"-c", `approval_policy="never"`,
+	)
+	if sandboxMode == "workspace-write" && mcpURL != "" {
+		// Codex executes HTTP MCP calls under the active sandbox policy. Its
+		// workspace-write default disables network access, which makes calls to
+		// OpenPaw's loopback MCP bridge surface as "user cancelled MCP tool
+		// call". Keep filesystem isolation while allowing that bridge.
+		args = append(args, "-c", `sandbox_workspace_write.network_access=true`)
+	}
+
+	if mcpURL != "" {
+		args = append(args,
+			"-c", fmt.Sprintf(`mcp_servers.openpaw.url=%q`, mcpURL),
+			// OpenPaw is already the user-controlled host application and its
+			// tool handlers enforce their own scope. Codex 5.6 otherwise asks
+			// for a separate MCP approval for side-effecting tools; with a
+			// headless "never" approval policy that becomes an immediate
+			// client cancellation before the request reaches the bridge.
+			"-c", `mcp_servers.openpaw.default_tools_approval_mode="approve"`,
+		)
+	}
+
+	// "-" makes codex read the prompt from stdin (avoids ARG_MAX limits).
+	return append(args, "-")
 }
 
 func (p *CodexProvider) RunOneShot(ctx context.Context, model, system, prompt string) (string, *llm.UsageInfo, error) {
