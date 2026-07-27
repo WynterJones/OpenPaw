@@ -1,6 +1,6 @@
 {
   "name": "@openpaw-ai/linux-x64",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "OpenPaw binary for Linux x64",
   "os": ["linux"],
   "cpu": ["x64"],

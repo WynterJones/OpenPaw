@@ -94,3 +94,16 @@ jobs:
           releaseBody: "Desktop release for ${{ github.ref_name }}"
           releaseDraft: false
           prerelease: false
+
+      - name: Notarize, staple, and replace macOS DMG
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          ./scripts/notarize-dmg.sh
+          DMG_PATH="$(find desktop/src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          gh release upload "$GITHUB_REF_NAME" "$DMG_PATH" --clobber

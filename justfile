@@ -241,6 +241,7 @@ desktop-build: desktop-sidecar
 # Override the cert with APPLE_SIGNING_IDENTITY=... if needed.
 desktop-release: desktop-sidecar
     cd desktop && APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-Developer ID Application: Wynter Jones (7X2UF4FZHC)}" npm run tauri build
+    ./scripts/notarize-dmg.sh
 
 # Clean desktop build artifacts
 desktop-clean:
