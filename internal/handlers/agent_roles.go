@@ -45,7 +45,11 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	var args []interface{}
 	var conditions []string
 	if enabledOnly {
-		conditions = append(conditions, "enabled = 1")
+		// The gateway is never filtered out. It is not an optional participant
+		// — it routes every thread and posts in its own name — and the chat
+		// resolves its avatar and name from this list. Dropped, gateway
+		// messages fall back to the stock avatar instead of the user's own.
+		conditions = append(conditions, "(enabled = 1 OR slug = 'builder')")
 	}
 	conditions = append(conditions, "(workspace_id IS NULL OR workspace_id = ?)")
 	args = append(args, h.db.ActiveWorkspaceID())

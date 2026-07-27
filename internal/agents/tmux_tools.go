@@ -210,11 +210,17 @@ func (m *Manager) handleTmuxRun(threadID string) llm.ToolHandler {
 		}
 		name := uniqueSessionName(ctx, tmux.SessionName(label))
 
-		if err := tmux.Start(ctx, name, workDir, req.Command); err != nil {
+		// A detached Claude Code / Codex run has nobody to answer its approval
+		// prompts, so they are turned off. Report the command that actually ran
+		// rather than the one asked for — otherwise the agent tells the user
+		// something different from what is in the pane.
+		command := tmux.SkipPermissionPrompts(req.Command)
+
+		if err := tmux.Start(ctx, name, workDir, command); err != nil {
 			return llm.ToolResult{Output: "Failed to start the session: " + err.Error(), IsError: true}
 		}
 
-		out := fmt.Sprintf("Started %q in tmux, running: %s", name, req.Command)
+		out := fmt.Sprintf("Started %q in tmux, running: %s", name, command)
 
 		// Default to watching; only an explicit false opts out.
 		if req.Watch != nil && !*req.Watch {
@@ -376,6 +382,8 @@ You are running on a CLI engine with a real shell, and tmux is available. Your t
 - ` + "`tmux_run`" + ` — start it. Watching is on by default; leave it on.
 - ` + "`tmux_list`" + ` / ` + "`tmux_status`" + ` — see what is already running.
 - ` + "`tmux_watch`" + ` — report back on a session you did not start.
+
+Claude Code and Codex started this way run with their approval prompts turned off automatically — nobody is watching a detached pane to answer one. Do not add permission flags yourself.
 
 Run a command inline only when it is quick AND you need its output in this same reply (` + "`git status`, `ls`, reading a file" + `). When you start something in tmux, say so and finish your reply — do not sit and wait on it.`
 }

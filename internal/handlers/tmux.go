@@ -290,8 +290,13 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 }
 
 // reportTmux posts the watcher's finding into the thread as an assistant message.
+//
+// Attributed to the gateway, because that is who is speaking: the watch belongs
+// to the thread, not to whichever agent happened to start the session. Without
+// a slug the message has no identity at all and renders under the stock avatar
+// rather than the user's own gateway.
 func (h *ChatHandler) reportTmux(wch *tmuxWatch, message string) {
-	h.saveAssistantMessage(wch.ThreadID, "", message, 0, 0, 0)
+	h.saveAssistantMessage(wch.ThreadID, gatewayRoleSlug, message, 0, 0, 0)
 	h.broadcastStatus(wch.ThreadID, "message_saved", "")
 	h.broadcastStatus(wch.ThreadID, "done", "")
 	logger.Info("tmux watch on %s reported into thread %s", wch.Session, wch.ThreadID)

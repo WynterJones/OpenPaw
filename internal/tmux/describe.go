@@ -5,9 +5,32 @@ import (
 	"strings"
 )
 
+// BlockedOn names the prompt a session is sitting on, or "" if it is not on one
+// we recognise.
+//
+// Worth singling out because the generic "looks stalled, probably waiting on
+// input" sends the user to attach and find out what, when the pane already
+// says. The folder-trust dialog in particular is not covered by
+// --dangerously-skip-permissions — an interactive Claude Code in a directory it
+// has not seen before stops here no matter what, so a detached session waits
+// forever with no indication of why.
+func BlockedOn(pane string) string {
+	switch {
+	case strings.Contains(pane, "Yes, I trust this folder"),
+		strings.Contains(pane, "Claude Code'll be able to"):
+		return "It is waiting on Claude Code's \"do you trust this folder?\" prompt, " +
+			"which is asked once per directory and is not covered by the skip-permissions flag. " +
+			"Attach and answer it, or run Claude Code in that directory once by hand."
+	}
+	return ""
+}
+
 // Describe renders the parsed status, falling back to the raw tail.
 func Describe(session, pane string) string {
 	var b strings.Builder
+	if blocked := BlockedOn(pane); blocked != "" {
+		b.WriteString(blocked + "\n\n")
+	}
 	if st := ParseStatus(pane); st != nil {
 		b.WriteString("Current state:\n")
 		if st.Project != "" {

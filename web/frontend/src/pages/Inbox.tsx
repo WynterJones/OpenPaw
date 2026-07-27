@@ -35,6 +35,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { notificationsApi, api, type AppNotification, type AgentRole, type WSMessage } from '../lib/api';
 import { useWebSocket } from '../lib/useWebSocket';
+import { resolveMessageRole } from '../lib/chatUtils';
 import { markdownLinkComponents } from '../components/MarkdownLink';
 
 type Folder = 'all' | 'unread' | 'archived';
@@ -74,7 +75,7 @@ function fullTime(dateStr: string): string {
 function useSender(roles: AgentRole[]) {
   return useCallback(
     (slug: string) => {
-      const role = roles.find(r => r.slug === slug);
+      const role = resolveMessageRole(roles, slug);
       return {
         name: role?.name || slug || 'OpenPaw',
         avatar: role?.avatar_path || '',
@@ -319,31 +320,53 @@ export function Inbox() {
                 const s = sender(n.source_agent_slug);
                 const failed = n.priority === 'high';
                 const active = n.id === selectedId;
+                const unread = !n.read;
                 return (
                   <button
                     key={n.id}
                     onClick={() => select(n)}
-                    className={`w-full text-left flex items-start gap-3 px-3 py-3 border-b border-border-0 transition-colors cursor-pointer ${
-                      active ? 'bg-accent-muted' : n.read ? 'hover:bg-surface-2/40' : 'bg-accent-primary/5 hover:bg-accent-primary/10'
+                    // Unread carries three signals at once — an accent rail, a
+                    // dot, and heavier type — because the tint alone was doing
+                    // all the work and, at 5% of the accent, was easy to miss.
+                    // The rail is a transparent border when read, so nothing
+                    // shifts sideways as items are opened. Selection keeps the
+                    // filled background to itself; the two states have to stay
+                    // tellable apart when a read item is selected.
+                    className={`w-full text-left flex items-start gap-3 pl-2.5 pr-3 py-3 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
+                      unread ? 'border-l-accent-primary' : 'border-l-transparent'
+                    } ${
+                      active
+                        ? 'bg-accent-muted'
+                        : unread
+                          ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
+                          : 'hover:bg-surface-2/40'
                     }`}
                   >
                     <Avatar src={s.avatar} initial={s.initial} size="w-8 h-8 text-xs" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className={`text-xs truncate ${n.read ? 'text-text-2' : 'text-text-0 font-semibold'}`}>
+                        <span className={`text-xs truncate ${unread ? 'text-text-0 font-semibold' : 'text-text-2'}`}>
                           {s.name}
                         </span>
-                        <span className="ml-auto text-[10px] text-text-3 flex-shrink-0">{timeAgo(n.created_at)}</span>
+                        <span className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                          {unread && (
+                            <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
+                          )}
+                          <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
+                        </span>
                       </div>
                       <p
                         className={`text-sm leading-snug truncate mt-0.5 flex items-center gap-1.5 ${
-                          n.read ? 'text-text-1' : 'text-text-0 font-medium'
+                          unread ? 'text-text-0 font-semibold' : 'text-text-1'
                         }`}
                       >
                         {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
                         <span className="truncate">{n.title}</span>
+                        {unread && <span className="sr-only">— unread</span>}
                       </p>
-                      <p className="text-xs text-text-3 mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
+                      <p className={`text-xs mt-0.5 line-clamp-2 leading-relaxed ${unread ? 'text-text-2' : 'text-text-3'}`}>
+                        {n.body}
+                      </p>
                     </div>
                   </button>
                 );

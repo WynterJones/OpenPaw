@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -259,4 +260,49 @@ func TestList_FindsARunningSession(t *testing.T) {
 		return
 	}
 	t.Fatalf("session %q missing from List (%d sessions returned)", name, len(sessions))
+}
+
+// Start must not type the command into a shell.
+//
+// send-keys raced the shell's own startup: the characters arrived while zsh was
+// still sourcing its rc files, which swallowed the first few, so "exit 3" ran
+// as "xit 3" and came back 127 — and a real build command could disappear
+// entirely, leaving a session sitting at a prompt having run nothing. It was
+// timing-dependent, so it looked like flakiness rather than the data loss it
+// was. Several sessions in quick succession is what made it show up reliably.
+func TestStart_DoesNotRaceTheShellStartup(t *testing.T) {
+	if !Available() {
+		t.Skip("tmux not installed")
+	}
+	ctx := context.Background()
+
+	const runs = 5
+	names := make([]string, runs)
+	for i := range names {
+		names[i] = fmt.Sprintf("openpaw-test-race-%d-%s", i, strconv.FormatInt(time.Now().UnixNano(), 36))
+		name := names[i]
+		t.Cleanup(func() { run(ctx, "kill-session", "-t", name) })
+		// A leading character that changes the meaning of the command if lost:
+		// "exit 7" survives as "xit 7", which is 127, not 7.
+		if err := Start(ctx, name, t.TempDir(), "exit 7"); err != nil {
+			t.Fatalf("Start %s: %v", name, err)
+		}
+	}
+
+	for _, name := range names {
+		var dead, ok bool
+		var status int
+		for i := 0; i < 100; i++ {
+			if dead, status, ok = Finished(ctx, name); ok && dead {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !ok || !dead {
+			t.Fatalf("%s: Finished = (dead %v, ok %v), want a dead pane", name, dead, ok)
+		}
+		if status != 7 {
+			t.Errorf("%s: exit status = %d, want 7 — 127 means the command was mangled on its way in", name, status)
+		}
+	}
 }

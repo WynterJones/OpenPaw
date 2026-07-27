@@ -1,4 +1,25 @@
-import type { StreamEvent } from './api';
+import type { AgentRole, StreamEvent } from './api';
+
+/**
+ * The slugs the backend uses when the gateway itself is speaking.
+ *
+ * The gateway answers to several names — 'builder' is its row in agent_roles,
+ * 'gateway' and 'pounce' are how the routing code refers to it, and an
+ * unattributed assistant message is the gateway too (a routing error, a tmux
+ * watch reporting back). They all resolve to one identity.
+ */
+const GATEWAY_SLUGS = ['', 'builder', 'gateway', 'pounce'];
+
+/**
+ * Resolves a message's agent slug to the role whose name and avatar it should
+ * wear. Gateway aliases collapse onto the gateway role, so a message from it
+ * shows the user's chosen avatar instead of falling through to the stock one.
+ */
+export function resolveMessageRole(roles: AgentRole[], slug?: string | null): AgentRole | null {
+  const s = slug ?? '';
+  if (!GATEWAY_SLUGS.includes(s)) return roles.find(r => r.slug === s) ?? null;
+  return roles.find(r => r.slug === 'builder') ?? null;
+}
 
 export function timeAgo(dateStr: string): string {
   const now = Date.now();

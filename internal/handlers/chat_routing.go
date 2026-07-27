@@ -20,6 +20,11 @@ import (
 	"github.com/openpaw/openpaw/internal/skillssh"
 )
 
+// gatewayRoleSlug is the agent_roles row the gateway's identity — its name and
+// the user's chosen avatar — lives in. Messages the gateway posts carry it so
+// the chat can render them as the gateway rather than as an anonymous reply.
+const gatewayRoleSlug = "builder"
+
 func (h *ChatHandler) loadRolesCache() []struct{ slug, name string } {
 	h.roleCache.RLock()
 	if time.Now().Before(h.roleCache.expiresAt) {

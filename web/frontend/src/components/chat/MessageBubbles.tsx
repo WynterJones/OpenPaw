@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
 import { parseConfirmation, parseToolSummary, parseWidgets } from '../../lib/api';
-import { cleanToolColons, type StreamingTool, type CostInfo } from '../../lib/chatUtils';
+import { cleanToolColons, resolveMessageRole, type StreamingTool, type CostInfo } from '../../lib/chatUtils';
 import { mentionComponents } from './MentionSystem';
 import { ToolActivityPanel, StreamingToolPanel } from './ToolPanels';
 import { ConfirmationCardUI, ToolSummaryCardUI } from './Cards';
@@ -285,7 +285,7 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
 
 export function MessageBubble({ message, roles, onRefresh, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
   const isUser = message.role === 'user';
-  const role = message.agent_role_slug ? roles.find(r => r.slug === message.agent_role_slug) : null;
+  const role = resolveMessageRole(roles, message.agent_role_slug);
 
   const [toolsOpen, setToolsOpen] = useState(false);
 
@@ -302,11 +302,11 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
     <div className="flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
         <div className="w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
-          {role ? (
-            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
-          ) : (
-            <img src={roles.find(r => r.slug === 'builder')?.avatar_path || '/gateway-avatar.png'} alt="AI" className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
-          )}
+          <img
+            src={role?.avatar_path || '/gateway-avatar.png'}
+            alt={role?.name || 'AI'}
+            className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover"
+          />
         </div>
         {role && (
           <p className="text-sm font-semibold text-accent-primary md:hidden">{role.name}</p>

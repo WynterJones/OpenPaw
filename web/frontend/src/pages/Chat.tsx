@@ -25,7 +25,7 @@ import { companionStore } from '../lib/companionStore';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
-import { timeAgo, getToolDetail } from '../lib/chatUtils';
+import { timeAgo, getToolDetail, resolveMessageRole } from '../lib/chatUtils';
 import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbles';
 import { TmuxSessionCard } from '../components/chat/TmuxSessionCard';
 import { CanvasPanel } from '../components/chat/CanvasPanel';
@@ -1492,8 +1492,8 @@ export function Chat() {
     return '';
   }, [messages]);
   const thinkingRole =
-    (activeAgentSlug ? roles.find(r => r.slug === activeAgentSlug) : undefined) ??
-    (lastAssistantSlug ? roles.find(r => r.slug === lastAssistantSlug) : undefined) ??
+    (activeAgentSlug ? resolveMessageRole(roles, activeAgentSlug) : null) ??
+    (lastAssistantSlug ? resolveMessageRole(roles, lastAssistantSlug) : null) ??
     activeRole;
   // Provider-aware usage bar: CLI subscription providers (Claude Code / Codex) have
   // no per-token cost and a 1M context window; OpenRouter uses the model's window.

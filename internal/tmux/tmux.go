@@ -81,6 +81,11 @@ func List(ctx context.Context) ([]Session, error) {
 		return nil, nil
 	}
 
+	// What each session is running, from the process tree — available from the
+	// moment the CLI launches, rather than once it has drawn enough of itself
+	// to be recognised.
+	kinds := kindForPanes(ctx)
+
 	var sessions []Session
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -90,7 +95,7 @@ func List(ctx context.Context) ([]Session, error) {
 		if len(parts) < 4 {
 			continue
 		}
-		s := Session{Name: parts[3], Kind: "shell"}
+		s := Session{Name: parts[3], Kind: kinds[parts[3]]}
 		s.Windows, _ = strconv.Atoi(parts[0])
 		if secs, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
 			s.Created = time.Unix(secs, 0)
@@ -99,8 +104,13 @@ func List(ctx context.Context) ([]Session, error) {
 
 		if pane, err := run(ctx, "capture-pane", "-p", "-t", s.Name); err == nil {
 			s.Tail = tail(pane, tailLines)
-			s.Kind = detectKind(pane)
+			if s.Kind == "" {
+				s.Kind = detectKind(pane)
+			}
 			s.Status = ParseStatus(pane)
+		}
+		if s.Kind == "" {
+			s.Kind = "shell"
 		}
 		sessions = append(sessions, s)
 	}
@@ -169,11 +179,23 @@ func Exists(ctx context.Context, name string) bool {
 // status and last output are still readable — a session that vanished on
 // completion would be indistinguishable from one that never started.
 //
-// The command is typed into an idle shell rather than passed to new-session,
-// because remain-on-exit can only be set on a session that already exists.
-// Launching the command directly races it: a quick one exits before the option
-// lands, the session disappears, and the output and exit status are gone. An
-// idle shell cannot outrun the setup.
+// It takes three steps, and the shape is forced. remain-on-exit can only be set
+// on a session that already exists, so the command cannot simply be handed to
+// new-session: a quick one would exit before the option landed, taking its
+// output and status with it. So an idle pane is created first, the option is
+// set on it, and only then is the command put in its place.
+//
+// That last step is respawn-pane, NOT send-keys. Typing into the idle shell
+// raced its startup: the shell is still sourcing its rc files when the
+// characters arrive and it swallows the first few, so "exit 3" ran as "xit 3"
+// and a build command could vanish entirely — leaving a session that reported
+// "command not found" (127), or one that sat at a prompt having run nothing at
+// all, which the watcher then dutifully reported as stalled. respawn-pane hands
+// tmux the command as an argument and makes it the pane's own process, so there
+// is nothing to race and pane_dead_status is the command's real exit status.
+//
+// A Claude Code or Codex command is rewritten to skip its approval prompts —
+// see SkipPermissionPrompts. Nobody is watching a detached pane to answer one.
 func Start(ctx context.Context, name, workDir, command string) error {
 	if !Available() {
 		return errors.New("tmux is not installed")
@@ -187,8 +209,9 @@ func Start(ctx context.Context, name, workDir, command string) error {
 	if Exists(ctx, name) {
 		return fmt.Errorf("a tmux session named %q is already running", name)
 	}
+	command = SkipPermissionPrompts(command)
 
-	// 1. An idle shell, which will sit there indefinitely.
+	// 1. An idle pane, which will sit there indefinitely.
 	args := []string{"new-session", "-d", "-s", name}
 	if workDir != "" {
 		args = append(args, "-c", workDir)
@@ -202,12 +225,19 @@ func Start(ctx context.Context, name, workDir, command string) error {
 	//    completion, which the watcher still detects.
 	run(ctx, "set-option", "-t", name, "remain-on-exit", "on")
 
-	// 3. Type the command. The trailing "exit $?" hands the command's own
-	//    status to the pane, which is what pane_dead_status then reports —
-	//    without it every run would look like it succeeded.
-	if _, err := run(ctx, "send-keys", "-t", name, command+"; exit $?", "Enter"); err != nil {
-		run(ctx, "kill-session", "-t", name)
-		return fmt.Errorf("tmux send-keys failed: %w", err)
+	// 3. Replace the idle shell with the command itself.
+	respawn := []string{"respawn-pane", "-k", "-t", name}
+	if workDir != "" {
+		respawn = append(respawn, "-c", workDir)
+	}
+	respawn = append(respawn, command)
+	if _, err := run(ctx, respawn...); err != nil {
+		// -c on respawn-pane needs tmux 2.6. Without it the pane still starts
+		// in the right place, because new-session already put it there.
+		if _, err2 := run(ctx, "respawn-pane", "-k", "-t", name, command); err2 != nil {
+			run(ctx, "kill-session", "-t", name)
+			return fmt.Errorf("tmux respawn-pane failed: %w", err)
+		}
 	}
 	return nil
 }
@@ -262,17 +292,6 @@ func run(ctx context.Context, args ...string) (string, error) {
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "tmux", args...).Output()
 	return string(out), err
-}
-
-func detectKind(pane string) string {
-	switch {
-	case strings.Contains(pane, "auto mode on"), strings.Contains(pane, "(shift+tab to cycle)"):
-		return "claude"
-	case strings.Contains(pane, "codex"), strings.Contains(pane, "Codex"):
-		return "codex"
-	default:
-		return "shell"
-	}
 }
 
 func tail(pane string, n int) []string {
