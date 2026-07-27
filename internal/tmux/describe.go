@@ -8,9 +8,10 @@ import (
 // BlockedOn names the prompt a session is sitting on, or "" if it is not on one
 // we recognise.
 //
-// Worth singling out because the generic "looks stalled, probably waiting on
-// input" sends the user to attach and find out what, when the pane already
-// says. The folder-trust dialog in particular is not covered by
+// Worth singling out because the watcher otherwise reports a quiet pane
+// without claiming to know why — correct, but unhelpful when the pane says
+// exactly why right there on screen. The folder-trust dialog in particular is
+// not covered by
 // --dangerously-skip-permissions — an interactive Claude Code in a directory it
 // has not seen before stops here no matter what, so a detached session waits
 // forever with no indication of why.
@@ -55,8 +56,17 @@ func Describe(session, pane string) string {
 		b.WriteString("\n")
 	}
 
+	// An empty pane is a real state, not a missing one — a detached TUI often
+	// draws nothing until a terminal attaches. Rendering it as an empty code
+	// block read as "the output is broken"; say what it means instead.
+	lines := lastLines(pane, 8)
+	if len(lines) == 0 {
+		b.WriteString("Last output: nothing has been drawn to the pane yet.")
+		return b.String()
+	}
+
 	b.WriteString("Last output:\n```\n")
-	for _, l := range lastLines(pane, 8) {
+	for _, l := range lines {
 		b.WriteString(l + "\n")
 	}
 	b.WriteString("```")

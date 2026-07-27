@@ -312,6 +312,7 @@ func tail(pane string, n int) []string {
 func ParseStatus(pane string) *Status {
 	var st Status
 	found := false
+	sawProject := false
 
 	for _, raw := range strings.Split(pane, "\n") {
 		line := strings.TrimSpace(raw)
@@ -319,7 +320,11 @@ func ParseStatus(pane string) *Status {
 		case strings.Contains(line, "╭╼"):
 			parseProjectLine(after(line, "╭╼"), &st)
 			found = true
-		case strings.Contains(line, "╰─"):
+			sawProject = true
+		// Only the second half of a status block, never on its own: a powerline
+		// shell prompt ("╰───╼ $ ; exit $?") is the same box-drawing run, and
+		// taken alone it parsed as a session whose model was "$ ; exit $?".
+		case sawProject && strings.Contains(line, "╰─"):
 			parseModelLine(afterArrow(line), &st)
 			found = true
 		case strings.Contains(line, "⏵⏵"):
@@ -327,7 +332,12 @@ func ParseStatus(pane string) *Status {
 			found = true
 		}
 	}
-	if !found {
+	// Matching a marker is not the same as parsing something. A powerline shell
+	// prompt ("╰───╼ $") contains the same box-drawing run as the model line, so
+	// a plain shell came back with a Status whose every field was empty — which
+	// the card renders as a blank metadata row and Describe as a "Current state:"
+	// heading with nothing under it. An all-zero parse means it wasn't one.
+	if !found || st == (Status{}) {
 		return nil
 	}
 	return &st

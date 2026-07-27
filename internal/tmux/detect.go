@@ -73,9 +73,21 @@ type procTable struct {
 	command  map[int]string
 }
 
-// kindUnder walks pid's descendants for a CLI we recognise. The pane's own
-// process is the shell; what we are after is what the shell launched, which may
-// be a grandchild ("bash -lc 'claude …'").
+// kindUnder walks pid and its descendants for a CLI we recognise. The pane's
+// process may be a shell that launched the CLI ("bash -lc 'claude …'"), so
+// descendants count — but it may equally be the CLI itself.
+//
+// The pane process used to be skipped, on the theory that it is always the
+// shell. It is not: Start uses respawn-pane, which makes the command the pane's
+// own process, so a session this app started has pane_pid pointing straight at
+// `claude`. Skipping it meant the process tree never recognised the very
+// sessions the app launches, detection fell through to pane text, and a session
+// that had not painted anything yet — a detached CLI still starting up — read
+// as a plain shell and the card above the composer stayed hidden.
+//
+// Matching the pane process is safe because command names come from ps `comm`,
+// which is the executable, not the working directory: a shell opened in
+// ~/claude is still `zsh`.
 func (t procTable) kindUnder(pid int) string {
 	// Depth is bounded by the walk itself, but a corrupt table could in
 	// principle cycle; the visited set makes that impossible.
@@ -89,13 +101,11 @@ func (t procTable) kindUnder(pid int) string {
 		}
 		visited[cur] = true
 
-		if cur != pid {
-			switch path.Base(t.command[cur]) {
-			case "claude":
-				return "claude"
-			case "codex":
-				return "codex"
-			}
+		switch path.Base(t.command[cur]) {
+		case "claude":
+			return "claude"
+		case "codex":
+			return "codex"
 		}
 		stack = append(stack, t.children[cur]...)
 	}

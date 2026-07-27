@@ -1,6 +1,59 @@
 package handlers
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+// A quiet pane is not evidence of a stall — the CLI may be thinking, or a build
+// step may simply print nothing. The report must describe, not conclude.
+func TestQuietReport_DoesNotClaimAStall(t *testing.T) {
+	got := quietReport("build", "✻ Sautéed for 2s\n", 3*time.Minute)
+
+	// "waiting on input" is fine as one listed possibility; asserting it is not.
+	for _, banned := range []string{"stalled", "most likely", "looks like it"} {
+		if strings.Contains(strings.ToLower(got), banned) {
+			t.Errorf("report asserts %q, which it cannot know:\n%s", banned, got)
+		}
+	}
+	if !strings.Contains(got, "I can't tell") {
+		t.Errorf("report does not admit the uncertainty:\n%s", got)
+	}
+	if !strings.Contains(got, "Check-in") {
+		t.Errorf("report is not framed as a check-in:\n%s", got)
+	}
+	if !strings.Contains(got, "tmux attach -t build") {
+		t.Errorf("report does not say how to look for yourself:\n%s", got)
+	}
+}
+
+// An empty pane is the normal state of a detached TUI nobody has attached to,
+// and reading it as trouble is what made a healthy session look broken.
+func TestQuietReport_EmptyPaneIsNotTreatedAsTrouble(t *testing.T) {
+	got := quietReport("rb-ads-fix", "   \n\n", 3*time.Minute)
+
+	if !strings.Contains(got, "normal") {
+		t.Errorf("an empty pane is not explained as normal:\n%s", got)
+	}
+	if strings.Contains(got, "```") {
+		t.Errorf("an empty pane rendered as an empty code block:\n%s", got)
+	}
+}
+
+// When the pane names the prompt it is sitting on, that is a fact rather than a
+// guess, and hedging it would bury the one actionable thing on screen.
+func TestQuietReport_StatesARecognisedPromptPlainly(t *testing.T) {
+	pane := " Claude Code'll be able to read, edit, and execute files here.\n ❯ 1. Yes, I trust this folder\n"
+	got := quietReport("build", pane, 3*time.Minute)
+
+	if !strings.Contains(got, "sitting on a prompt") {
+		t.Errorf("a recognised prompt was not stated plainly:\n%s", got)
+	}
+	if strings.Contains(got, "I can't tell which") {
+		t.Errorf("hedged about a prompt it had already identified:\n%s", got)
+	}
+}
 
 // The old ceiling was 600s, so an agent asked to "check back in 15 minutes"
 // silently got 10. Zero means unspecified and takes the default, not the floor.

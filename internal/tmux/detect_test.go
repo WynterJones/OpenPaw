@@ -76,12 +76,25 @@ func TestKindUnder_WalksDescendants(t *testing.T) {
 	}
 }
 
-// The pane's own process is the shell, and a shell that happens to be named
-// "claude" (a session opened in ~/claude, say) is not a Claude Code session.
-func TestKindUnder_IgnoresThePaneProcessItself(t *testing.T) {
+// Start uses respawn-pane, so the CLI *is* the pane's own process — pane_pid
+// points straight at `claude`, with no shell in between. This is the shape of
+// every session the app itself launches, and skipping the pane process meant
+// none of them were recognised.
+func TestKindUnder_MatchesThePaneProcessItself(t *testing.T) {
 	table := procTable{
 		children: map[int][]int{},
 		command:  map[int]string{100: "claude"},
+	}
+	if got := table.kindUnder(100); got != "claude" {
+		t.Errorf("kindUnder = %q, want claude", got)
+	}
+}
+
+// A pane running an ordinary shell is still not a CLI session.
+func TestKindUnder_PlainShellIsNotACLI(t *testing.T) {
+	table := procTable{
+		children: map[int][]int{100: {200}},
+		command:  map[int]string{100: "zsh", 200: "vim"},
 	}
 	if got := table.kindUnder(100); got != "" {
 		t.Errorf("kindUnder = %q, want empty", got)

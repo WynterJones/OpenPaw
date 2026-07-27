@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -230,10 +231,9 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 
 	var lastPane string
 	unchanged := 0
-	// A session that hasn't moved for this many consecutive checks is treated as
-	// stalled — usually a prompt waiting on a human, which is exactly the case
-	// worth surfacing.
-	const stalledAfter = 3
+	// How many consecutive checks with an unchanged pane before reporting in.
+	// What that means is deliberately not decided here — see quietReport.
+	const quietAfter = 3
 
 	for {
 		select {
@@ -247,7 +247,8 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 
 		if !tmux.Exists(ctx, wch.Session) {
 			h.reportTmux(wch, fmt.Sprintf(
-				"The tmux session `%s` has finished — it is no longer running. I stopped watching it after %d checks.",
+				"**Check-in — tmux session `%s`**\n\nThe session is gone, so whatever was running in it has ended. "+
+					"I checked %d times and have stopped watching.",
 				wch.Session, wch.Checks))
 			return
 		}
@@ -262,12 +263,12 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 		// Without this the run would be reported as *stalled* three checks later
 		// — and with no exit status, which is the one thing worth knowing.
 		if dead, status, ok := tmux.Finished(ctx, wch.Session); ok && dead {
-			outcome := "finished successfully"
+			outcome := "The command finished successfully (exit status 0)."
 			if status != 0 {
-				outcome = fmt.Sprintf("failed with exit status %d", status)
+				outcome = fmt.Sprintf("The command failed with exit status %d.", status)
 			}
 			h.reportTmux(wch, fmt.Sprintf(
-				"The tmux session `%s` %s.\n\n%s",
+				"**Check-in — tmux session `%s`**\n\n%s\n\n%s",
 				wch.Session, outcome, tmux.Describe(wch.Session, pane)))
 			return
 		}
@@ -279,14 +280,48 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 			lastPane = pane
 		}
 
-		if unchanged >= stalledAfter {
-			summary := tmux.Describe(wch.Session, pane)
-			h.reportTmux(wch, fmt.Sprintf(
-				"The tmux session `%s` hasn't changed in %s — it looks stalled, most likely waiting on input.\n\n%s",
-				wch.Session, (time.Duration(stalledAfter)*interval).String(), summary))
+		if unchanged >= quietAfter {
+			h.reportTmux(wch, quietReport(
+				wch.Session, pane, time.Duration(quietAfter)*interval))
 			return
 		}
 	}
+}
+
+// quietReport is what the watcher says when a session is still running but the
+// pane has not changed for a while.
+//
+// It used to call that "stalled, most likely waiting on input", which is a
+// guess dressed as a finding — and often a wrong one. A pane sits still while
+// the CLI thinks, while a long build step produces no output, and (for a
+// detached TUI that has not been attached yet) before it has drawn anything at
+// all. Reporting those as stalled sent people to attach to a session that was
+// working fine, and told the agent something untrue about its own build.
+//
+// So the report states what was observed and leaves the conclusion open —
+// except when BlockedOn recognises the actual prompt on screen, which is a fact
+// rather than an inference and is worth saying plainly.
+func quietReport(session, pane string, quiet time.Duration) string {
+	head := fmt.Sprintf("**Check-in — tmux session `%s`**\n\n", session)
+
+	if blocked := tmux.BlockedOn(pane); blocked != "" {
+		return head + fmt.Sprintf(
+			"It has been sitting on a prompt for %s. %s\n\n%s",
+			quiet, blocked, tmux.Describe(session, pane))
+	}
+
+	reason := "That is not in itself a problem: a pane sits still while the CLI thinks, " +
+		"while a step prints nothing, and while it waits for someone to type. " +
+		"I can't tell which of those it is from out here."
+	if strings.TrimSpace(pane) == "" {
+		reason = "Nothing has been drawn to it at all, which is normal for a TUI that nobody " +
+			"has attached to yet — some only paint once a terminal is attached."
+	}
+
+	return head + fmt.Sprintf(
+		"Still running, with nothing new on screen for %s. %s\n\n"+
+			"Attach with `tmux attach -t %s` to see what it is actually doing. I have stopped watching.\n\n%s",
+		quiet, reason, session, tmux.Describe(session, pane))
 }
 
 // reportTmux posts the watcher's finding into the thread as an assistant message.

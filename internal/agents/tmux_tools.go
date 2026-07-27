@@ -100,8 +100,9 @@ func buildTmuxRunDef() llm.ToolDef {
 			},
 			"watch": map[string]interface{}{
 				"type": "boolean",
-				"description": "Report back into this chat when the command finishes or stalls. " +
-					"Defaults to true — leave it on unless the user only wants the session started.",
+				"description": "Report back into this chat when the command finishes, or check in if it " +
+					"goes quiet for a while. Defaults to true — leave it on unless the user only wants " +
+					"the session started.",
 				"default": true,
 			},
 		},
@@ -153,7 +154,9 @@ func buildTmuxWatchDef() llm.ToolDef {
 		Type: "function",
 		Function: llm.FunctionDef{
 			Name: "tmux_watch",
-			Description: "Watch a tmux session and report back into this chat when it finishes or stalls. " +
+			Description: "Watch a tmux session and report back into this chat when it finishes, or check " +
+				"in if it goes quiet for a while. A quiet session has not necessarily stalled — the " +
+				"check-in reports what is on screen and leaves the reading to you. " +
 				"USE THIS whenever you want to check on a session later. Your turn ends when you reply, " +
 				"so you cannot check back on your own — this schedules a server-side poll that outlives " +
 				"the turn and posts the result here. Say that you have set it up, then stop; do not " +

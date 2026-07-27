@@ -306,3 +306,12 @@ func TestStart_DoesNotRaceTheShellStartup(t *testing.T) {
 		}
 	}
 }
+
+// A powerline shell prompt uses the same box-drawing run as Claude Code's model
+// line, so marker-matching alone reported a plain shell as having a status.
+func TestParseStatus_ShellPromptIsNotAStatusBlock(t *testing.T) {
+	pane := "╰───╼ $ ; exit $?\nPane is dead (status 0, Sun Jul 26 18:47:02 2026)\n"
+	if st := ParseStatus(pane); st != nil {
+		t.Errorf("a shell prompt parsed as a status block: %+v", *st)
+	}
+}
