@@ -101,7 +101,7 @@ After setup, you're redirected to log in. On your first conversation, the gatewa
 
 The **Workspaces** switcher (above Dashboards in the sidebar) keeps separate projects fully isolated:
 
-- Each workspace scopes its own **chats, dashboards, context, and tasks**
+- Each workspace scopes its own **chats, dashboards, context, terminals, and tasks**
 - Every workspace has a **real on-disk files directory**, browsable from the **Directory tab** on the Context page
 - **Attach existing folders** (e.g. cloned repos) to a workspace so agents — especially Claude Code — can read and work in them
 - Give each workspace an **image** (upload or AI-generate via OpenRouter) shown in the switcher
@@ -117,12 +117,14 @@ The **Chat** page is your main interface. Create threads and converse with AI ag
 - *"Create a sales dashboard"*
 - *"Set up a Slack integration"*
 
-The **Gateway Agent** (Haiku by default) analyzes your request and decides the best action: route to a specialist agent, build a tool or dashboard, create a new agent, or respond directly. You'll see real-time streaming as agents work, including tool calls and progress updates.
+The **Gateway Agent** (Sonnet by default) analyzes your request and decides the best action: route to a specialist agent, build a tool or dashboard, create a new agent, or respond directly. You'll see real-time streaming as agents work, including tool calls and progress updates.
 
 Chat features include:
 - **Threaded conversations** with automatic titles
 - **@mentions** to direct messages to specific agents (`@agent-name`)
 - **Work orders** for tool and dashboard builds with confirm/reject workflow
+- **Any agent can start a build** — the agent you are talking to files the service or dashboard itself, with the spec it just worked out with you, instead of sending you off to ask the Gateway
+- **Agents keep services running** — an agent can check a service's health, restart or recompile it, and read back its log when it will not start
 - **Multi-agent threads** with automatic routing and member tracking
 - **File attachments** for sharing context with agents
 - **Thread compaction** to summarize long conversations
@@ -212,6 +214,7 @@ The **Scheduler** page lets you automate tasks:
 - Route results to dashboards or notifications
 - Run any schedule on-demand with the **Run Now** button
 - Toggle schedules on/off and view execution history
+- **Next run** is shown for every active schedule, and a run that fell due while OpenPaw was closed is recorded in the history as **Missed** rather than vanishing
 - Automatic data retention management
 
 <p>
@@ -226,6 +229,7 @@ The **Dashboards** page displays data from your tools:
 - **Custom dashboards** are full HTML/JS/CSS applications built by agents:
   - Use any npm library via esm.sh (Chart.js, D3, Three.js, Mapbox, etc.)
   - Built-in SDK (`OpenPaw.callTool()`, `OpenPaw.getTools()`, `OpenPaw.refresh()`)
+  - **`OpenPaw.storage`** — a persistent per-dashboard key/value store, so a dashboard that collects anything from you keeps it. Dashboards render in a sandboxed frame where `localStorage` silently fails, so this is the only way for one to save data
   - Auto-inherit app theming via CSS custom properties
 - Dashboards support auto-refresh, manual refresh, and live tool data sources
 
@@ -239,6 +243,7 @@ The **Context** page is a file manager for reference documents:
 - Upload documents (up to 10MB) for agents to reference
 - "About You" section for personal context that agents can access
 - Supported files are injected into agent context for informed responses
+- **Agents write and revise documents here.** Ask one to write something up and it lands as a real `.md` file in this library; ask later to change it and the agent reads the current file first — including any edits you made by hand — so nothing you wrote gets overwritten
 
 <p>
   <img src="assets/headlines/heartbeat-monitor.webp" alt="Heartbeat Monitor" width="333" />
@@ -408,6 +413,11 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/dashboards/{id}/data/{widgetId}` | Get widget data |
 | POST | `/api/v1/dashboards/{id}/collect` | Collect dashboard data |
 | GET | `/api/v1/dashboards/{id}/assets/*` | Serve custom dashboard assets |
+| GET | `/api/v1/dashboards/{id}/storage` | Read every stored key for a dashboard |
+| DELETE | `/api/v1/dashboards/{id}/storage` | Clear a dashboard's stored data |
+| GET | `/api/v1/dashboards/{id}/storage/{key}` | Read one stored value |
+| PUT | `/api/v1/dashboards/{id}/storage/{key}` | Write one stored value |
+| DELETE | `/api/v1/dashboards/{id}/storage/{key}` | Delete one stored value |
 
 #### Agent Roles
 | Method | Endpoint | Description |
