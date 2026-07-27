@@ -400,6 +400,21 @@ func (h *ChatHandler) resolveAgentSlug(slug string) string {
 	return found
 }
 
+// threadFallbackAgent picks an agent that can answer for this thread when the
+// one that was asked for cannot: the thread's own specialist if it has exactly
+// one, otherwise any enabled agent. Both are checked against enabled, because a
+// thread keeps its members after an agent is switched off.
+func (h *ChatHandler) threadFallbackAgent(threadID string) string {
+	for _, slug := range h.specialistMembers(threadID) {
+		var found string
+		h.db.QueryRow("SELECT slug FROM agent_roles WHERE slug = ? AND enabled = 1", slug).Scan(&found)
+		if found != "" {
+			return found
+		}
+	}
+	return h.getDefaultAgentSlug()
+}
+
 // getDefaultAgentSlug returns the slug of the first enabled agent (excluding builder).
 func (h *ChatHandler) getDefaultAgentSlug() string {
 	var slug string
@@ -541,15 +556,46 @@ func (h *ChatHandler) handleMultiAgentResponse(parentCtx context.Context, thread
 const maxMentionDepth = 3
 
 func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, content, agentRoleSlug string, depth int, projectCtx *agents.ProjectContext, extraCostUSD ...float64) {
+	// Try the slug as given, then a tolerant match, then whoever is actually in
+	// this thread.
+	//
+	// This is the one place every route lands, and the slug reaching it can come
+	// from a stale UI selection, an @mention the user typed by hand, one agent
+	// naming a colleague, or the gateway writing a slug from memory. Any of those
+	// can name an agent that was renamed, disabled or deleted, and the answer
+	// used to be an apology that ended the turn with the user's message dropped.
+	// Answering with a different agent is worse than answering with the right
+	// one, and far better than not answering at all.
+	candidates := []string{agentRoleSlug}
+	if resolved := h.resolveAgentSlug(agentRoleSlug); resolved != "" && resolved != agentRoleSlug {
+		candidates = append(candidates, resolved)
+	}
+	if fallback := h.threadFallbackAgent(threadID); fallback != "" {
+		candidates = append(candidates, fallback)
+	}
+
 	// Look up the role from the database
 	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
-	err := h.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
-		agentRoleSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
+	var err error
+	for i, slug := range candidates {
+		err = h.db.QueryRow(
+			"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
+			slug,
+		).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
+		if err == nil {
+			if i > 0 {
+				logger.Warn("Agent %q is not available — answering with %q instead", agentRoleSlug, slug)
+				h.addThreadMember(threadID, slug)
+				agentRoleSlug = slug
+			}
+			break
+		}
+	}
 	if err != nil {
-		h.saveAssistantMessage(threadID, agentRoleSlug, "I'm sorry, I couldn't find that agent role or it's disabled.", 0, 0, 0)
+		// Genuinely nothing to answer with, which is a setup problem rather than
+		// a routing one — say what to do about it.
+		h.saveAssistantMessage(threadID, "", "There are no enabled agents to answer with. Create or enable one on the **Agents** page.", 0, 0, 0)
 		h.broadcastStatus(threadID, "done", "")
 		return
 	}

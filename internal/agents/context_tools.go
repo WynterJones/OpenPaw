@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ func BuildContextToolDefs() []llm.ToolDef {
 	return []llm.ToolDef{
 		buildCreateContextDocumentDef(),
 		buildListContextDocumentsDef(),
+		buildReadContextDocumentDef(),
 		buildUpdateContextDocumentDef(),
 	}
 }
@@ -30,6 +32,7 @@ func MakeContextToolHandlers(db *database.DB, dataDir, agentSlug string, broadca
 	return map[string]llm.ToolHandler{
 		"create_context_document": handleCreateContextDocument(db, dataDir, agentSlug, broadcast),
 		"list_context_documents":  handleListContextDocuments(db),
+		"read_context_document":   handleReadContextDocument(db, dataDir),
 		"update_context_document": handleUpdateContextDocument(db, dataDir, agentSlug, broadcast),
 	}
 }
@@ -52,7 +55,9 @@ func buildContextPromptSection(db *database.DB) string {
 		names = append(names, name)
 	}
 
-	section := "## CONTEXT DOCUMENTS\nYou can save knowledge as reusable context documents (markdown) with the `create_context_document` tool, list them with `list_context_documents`, and revise them with `update_context_document`. Create one whenever the user asks you to write, save, or remember a document, note, spec, or summary."
+	section := "## CONTEXT DOCUMENTS\n" +
+		"You can save knowledge as reusable context documents (markdown) with `create_context_document`, list them with `list_context_documents`, read one with `read_context_document`, and revise them with `update_context_document`. Create one whenever the user asks you to write, save, or remember a document, note, spec, or summary.\n\n" +
+		"ALWAYS `read_context_document` before `update_context_document`. Updating replaces the entire file, and the user edits these documents by hand between conversations — writing from memory silently destroys whatever they changed. Read it, apply your change to what is actually there, then write the whole document back."
 	if len(names) > 0 {
 		section += "\n\nExisting documents:\n- " + strings.Join(names, "\n- ")
 	}
@@ -100,6 +105,27 @@ func buildListContextDocumentsDef() llm.ToolDef {
 		Function: llm.FunctionDef{
 			Name:        "list_context_documents",
 			Description: "List existing context documents (id, name, folder) so you can reference or update them.",
+			Parameters:  params,
+		},
+	}
+}
+
+func buildReadContextDocumentDef() llm.ToolDef {
+	params, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "The document's ID from list_context_documents, or its exact name.",
+			},
+		},
+		"required": []string{"id"},
+	})
+	return llm.ToolDef{
+		Type: "function",
+		Function: llm.FunctionDef{
+			Name:        "read_context_document",
+			Description: "Read a context document's current contents. Always call this before update_context_document — the document may have been edited since you last saw it, and updating replaces the whole file.",
 			Parameters:  params,
 		},
 	}
@@ -225,6 +251,87 @@ func handleListContextDocuments(db *database.DB) llm.ToolHandler {
 		out, _ := json.Marshal(map[string]interface{}{"documents": docs, "count": len(docs)})
 		return llm.ToolResult{Output: string(out)}
 	}
+}
+
+// maxContextReadBytes caps what a single document can add to an agent's
+// context. Documents are usually notes and specs; a large upload should not be
+// able to consume the whole window in one tool call.
+const maxContextReadBytes = 200_000
+
+// handleReadContextDocument returns a document's current contents.
+//
+// Read straight from disk rather than from anything cached, because the point
+// is to see edits: the Context tab writes the same file (handlers/context.go
+// UpdateFile), so a document the user changed by hand comes back changed. Until
+// this existed an agent could list documents and overwrite them but never see
+// one — so "add a section to that doc" in a new conversation meant rewriting it
+// blind, silently dropping whatever the user had put there.
+func handleReadContextDocument(db *database.DB, dataDir string) llm.ToolHandler {
+	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+		var params struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(input, &params); err != nil {
+			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+		}
+		ref := strings.TrimSpace(params.ID)
+		if ref == "" {
+			return llm.ToolResult{Output: "id is required", IsError: true}
+		}
+
+		// Agents are shown document names, not IDs, so accept either.
+		var id, name, filename, mimeType string
+		var updated time.Time
+		err := db.QueryRow(
+			`SELECT id, name, filename, mime_type, updated_at FROM context_files
+			 WHERE is_about_you = 0 AND (id = ? OR LOWER(name) = LOWER(?))
+			 ORDER BY id = ? DESC LIMIT 1`,
+			ref, ref, ref,
+		).Scan(&id, &name, &filename, &mimeType, &updated)
+		if err != nil {
+			return llm.ToolResult{
+				Output:  fmt.Sprintf("No document %q. Call list_context_documents for the available names and IDs.", ref),
+				IsError: true,
+			}
+		}
+
+		if !isTextDocument(mimeType) {
+			return llm.ToolResult{
+				Output:  fmt.Sprintf("%q is a %s file, which cannot be read as text.", name, mimeType),
+				IsError: true,
+			}
+		}
+
+		data, err := os.ReadFile(filepath.Join(contextDir(dataDir), filepath.Base(filename)))
+		if err != nil {
+			return llm.ToolResult{Output: "Could not read " + name + ": " + err.Error(), IsError: true}
+		}
+
+		content := string(data)
+		truncated := false
+		if len(content) > maxContextReadBytes {
+			content = content[:maxContextReadBytes]
+			truncated = true
+		}
+
+		out, _ := json.Marshal(map[string]interface{}{
+			"id":         id,
+			"name":       name,
+			"updated_at": updated.Format(time.RFC3339),
+			"content":    content,
+			"truncated":  truncated,
+		})
+		return llm.ToolResult{Output: string(out)}
+	}
+}
+
+// isTextDocument reports whether a context file can be handed to a model as
+// text. Mirrors isTextMime in handlers/context.go.
+func isTextDocument(mime string) bool {
+	return strings.HasPrefix(mime, "text/") ||
+		mime == "application/json" ||
+		mime == "application/xml" ||
+		mime == "application/javascript"
 }
 
 func handleUpdateContextDocument(db *database.DB, dataDir, agentSlug string, broadcast func(string, interface{})) llm.ToolHandler {
