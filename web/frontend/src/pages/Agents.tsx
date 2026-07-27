@@ -324,10 +324,12 @@ export function Agents() {
             </div>
             <p className="text-xs text-text-3 truncate">Routes conversations, builds services, dashboards, and agents</p>
           </div>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
+          {/* Both badges are detail the card's own text already implies, so on
+              a phone they give way rather than squeezing the name. */}
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
             <Cpu className="w-2.5 h-2.5" />{builderRole?.model ? formatModelName(builderRole.model) : "—"}
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary text-[10px] font-medium flex-shrink-0">
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary text-[10px] font-medium flex-shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-primary" />Always active
           </span>
         </div>
@@ -336,7 +338,7 @@ export function Agents() {
   );
 
   const renderAgentContent = (items: AgentRole[]) => view === "grid" ? (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
       {items.map((role) => (
         <Card key={role.slug} hover onClick={() => navigate(`/agents/${role.slug}`)}>
           <div className="relative">
@@ -344,9 +346,9 @@ export function Agents() {
               <Toggle enabled={role.enabled} onChange={() => toggleRole(role.slug, { stopPropagation: () => {} } as React.MouseEvent)} label="Enable agent" />
             </div>
           </div>
-          <div className="flex items-center gap-4 mb-3">
-            <img src={role.avatar_path} alt={role.name} className="w-14 h-14 rounded-2xl shadow-lg flex-shrink-0" />
-            <h3 className="text-xl font-bold text-text-0 pr-14 flex-1 min-w-0 truncate">{role.name}</h3>
+          <div className="flex items-center gap-3 md:gap-4 mb-3">
+            <img src={role.avatar_path} alt={role.name} className="w-12 h-12 md:w-14 md:h-14 rounded-2xl shadow-lg flex-shrink-0" />
+            <h3 className="text-lg md:text-xl font-bold text-text-0 pr-14 flex-1 min-w-0 truncate">{role.name}</h3>
           </div>
           <p className="text-sm text-text-2 line-clamp-1 mb-3 leading-snug">{role.description}</p>
           <div className="flex items-center gap-2 flex-wrap">
@@ -386,7 +388,7 @@ export function Agents() {
               </div>
               <p className="text-xs text-text-3 truncate">{role.description}</p>
             </div>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
               <Cpu className="w-2.5 h-2.5" />{formatModelName(role.model)}
             </span>
             {(taskCounts[role.slug] || 0) > 0 && (
@@ -458,12 +460,12 @@ export function Agents() {
           <LoadingSpinner message="Loading agents..." />
         ) : (
           <>
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4">
               <SearchBar
                 value={search}
                 onChange={handleSearch}
                 placeholder="Search agents..."
-                className="flex-1"
+                className="flex-1 min-w-[10rem]"
               />
               <ViewToggle view={view} onViewChange={setView} />
               <Button

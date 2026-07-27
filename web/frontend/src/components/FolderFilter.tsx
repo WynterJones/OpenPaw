@@ -69,7 +69,7 @@ export function FolderFilter({
   };
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 scrollbar-none">
+    <div className="flex items-center gap-2 op-scroll-x pb-1 mb-4">
       <FolderOpen className="w-4 h-4 text-text-3 flex-shrink-0" />
       {pill('All', totalCount, null, '_all')}
       {folders.map((f) => pill(f, folderCounts.get(f) || 0, f, f))}

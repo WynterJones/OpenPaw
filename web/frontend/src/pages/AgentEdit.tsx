@@ -1362,7 +1362,7 @@ export function AgentEdit() {
             )}
           </div>
         ) : fileTabForActive ? (
-          <div className="p-4 md:p-6 flex flex-col" style={{ height: 'calc(100vh - 10rem)' }}>
+          <div className="p-4 md:p-6 flex flex-col" style={{ height: 'calc(var(--op-app-height, 100dvh) - 10rem)' }}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <p className="text-[11px] text-text-3">{fileTabForActive.description}</p>
               <div className="flex items-center gap-3 shrink-0">

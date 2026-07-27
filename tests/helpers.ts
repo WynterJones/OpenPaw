@@ -5,7 +5,6 @@ import * as path from 'path';
 export const TEST_USER = {
   username: 'testadmin',
   password: 'Testpass1234',
-  appName: 'OpenPaw Test',
 };
 
 export function resetDatabase() {
@@ -35,10 +34,12 @@ export async function runSetupWizard(page: Page) {
   await expect(page.getByText(/step 3/i)).toBeVisible({ timeout: 5_000 });
   await page.getByRole('button', { name: /continue/i }).click();
 
-  // Step 3: Configure Server — update app name, complete setup
-  await expect(page.getByLabel('App Name')).toBeVisible({ timeout: 5_000 });
-  await page.getByLabel('App Name').clear();
-  await page.getByLabel('App Name').fill(TEST_USER.appName);
+  // Step 3: Configure Server — continue with the isolated test server defaults
+  await expect(page.getByLabel('Bind Address')).toBeVisible({ timeout: 5_000 });
+  await page.getByRole('button', { name: /continue/i }).click();
+
+  // Step 4: Personalize the default agent
+  await expect(page.getByLabel('Agent Name')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: /complete setup/i }).click();
 
   // Should redirect to /chat

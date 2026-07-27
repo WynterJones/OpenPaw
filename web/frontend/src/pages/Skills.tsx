@@ -373,8 +373,8 @@ export function Skills() {
           <LoadingSpinner message="Loading skills..." />
         ) : (
           <>
-                <div className="flex items-center gap-3 mb-4">
-                  <SearchBar value={search} onChange={handleSearch} placeholder="Search skills..." className="flex-1" />
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4">
+                  <SearchBar value={search} onChange={handleSearch} placeholder="Search skills..." className="flex-1 min-w-[10rem]" />
                   <ViewToggle view={view} onViewChange={setView} />
                   <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />} className="flex-shrink-0">Add Skill</Button>
                 </div>

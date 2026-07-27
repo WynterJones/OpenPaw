@@ -72,7 +72,7 @@ export function StudioCanvas({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Folder rail */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border-0 overflow-x-auto flex-shrink-0">
+      <div className="flex items-center gap-1 px-3 md:px-4 py-2 border-b border-border-0 op-scroll-x flex-shrink-0">
         {tabs.map(t => {
           const folder = folders.find(f => f.id === t.id);
           const active = activeFolder === t.id;

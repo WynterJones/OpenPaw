@@ -15,7 +15,7 @@ export function DocsLayout() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen bg-surface-0">
+    <div className="flex flex-col op-app-shell bg-surface-0">
       <DocsHeader
         scrollContainerId={SCROLL_CONTAINER_ID}
         onMenuClick={() => setMobileNavOpen(true)}

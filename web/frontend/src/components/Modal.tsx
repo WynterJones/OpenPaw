@@ -77,7 +77,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full ${sizeStyles[size]} max-h-[80vh] sm:max-h-[90vh] flex flex-col bg-surface-1 rounded-xl border border-border-0 shadow-2xl focus:outline-none`}
+        className={`relative w-full ${sizeStyles[size]} max-h-[80dvh] sm:max-h-[90dvh] flex flex-col bg-surface-1 rounded-xl border border-border-0 shadow-2xl focus:outline-none`}
       >
         <div className="flex items-center justify-between px-4 md:px-5 py-3.5 md:py-4 border-b border-border-0 flex-shrink-0">
           <h3 id={titleId} className="text-base md:text-lg font-semibold text-text-0 truncate pr-2">{title}</h3>

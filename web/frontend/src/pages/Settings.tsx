@@ -3412,7 +3412,7 @@ export function Settings() {
             <nav
               role="tablist"
               aria-orientation="vertical"
-              className="flex sm:flex-col gap-0.5 overflow-x-auto sm:overflow-x-visible bg-surface-1 border border-border-0 border-b-border-0 rounded-xl p-2 sm:sticky sm:-top-[25px] shadow-sm"
+              className="flex sm:flex-col gap-0.5 op-scroll-x sm:overflow-x-visible bg-surface-1 border border-border-0 border-b-border-0 rounded-xl p-2 sm:sticky sm:-top-[25px] shadow-sm"
             >
               {TABS.map((tab, i) => {
                 const isDanger = tab.id === "danger";

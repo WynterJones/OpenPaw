@@ -682,7 +682,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
         {/* ---- Left sidebar -------------------------------------------------- */}
         {view !== "about" && (
         <aside
-          className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
+          className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[85vw] max-w-[280px] md:w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
         >
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
             {loading ? (

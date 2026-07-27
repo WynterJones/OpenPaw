@@ -10,12 +10,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Images, Sparkles, SlidersHorizontal } from 'lucide-react';
 import { studio } from '../lib/api-helpers';
 import { api } from '../lib/api';
 import { StudioEditor, type EditorState } from '../components/studio/StudioEditor';
 import { StudioSaved } from '../components/studio/StudioSaved';
 import { StudioCanvas } from '../components/studio/StudioCanvas';
+import { MobileWorkspaceSwitcher } from '../components/MobileWorkspaceSwitcher';
 import { SplitDivider } from '../components/workbench/SplitDivider';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PromptDialog } from '../components/PromptDialog';
@@ -88,6 +89,11 @@ export function Studio() {
 
   const [generating, setGenerating] = useState(false);
   const [railWidth, setRailWidth] = useState(loadRailWidth);
+
+  // Below `md` the two columns become one, and this picks which one is on
+  // screen. A 320px rail beside a gallery is unreadable on a phone, and
+  // shrinking both to fit would leave neither usable.
+  const [mobilePane, setMobilePane] = useState<'controls' | 'gallery'>('controls');
 
   // Generated media is permanent until explicitly removed, so every delete
   // goes through a themed confirm rather than a native one.
@@ -224,6 +230,9 @@ export function Studio() {
       // the current folder view wouldn't include them.
       setAssets(prev => [...(res.items || []), ...prev]);
       loadFolders();
+      // On a phone the canvas is a separate pane, so a finished run would
+      // otherwise land somewhere the user cannot see.
+      setMobilePane('gallery');
 
       if (res.errors?.length) {
         toast('warning', `Generated ${res.items.length}, ${res.errors.length} failed: ${res.errors[0]}`);
@@ -386,13 +395,44 @@ export function Studio() {
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex flex-col md:flex-row h-full min-h-0">
+      {/* Mobile pane switcher — stands in for the drag divider, which has no
+          meaning once the columns are stacked. */}
+      <div className="md:hidden flex items-center gap-2 px-3 h-14 border-b border-border-0 bg-surface-1 flex-shrink-0">
+        {/* Studio has no app Header, so the workspace switcher rides here. */}
+        <MobileWorkspaceSwitcher />
+        <h1 className="text-sm font-semibold text-text-0 flex-1 truncate">Studio</h1>
+        <div className="flex items-center rounded-lg border border-border-1 overflow-hidden" role="tablist">
+          {([
+            { id: 'controls', label: 'Create', icon: SlidersHorizontal },
+            { id: 'gallery', label: 'Gallery', icon: Images },
+          ] as const).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={mobilePane === id}
+              onClick={() => setMobilePane(id)}
+              className={`flex items-center gap-1.5 px-3 h-9 text-xs font-medium transition-colors cursor-pointer ${
+                mobilePane === id ? 'bg-surface-2 text-text-0' : 'text-text-3'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Left rail */}
+      {/* The drag width goes through a custom property rather than an inline
+          `width`, so the stacked mobile layout can ignore it. */}
       <div
-        style={{ width: railWidth }}
-        className="flex-shrink-0 flex flex-col bg-surface-1 min-h-0"
+        style={{ '--op-rail-w': `${railWidth}px` } as React.CSSProperties}
+        className={`flex-shrink-0 flex-col bg-surface-1 min-h-0 w-full md:w-[var(--op-rail-w)] ${
+          mobilePane === 'controls' ? 'flex' : 'hidden'
+        } md:flex`}
       >
-        <div className="flex items-center gap-2 px-4 pt-4 pb-2 flex-shrink-0">
+        <div className="hidden md:flex items-center gap-2 px-4 pt-4 pb-2 flex-shrink-0">
           <Sparkles className="w-4 h-4 text-accent-text" aria-hidden="true" />
           <h1 className="text-sm font-semibold text-text-0">Studio</h1>
         </div>
@@ -445,11 +485,14 @@ export function Studio() {
       </div>
 
       {/* Drag to rebalance the two columns. Replaces the rail's right border,
-          so the seam stays a single line until it is hovered. */}
-      <SplitDivider direction="horizontal" onDrag={resizeRail} />
+          so the seam stays a single line until it is hovered. Nothing to
+          rebalance once the columns stack, so it goes away below `md`. */}
+      <div className="hidden md:flex">
+        <SplitDivider direction="horizontal" onDrag={resizeRail} />
+      </div>
 
       {/* Canvas */}
-      <div className="flex-1 min-w-0 min-h-0">
+      <div className={`flex-1 min-w-0 min-h-0 ${mobilePane === 'gallery' ? 'block' : 'hidden'} md:block`}>
         <StudioCanvas
           assets={assets}
           loading={assetsLoading}

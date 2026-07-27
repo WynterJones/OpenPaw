@@ -359,12 +359,12 @@ export function KnowledgeBase() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Context" />
-      <div className="flex items-center gap-2 px-4 md:px-6 border-b border-border-0 overflow-x-auto flex-shrink-0">
+      <div className="flex items-center gap-1 md:gap-2 px-3 md:px-6 border-b border-border-0 op-scroll-x flex-shrink-0">
         {knowledgeTabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative cursor-pointer ${
+            className={`px-3 md:px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors relative cursor-pointer ${
               tab === t.key ? 'text-text-0' : 'text-text-3 hover:text-text-1'
             }`}
           >

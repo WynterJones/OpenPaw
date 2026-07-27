@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, Square } from 'lucide-react';
 import { api } from '../lib/api';
 import { jumpToWorkspace } from '../lib/jumpToWorkspace';
+import { useDockCount } from '../contexts/activityDock';
 
 interface ActiveChat {
   thread_id: string;
@@ -44,10 +45,12 @@ export function ActiveChatsIndicator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useDockCount('chats', chats.length);
+
   if (chats.length === 0) return null;
 
   return (
-    <div className="w-64 max-w-[calc(100vw-2rem)]">
+    <div className="w-64 max-w-[calc(100vw-1.5rem)]">
       <div className="pointer-events-auto rounded-xl border border-border-1 bg-surface-1/95 backdrop-blur-md shadow-xl shadow-black/20 overflow-hidden">
         <div className="px-3 py-2 border-b border-border-0 flex items-center gap-2">
           <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin flex-shrink-0" aria-hidden="true" />

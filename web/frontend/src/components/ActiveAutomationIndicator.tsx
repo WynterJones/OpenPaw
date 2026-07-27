@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarClock, HeartPulse } from 'lucide-react';
 import { api } from '../lib/api';
+import { useDockCount } from '../contexts/activityDock';
 
 interface RunningAutomation {
   kind: 'schedule' | 'heartbeat';
@@ -42,11 +43,13 @@ export function ActiveAutomationIndicator() {
     };
   }, []);
 
+  useDockCount('automation', runs.length);
+
   if (runs.length === 0) return null;
 
-  // Positioned by the shared stack in Layout, so no fixed offsets here.
+  // Positioned by the shared stack in ActivityDock, so no fixed offsets here.
   return (
-    <div className="w-64 max-w-[calc(100vw-2rem)]">
+    <div className="w-64 max-w-[calc(100vw-1.5rem)]">
       <div className="pointer-events-auto rounded-xl border border-border-1 bg-surface-1/95 backdrop-blur-md shadow-xl shadow-black/20 overflow-hidden">
         <div className="px-3 py-2 border-b border-border-0 flex items-center gap-2">
           <CalendarClock className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" aria-hidden="true" />

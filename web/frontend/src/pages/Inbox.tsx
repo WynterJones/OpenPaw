@@ -237,8 +237,8 @@ export function Inbox() {
         actions={
           <div className="flex items-center gap-2">
             {unreadCount > 0 && folder !== 'archived' && (
-              <Button variant="secondary" size="sm" icon={<CheckCheck className="w-4 h-4" />} onClick={markAllRead}>
-                Mark all read
+              <Button variant="secondary" size="sm" icon={<CheckCheck className="w-4 h-4" />} onClick={markAllRead} aria-label="Mark all read">
+                <span className="hidden sm:inline">Mark all read</span>
               </Button>
             )}
             <Button
@@ -246,8 +246,9 @@ export function Inbox() {
               size="sm"
               icon={<RefreshCw className="w-4 h-4" />}
               onClick={load}
+              aria-label="Refresh"
             >
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         }

@@ -903,8 +903,8 @@ export function Tools() {
     <div className="flex flex-col h-full">
       <Header title="Services" />
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <SearchBar value={search} onChange={handleSearch} placeholder="Search services..." className="flex-1" />
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4">
+              <SearchBar value={search} onChange={handleSearch} placeholder="Search services..." className="flex-1 min-w-[10rem]" />
               <input
                 ref={importRef}
                 type="file"

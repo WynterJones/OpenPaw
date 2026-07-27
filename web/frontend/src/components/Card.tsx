@@ -18,7 +18,7 @@ export function Card({ children, padding = true, hover = false, className = '', 
 
   return (
     <div
-      className={`rounded-xl border border-border-0 bg-surface-1 shadow-sm ${padding ? 'p-5' : ''} ${hover ? 'transition-all duration-150 hover:border-border-1 hover:shadow-md cursor-pointer' : ''} ${isClickable ? 'focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 focus-visible:outline-none' : ''} ${className}`}
+      className={`rounded-xl border border-border-0 bg-surface-1 shadow-sm ${padding ? 'p-4 md:p-5' : ''} ${hover ? 'transition-all duration-150 hover:border-border-1 hover:shadow-md cursor-pointer' : ''} ${isClickable ? 'focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 focus-visible:outline-none' : ''} ${className}`}
       onClick={onClick}
       onKeyDown={handleKeyDown}
       tabIndex={isClickable ? 0 : undefined}

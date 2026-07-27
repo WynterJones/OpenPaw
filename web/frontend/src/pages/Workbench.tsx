@@ -9,6 +9,7 @@ import { useDragReorder } from '../hooks/useDragReorder';
 import type { Workbench as WorkbenchType } from '../lib/api';
 import { api } from '../lib/api';
 import { FolderPicker } from '../components/workbench/FolderPicker';
+import { MobileWorkspaceSwitcher } from '../components/MobileWorkspaceSwitcher';
 import { isTauri, listenFolderDrop } from '../lib/tauri';
 
 const TAB_COLORS = [
@@ -146,7 +147,13 @@ function WorkbenchHeader() {
   }, [workbenches.length, createWorkbench]);
 
   return (
-    <div className="flex items-center bg-surface-1 border-b border-border-0 px-1.5 h-10 gap-1 overflow-x-auto shrink-0">
+    <div className="flex items-center bg-surface-1 border-b border-border-0 pl-2 pr-1.5 h-12 md:h-10 gap-1 shrink-0">
+      {/* The terminal screen has no app Header, so this is the only workspace
+          switcher a phone can reach from here. It sits outside the scrolling
+          strip below — an overflow container would clip its dropdown. */}
+      <MobileWorkspaceSwitcher />
+
+      <div className="flex items-center gap-1 op-scroll-x flex-1 min-w-0 h-full">
       {workbenches.map((wb) => {
         const isActive = wb.id === activeWorkbenchId;
         const color = wb.color || '';
@@ -185,7 +192,7 @@ function WorkbenchHeader() {
             <button
               ref={(el) => { if (el) editBtnRefs.current.set(wb.id, el); }}
               onClick={(e) => { e.stopPropagation(); openEdit(wb.id); }}
-              className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-surface-3 transition-all shrink-0 cursor-pointer"
+              className="op-touch-visible opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-surface-3 transition-all shrink-0 cursor-pointer"
               title="Edit workspace"
             >
               <Pencil className="w-2.5 h-2.5" />
@@ -195,7 +202,7 @@ function WorkbenchHeader() {
             {workbenches.length > 1 && (
               <button
                 onClick={(e) => handleDelete(wb.id, e)}
-                className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-surface-3 hover:text-danger transition-all shrink-0 cursor-pointer pr-0.5"
+                className="op-touch-visible opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-surface-3 hover:text-danger transition-all shrink-0 cursor-pointer pr-0.5"
                 title="Close workspace"
               >
                 <X className="w-2.5 h-2.5" />
@@ -212,9 +219,7 @@ function WorkbenchHeader() {
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
-
-      {/* Spacer */}
-      <div className="flex-1" />
+      </div>
 
       {/* Projects dropdown */}
       <ProjectsButton />

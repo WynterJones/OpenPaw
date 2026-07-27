@@ -347,8 +347,8 @@ function ToolsPanel() {
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search services..." className="flex-1" />
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search services..." className="flex-1 min-w-[10rem]" />
         <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter services by category" />
       </div>
       {loading ? (
@@ -402,8 +402,8 @@ function AgentsPanel() {
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search agents..." className="flex-1" />
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search agents..." className="flex-1 min-w-[10rem]" />
         <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter agents by category" />
       </div>
       {loading ? (
@@ -457,8 +457,8 @@ function SkillsCatalogPanel() {
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-3">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search skills..." className="flex-1" />
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search skills..." className="flex-1 min-w-[10rem]" />
         <FilterDropdown value={category} onChange={setCategory} options={categories} allLabel="All Categories" placeholder="Filter skills by category" />
       </div>
       {loading ? (
@@ -611,7 +611,7 @@ function SkillsShPanel() {
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search skills.sh..." className="flex-1" />
       </div>
       {loading ? (
@@ -700,12 +700,12 @@ export function Library() {
     <div className="flex flex-col h-full">
       <Header title="Templates" />
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
-        <div className="flex items-center gap-2 mb-3 border-b border-border-0 overflow-x-auto">
+        <div className="flex items-center gap-1 md:gap-2 mb-3 border-b border-border-0 op-scroll-x">
           {tabsWithCounts.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
+              className={`px-3 md:px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors relative cursor-pointer ${
                 tab === t.key ? 'text-text-0' : 'text-text-3 hover:text-text-1'
               }`}
             >

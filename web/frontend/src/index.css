@@ -87,11 +87,13 @@ html[data-desktop] [data-tauri-drag-region] :is(button, a, input, select, textar
 
 html {
   font-size: calc(var(--op-font-scale, 100) * 1%);
+  height: 100%;
 }
 
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
   font-family: var(--op-font-family);
   font-size: var(--op-font-size-base);
   -webkit-font-smoothing: antialiased;
@@ -126,11 +128,89 @@ body {
   background: var(--op-text-3);
 }
 
-/* Mobile-friendly touch targets */
-@media (max-width: 640px) {
-  input, select, textarea, button {
+/* ── App shell sizing ───────────────────────────────────────────────────────
+   Every screen lives inside one fixed-height shell; nothing below it scrolls
+   the document. --op-app-height is written by useAppViewport from the visual
+   viewport, so the shell tracks the collapsing URL bar and the keyboard. The
+   two declarations above it are fallbacks for browsers without dvh. */
+.op-app-shell {
+  height: 100vh;
+  height: 100dvh;
+  height: var(--op-app-height, 100dvh);
+}
+
+/* The mobile tab bar's own height, so screens can reserve room for it without
+   every call site re-deriving the safe-area maths. */
+:root {
+  --op-bottom-nav-h: 3.5rem;
+  --op-bottom-nav-space: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Only below `md` — that is where BottomNav is rendered. */
+@media (max-width: 767.98px) {
+  .op-bottom-nav-space {
+    padding-bottom: var(--op-bottom-nav-space);
+  }
+}
+
+/* Set by the app shell (not by Login/Setup/Docs, which scroll normally). The
+   document itself is never the scroller inside the app — panes within the
+   shell are. Without this a focused field can scroll the whole page on iOS and
+   take the fixed header with it. */
+html.op-shell-locked,
+html.op-shell-locked body {
+  overflow: hidden;
+}
+
+html.op-shell-locked body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+/* ── Touch devices ──────────────────────────────────────────────────────────
+   iOS auto-zooms into any field whose text is under 16px, and while zoomed the
+   fixed header can be panned off the top of the screen — the app looks like it
+   lost its header. Keeping every *focusable field* at 16px removes the zoom,
+   and with it the broken header.
+
+   Buttons are pointedly not in this list. They never trigger the zoom, and the
+   rule used to include them, which forced every 10px badge and icon button up
+   to 16px and wrecked the density of every mobile screen. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  [contenteditable="true"],
+  .xterm-helper-textarea {
     font-size: 16px !important;
   }
+
+  /* No 300ms tap delay, and no rubber-banding the shell away from the header. */
+  button, a, [role="button"], [role="tab"], [role="menuitem"] {
+    touch-action: manipulation;
+  }
+
+  html, body {
+    overscroll-behavior: none;
+  }
+
+  /* Row actions that only appear on hover are unreachable with a finger. */
+  .op-touch-visible {
+    opacity: 1 !important;
+  }
+}
+
+/* Horizontal strips (tabs, filter chips) scroll rather than wrap on narrow
+   screens; the scrollbar itself is noise at that size. */
+.op-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.op-scroll-x::-webkit-scrollbar {
+  display: none;
 }
 
 /* Safe area insets for notched phones */

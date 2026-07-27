@@ -10,6 +10,7 @@ import {
 } from "../hooks/useOpenRouterBalance";
 import { useDesign } from "../contexts/DesignContext";
 import { NotificationBell } from "./NotificationBell";
+import { MobileWorkspaceSwitcher } from "./MobileWorkspaceSwitcher";
 import { startWindowDrag } from "../lib/tauri";
 import { useViewToggles, type ViewToggleKey } from "../contexts/viewToggles";
 
@@ -166,8 +167,12 @@ function ViewTogglesMenu() {
     { key: 'canvas', label: 'Toggle Canvas', checked: canvas },
   ];
 
+  // Every pane this menu controls is desktop-only: the sidebar is hidden below
+  // `md`, and the chat list, chat panel and canvas each have their own drawer
+  // buttons there. Showing it on a phone would only crowd the bar with toggles
+  // that do nothing visible.
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative hidden md:block" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
         aria-label="View options"
@@ -264,8 +269,19 @@ export function Header({ title, count, actions, hideTitleOnMobile }: HeaderProps
   const profilePic = user?.avatar_path;
 
   return (
-    <header data-tauri-drag-region onMouseDown={startWindowDrag} className="relative z-40 h-14 md:h-16 flex items-center justify-between px-4 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0">
-      <div data-tauri-drag-region className="relative min-w-0 flex-1 mr-2 flex items-center gap-2.5">
+    // The bar owns the status-bar inset as padding on top of its own height, so
+    // it keeps a 3.5rem content row when the app runs full-screen on a notched
+    // phone.
+    <header
+      data-tauri-drag-region
+      onMouseDown={startWindowDrag}
+      className="relative z-40 h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] md:h-16 md:pt-0 flex items-center justify-between px-3 md:px-6 border-b border-border-0 bg-surface-1/50 backdrop-blur-sm flex-shrink-0"
+    >
+      <div data-tauri-drag-region className="relative min-w-0 flex-1 mr-2 flex items-center gap-2 md:gap-2.5">
+        {/* The sidebar — and with it the workspace switcher — is hidden below
+            `md`, so the phone gets its own switcher here, sized to match the
+            user avatar at the other end of the bar. */}
+        <MobileWorkspaceSwitcher />
         <h1
           data-tauri-drag-region
           className={`text-lg md:text-xl font-bold text-text-0 truncate ${hideTitleOnMobile ? 'hidden md:block' : ''}`}
