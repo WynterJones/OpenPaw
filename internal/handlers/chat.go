@@ -27,6 +27,13 @@ const (
 	gatewayHistoryLimit    = 4
 )
 
+// MemoryReflector reviews a finished exchange and saves what is worth
+// remembering. Nil-safe at every call site — memory capture is an enhancement to
+// a reply that has already been delivered, never a precondition for one.
+type MemoryReflector interface {
+	Reflect(agentSlug, userMessage, agentResponse string)
+}
+
 type ChatHandler struct {
 	db               *database.DB
 	agentManager     *agents.Manager
@@ -41,6 +48,10 @@ type ChatHandler struct {
 		roles     []struct{ slug, name string }
 		expiresAt time.Time
 	}
+
+	// Reflector captures memories after each reply. Assigned after construction
+	// (see server.go) because it depends on the agent manager this handler holds.
+	Reflector MemoryReflector
 }
 
 func truncateStr(s string, max int, ellipsis bool) string {
@@ -82,10 +93,14 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, limit, offset)
 
+	// The dream_scans join is grouped by thread rather than joined directly: a
+	// conversation several agents took part in has one scan row per agent, and
+	// a plain join would duplicate the thread once per scan.
 	rows, err := h.db.Query(
-		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.pinned, t.created_at, t.updated_at
+		`SELECT t.id, t.title, COALESCE(c.cost, 0), t.pinned, t.created_at, t.updated_at, d.scanned_at
 		 FROM chat_threads t
 		 LEFT JOIN (SELECT thread_id, SUM(cost_usd) AS cost FROM chat_messages GROUP BY thread_id) c ON c.thread_id = t.id
+		 LEFT JOIN (SELECT thread_id, MAX(scanned_at) AS scanned_at FROM dream_scans GROUP BY thread_id) d ON d.thread_id = t.id
 		 WHERE t.workspace_id = ?`+pinnedFilter+`
 		 ORDER BY t.updated_at DESC LIMIT ? OFFSET ?`,
 		args...,
@@ -99,9 +114,14 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	threads := []models.ChatThread{}
 	for rows.Next() {
 		var t models.ChatThread
-		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.Pinned, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		var dreamedAt sql.NullTime
+		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.Pinned, &t.CreatedAt, &t.UpdatedAt, &dreamedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan thread")
 			return
+		}
+		if dreamedAt.Valid {
+			at := dreamedAt.Time
+			t.Dreamed, t.DreamedAt = true, &at
 		}
 		threads = append(threads, t)
 	}

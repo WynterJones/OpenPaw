@@ -23,6 +23,8 @@ import type {
   ToolIntegrityInfo,
   AppNotification,
   HeartbeatConfig,
+  DreamingConfig,
+  DreamRun,
   HeartbeatExecutionPage,
   ConfirmationCard,
   ToolSummaryCard,
@@ -448,6 +450,22 @@ export const heartbeatApi = {
     return api.get<HeartbeatExecutionPage>(`/heartbeat/history${qs ? '?' + qs : ''}`);
   },
   runNow: () => api.post<{ status: string }>('/heartbeat/run-now'),
+};
+
+// Dreaming API helpers — scheduled memory consolidation. Config values are
+// strings on the wire (the settings table is text-only), so callers send
+// 'true'/'false' rather than booleans.
+export const dreamingApi = {
+  getConfig: () => api.get<DreamingConfig>('/dreaming/config'),
+  updateConfig: (cfg: Partial<DreamingConfig>) => api.put<DreamingConfig>('/dreaming/config', cfg),
+  listRuns: (params?: { limit?: number; agent?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.limit) p.set('limit', String(params.limit));
+    if (params?.agent) p.set('agent', params.agent);
+    const qs = p.toString();
+    return api.get<DreamRun[]>(`/dreaming/runs${qs ? '?' + qs : ''}`);
+  },
+  runNow: () => api.post<{ status: string }>('/dreaming/run-now'),
 };
 
 // Workspaces API helpers — the active workspace scopes chats/dashboards/context

@@ -88,6 +88,11 @@ type Manager struct {
 	// service or dashboard to the builder instead of telling the user to go and
 	// ask the gateway for it. Injected for the same reason as TmuxWatchFn.
 	BuildRequestFn BuildRequester
+	// Scheduler backs the schedule_* tools, so an agent can set up a recurring
+	// routine itself instead of describing how the user could. Nil disables
+	// them — a run with no scheduler wired in must not offer to schedule things
+	// it cannot register.
+	Scheduler SchedulerControl
 	// MediaRegistry backs the studio_* tools. Nil disables them.
 	MediaRegistry   *media.Registry
 	manifestCache   sync.Map // map[toolID][]byte

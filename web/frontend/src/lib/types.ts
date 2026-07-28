@@ -95,6 +95,9 @@ export interface ChatThread {
   /** Pinned threads are archived: read-only, with a long-form summary. */
   pinned?: boolean;
   pin_summary?: string;
+  /** An agent has read this chat for memory during a dream. */
+  dreamed?: boolean;
+  dreamed_at?: string;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -546,6 +549,35 @@ export interface HeartbeatConfig {
   heartbeat_timezone: string;
   heartbeat_active_start: string;
   heartbeat_active_end: string;
+}
+
+/** Dreaming: scheduled memory consolidation. Values are strings because the
+    settings table stores everything as text, matching HeartbeatConfig. */
+export interface DreamingConfig {
+  dreaming_enabled: string;
+  dreaming_cron: string;
+  dreaming_max_threads: string;
+  dreaming_review_limit: string;
+  dreaming_reflex_enabled: string;
+  /** Read-only, server-computed. Empty when dreaming is disabled. */
+  dreaming_next_run: string;
+  dreaming_running: string;
+}
+
+export interface DreamRun {
+  id: string;
+  agent_role_slug: string;
+  agent_name: string;
+  status: string;
+  threads_scanned: number;
+  facts_found: number;
+  memories_added: number;
+  memories_updated: number;
+  memories_pruned: number;
+  summary: string;
+  error: string;
+  started_at: string;
+  finished_at?: string;
 }
 
 export interface HeartbeatExecutionPage {

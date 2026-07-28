@@ -18,15 +18,18 @@ const TAB_COLORS = [
 
 interface TabBarProps {
   node: PanelNode;
+  /** "+" — ask for a terminal rather than spawning one, so the user can say where it opens. */
+  onRequestNewTerminal: () => void;
+  /** Touching a tab means the user is back to their terminals, so drop any pending request. */
+  onDismissNewTerminal: () => void;
 }
 
-export function TabBar({ node }: TabBarProps) {
+export function TabBar({ node, onRequestNewTerminal, onDismissNewTerminal }: TabBarProps) {
   const {
     sessions,
     activeSessionId,
     activateTab,
     closeSession,
-    createSession,
     launchSession,
     splitPanel,
     updateSession,
@@ -36,6 +39,14 @@ export function TabBar({ node }: TabBarProps) {
   const [pickingFolder, setPickingFolder] = useState(false);
 
   const tabs = node.tabs || [];
+
+  const handleActivate = useCallback(
+    (panelId: string, sessionId: string) => {
+      onDismissNewTerminal();
+      activateTab(panelId, sessionId);
+    },
+    [onDismissNewTerminal, activateTab],
+  );
 
   const handleReorder = useCallback((reordered: string[]) => {
     reorderTabs(node.id, reordered);
@@ -53,7 +64,7 @@ export function TabBar({ node }: TabBarProps) {
       <div className="flex items-center gap-1 md:hidden">
         <select
           value={node.activeTab || ''}
-          onChange={(e) => activateTab(node.id, e.target.value)}
+          onChange={(e) => handleActivate(node.id, e.target.value)}
           className="bg-surface-2 border border-border-1 rounded-md text-xs text-text-0 pl-2 pr-6 py-1 outline-none cursor-pointer appearance-none truncate max-w-36"
           style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
         >
@@ -89,7 +100,7 @@ export function TabBar({ node }: TabBarProps) {
               isBeingDragged={isBeingDragged}
               isDragTarget={isDragTarget}
               panelId={node.id}
-              onActivate={activateTab}
+              onActivate={handleActivate}
               onClose={closeSession}
               onUpdate={updateSession}
               onDragStart={handleDragStart}
@@ -99,7 +110,7 @@ export function TabBar({ node }: TabBarProps) {
       </div>
 
       <button
-        onClick={() => createSession(node.id)}
+        onClick={onRequestNewTerminal}
         className="flex items-center justify-center w-7 h-7 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2/50 transition-colors shrink-0 cursor-pointer"
         title="New terminal"
       >
@@ -117,7 +128,10 @@ export function TabBar({ node }: TabBarProps) {
           onClose={() => setPickingFolder(false)}
           onPick={async (path) => {
             setPickingFolder(false);
-            await launchSession({ title: path.split('/').filter(Boolean).pop() || 'Terminal', cwd: path });
+            await launchSession(
+              { title: path.split('/').filter(Boolean).pop() || 'Terminal', cwd: path },
+              node.id,
+            );
           }}
         />
       )}

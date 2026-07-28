@@ -28,7 +28,10 @@ interface WorkbenchContextType {
   rootPanel: PanelNode | null;
   activeSessionId: string | null;
   createSession: (panelId?: string) => Promise<void>;
-  launchSession: (opts: { title?: string; cwd?: string; command?: string; color?: string }) => Promise<void>;
+  launchSession: (
+    opts: { title?: string; cwd?: string; command?: string; color?: string },
+    panelId?: string,
+  ) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
   splitPanel: (panelId: string, direction: 'horizontal' | 'vertical') => Promise<void>;
   activateTab: (panelId: string, sessionId: string) => void;
@@ -420,7 +423,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   // ── Launch session (project repo) ──
   const launchSession = useCallback(
-    async (opts: { title?: string; cwd?: string; command?: string; color?: string }) => {
+    async (
+      opts: { title?: string; cwd?: string; command?: string; color?: string },
+      panelId?: string,
+    ) => {
       const session = await terminalApi.create({
         title: opts.title || 'Terminal',
         workbench_id: activeWorkbenchId ?? undefined,
@@ -441,10 +447,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
           return panel;
         }
 
-        const leaf = findFirstLeaf(prev);
-        if (!leaf) return prev;
+        // Land in the panel that asked for it; fall back to the first leaf for
+        // callers with no panel of their own (the projects list, say).
+        const targetId = panelId || findFirstLeaf(prev)?.id;
+        if (!targetId) return prev;
 
-        return updatePanel(prev, leaf.id, (panel) => ({
+        return updatePanel(prev, targetId, (panel) => ({
           ...panel,
           tabs: [...(panel.tabs || []), session.id],
           activeTab: session.id,

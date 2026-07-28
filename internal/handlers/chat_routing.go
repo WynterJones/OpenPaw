@@ -696,6 +696,18 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	}
 	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL, toolCallsJSON)
 
+	// Look over the exchange for anything worth remembering.
+	//
+	// Detached and after the save, because it must not delay or endanger a reply
+	// that is already correct: agents in practice almost never call memory_save
+	// mid-turn, so without this pass an agent's memory stays empty however much
+	// its prompt encourages it. `content` is passed rather than msgContent —
+	// the [msg_id:…] prefix is plumbing for the reaction tools, not something to
+	// commit to memory.
+	if h.Reflector != nil {
+		go h.Reflector.Reflect(agentRoleSlug, content, response)
+	}
+
 	// Save any audio widgets to the media library (async, best-effort)
 	if widgetJSON != "" {
 		go h.saveAudioWidgetsToMedia(widgetJSON, threadID)

@@ -228,6 +228,21 @@ func (m *Manager) GatewaySummarize(ctx context.Context, workOrderID, builderOutp
 	return strings.TrimSpace(text), nil
 }
 
+// GatewayOneShot runs a single toolless completion on the gateway's model.
+//
+// Exposed for background passes that are summarisation rather than agency —
+// memory capture and the nightly dreaming consolidation — so they run on the
+// one model already configured for that kind of work instead of on whichever
+// (often far more expensive) model each individual agent happens to use.
+func (m *Manager) GatewayOneShot(ctx context.Context, system, prompt string) (string, error) {
+	provider := m.Provider()
+	text, _, err := provider.RunOneShot(ctx, provider.ResolveModel(m.GatewayModel, llm.ModelHaiku), system, prompt)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(text), nil
+}
+
 // RoleChatTools are the in-app FS tools available to agents with identity files.
 // These operate in the agent's own identity dir (SOUL/RUNBOOK/memory live there)
 // and are intentionally sandboxed to it. Real coding work in the active
@@ -277,6 +292,25 @@ func WithWorkspace(ctx context.Context, workspaceID string) context.Context {
 func workspaceFromContext(ctx context.Context) string {
 	ws, _ := ctx.Value(workspaceCtxKey{}).(string)
 	return ws
+}
+
+type unattendedCtxKey struct{}
+
+// WithUnattended marks a run that nobody is watching — a scheduled routine
+// rather than a chat turn.
+//
+// Carried on the context for the same reason as the provider pin: the fact has
+// to survive down to where tools are assembled, and every intermediate would
+// otherwise need a parameter it does not care about. Tools whose failure mode
+// compounds without a person present (creating schedules, most of all) consult
+// it and offer only their read-only half.
+func WithUnattended(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unattendedCtxKey{}, true)
+}
+
+func isUnattended(ctx context.Context) bool {
+	v, _ := ctx.Value(unattendedCtxKey{}).(bool)
+	return v
 }
 
 type providerCtxKey struct{}
@@ -570,6 +604,51 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		}
 	}
 
+	// Schedules: the conversation that works out a routine should be the one
+	// that files it, rather than ending on directions to the Scheduler page.
+	if m.Scheduler != nil {
+		canSchedule := !isUnattended(ctx)
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildScheduleToolDefs(canSchedule)...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeScheduleToolHandlers(agentRoleSlug, threadID, canSchedule) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + m.buildSchedulePromptSection(canSchedule)
+	}
+
+	// Self-configuration — chiefly the heartbeat, which is the setting users ask
+	// an agent to change in words ("check in every hour") far more often than
+	// they go looking for it on the Agents page.
+	if agentRoleSlug != "" {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildAgentSettingsToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeAgentSettingsToolHandlers(agentRoleSlug) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + buildAgentSettingsPromptSection()
+	}
+
+	// The identity files themselves — SOUL, RUNBOOK, BOOT, USER, HEARTBEAT.
+	//
+	// Gated on agentDir because only identity-initialized agents have these
+	// files; for the rest the whole personality is a system_prompt column and
+	// AssembleSystemPrompt is never called, so writing the files would produce
+	// something nothing reads.
+	if agentRoleSlug != "" && agentDir != "" {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildIdentityToolDefs()...)
+		if cfg.ExtraHandlers == nil {
+			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+		}
+		for name, handler := range m.MakeIdentityToolHandlers(agentRoleSlug) {
+			cfg.ExtraHandlers[name] = handler
+		}
+		cfg.System += "\n\n---\n\n" + buildIdentityPromptSection()
+	}
+
 	// Inject todo list tools
 	todoSection := buildTodoPromptSection(m.db)
 	if todoSection != "" {
@@ -742,6 +821,9 @@ func scheduledReportDirective(threadless bool) string {
 func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, threadID, workspaceID, provider string) (response, usedThreadID string, err error) {
 	// Pin the engine for this whole run, if the schedule chose one.
 	ctx = WithProvider(ctx, provider)
+	// Nobody is watching this one, so tools that compound badly unattended —
+	// creating further schedules above all — drop to read-only.
+	ctx = WithUnattended(ctx)
 
 	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool

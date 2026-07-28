@@ -38,6 +38,7 @@ import {
   Pin,
   PinOff,
   Pencil,
+  Moon,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -76,6 +77,7 @@ import { RemoteAccessCard } from "../components/RemoteAccessCard";
 import { EngineModels } from "../components/settings/EngineModels";
 import { StudioProviders } from "../components/settings/StudioProviders";
 import { BackgroundGenerator } from "../components/settings/BackgroundGenerator";
+import { Dreaming } from "../components/settings/Dreaming";
 
 // Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
 // app has its own TBD mobile-connection story, so hide Tailscale there.
@@ -90,6 +92,7 @@ const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "network", label: "Network", icon: Wifi },
   { id: "models", label: "AI Models", icon: Bot },
+  { id: "dreaming", label: "Dreaming", icon: Moon },
   { id: "design", label: "Design", icon: Paintbrush },
   { id: "companion", label: "Companion", icon: Sparkles },
   { id: "security", label: "Security", icon: Shield },
@@ -3393,6 +3396,7 @@ export function Settings() {
     notifications: <NotificationsTab />,
     network: <NetworkTab />,
     models: <ModelsTab />,
+    dreaming: <Dreaming />,
     design: <DesignTab />,
     companion: <CompanionTab />,
     security: <SecurityTab />,

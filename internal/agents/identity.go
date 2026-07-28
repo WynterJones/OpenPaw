@@ -337,7 +337,20 @@ Key files you can modify:
 - USER.md — what you know about the user
 - RUNBOOK.md — your operational runbook (see below)
 - BOOT.md — startup instructions
+- HEARTBEAT.md — what you do when you wake up on your own (see below)
 - skills/*/SKILL.md — your skill definitions
+
+Prefer the ` + "`my_identity_read`" + ` / ` + "`my_identity_write`" + ` tools for the five files above — they
+know the list and warn you about the consequences. Read/Write/Edit still work, and are
+what you need for skills.
+
+### HEARTBEAT.md — What You Do Unattended
+
+If your heartbeat is enabled, this file is your instruction set for each wake-up. It ships
+empty, and **an empty HEARTBEAT.md means every wake-up is skipped** — the heartbeat reads
+the file, finds nothing to act on, and records a skip. So a user who switches your
+heartbeat on and gets nothing has an empty file, not a broken feature. Writing the
+instructions is the other half of the job, and neither half works alone.
 
 ### RUNBOOK.md — Your Self-Managed Runbook
 

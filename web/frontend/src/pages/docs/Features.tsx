@@ -10,6 +10,7 @@ import {
   KeyRound,
   Clock,
   Heart,
+  Moon,
   LayoutDashboard,
   Globe,
   Zap,
@@ -78,6 +79,12 @@ const features = [
     name: 'Heartbeat Monitor',
     id: 'heartbeat',
     description: 'Enable proactive agent check-ins on a schedule. Agents can monitor systems, check for updates, and report back automatically within configured active hours.',
+  },
+  {
+    icon: Moon,
+    name: 'Dreaming',
+    id: 'dreaming',
+    description: 'Agents remember. On a schedule, each agent re-reads the chats it has not read yet, pulls out anything durable — preferences, decisions, corrections — and consolidates it against what it already knows: merging duplicates, correcting what changed, dropping what no longer holds. Optionally, it can also capture from every reply as it happens.',
   },
   {
     icon: LayoutDashboard,

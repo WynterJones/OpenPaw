@@ -20,6 +20,7 @@ import (
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/media"
+	"github.com/openpaw/openpaw/internal/dreaming"
 	"github.com/openpaw/openpaw/internal/memory"
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -41,6 +42,7 @@ type Server struct {
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	DreamingMgr  *dreaming.Manager
 	TerminalMgr  *terminal.Manager
 	FrontendFS   fs.FS
 }
@@ -55,6 +57,7 @@ type Config struct {
 	HeartbeatMgr *heartbeat.Manager
 	BackupMgr    *backup.Manager
 	MemoryMgr    *memory.Manager
+	DreamingMgr  *dreaming.Manager
 	TerminalMgr  *terminal.Manager
 	LLMClient    *llm.Client
 	Providers    *llm.ProviderRouter
@@ -79,6 +82,7 @@ func New(cfg Config) *Server {
 		HeartbeatMgr: cfg.HeartbeatMgr,
 		BackupMgr:    cfg.BackupMgr,
 		MemoryMgr:    cfg.MemoryMgr,
+		DreamingMgr:  cfg.DreamingMgr,
 		TerminalMgr:  cfg.TerminalMgr,
 		FrontendFS:   cfg.FrontendFS,
 	}
@@ -110,6 +114,14 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	dashboardsHandler := handlers.NewDashboardsHandler(s.DB, toolMgr, dashboardsDir)
 	agentRolesHandler := handlers.NewAgentRolesHandler(s.DB, dataDir, llmClient, s.FrontendFS, s.AgentManager)
 	chatHandler := handlers.NewChatHandler(s.DB, s.AgentManager, toolsDir, dataDir)
+	// Per-reply memory capture. Set on the handler rather than passed to the
+	// constructor because the dreaming manager needs the agent manager, which
+	// this handler is itself built from. Guarded because assigning a nil
+	// *Manager would produce a non-nil interface holding nil, which every
+	// `!= nil` check downstream would wave through and then panic on.
+	if s.DreamingMgr != nil {
+		chatHandler.Reflector = s.DreamingMgr
+	}
 	contextHandler := handlers.NewContextHandler(s.DB, dataDir)
 	canvasHandler := handlers.NewCanvasHandler()
 	skillsHandler := handlers.NewSkillsHandler(dataDir, s.DB)
@@ -120,6 +132,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	heartbeatHandler := handlers.NewHeartbeatHandler(s.DB, s.HeartbeatMgr)
 	backupHandler := handlers.NewBackupHandler(s.DB, s.BackupMgr)
 	memoryHandler := handlers.NewMemoryHandler(s.MemoryMgr)
+	dreamingHandler := handlers.NewDreamingHandler(s.DB, s.DreamingMgr)
 	toolLibraryHandler := handlers.NewToolLibraryHandler(s.DB, toolMgr, toolsDir, secretsMgr)
 	agentLibraryHandler := handlers.NewAgentLibraryHandler(s.DB, dataDir)
 	skillLibraryHandler := handlers.NewSkillLibraryHandler(s.DB, dataDir)
@@ -477,6 +490,13 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 			})
 
 			// Heartbeat
+			r.Route("/dreaming", func(r chi.Router) {
+				r.Get("/config", dreamingHandler.GetConfig)
+				r.Put("/config", dreamingHandler.UpdateConfig)
+				r.Get("/runs", dreamingHandler.ListRuns)
+				r.Post("/run-now", dreamingHandler.RunNow)
+			})
+
 			r.Route("/heartbeat", func(r chi.Router) {
 				r.Get("/config", heartbeatHandler.GetConfig)
 				r.Put("/config", heartbeatHandler.UpdateConfig)

@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Minimize2, Square, Users, AlertTriangle,
   Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, CircleDot, ImageIcon, Wrench, Pin, Sparkles,
-  Clock, CornerDownLeft, MonitorPlay,
+  Clock, CornerDownLeft, MonitorPlay, BrainCircuit,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -1587,6 +1587,18 @@ export function Chat() {
                           <span className="w-2 h-2 flex-shrink-0 rounded-full bg-accent-primary" />
                         ) : null}
                         <span className="text-sm font-medium truncate">{thread.title}</span>
+                        {/* An agent has already mined this chat for memory during
+                            a dream, so it won't be read again unless it continues.
+                            Marked here because the chat list is where you decide
+                            whether a conversation still needs attention. */}
+                        {thread.dreamed && (
+                          <span
+                            className="flex-shrink-0 ml-auto text-accent-primary/60"
+                            title={thread.dreamed_at ? `Scanned for memory ${timeAgo(thread.dreamed_at)}` : 'Scanned for memory'}
+                          >
+                            <BrainCircuit className="w-3.5 h-3.5" aria-label="Scanned for memory" />
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-text-3 mt-0.5">
                         {activeThreadIds.has(thread.id)

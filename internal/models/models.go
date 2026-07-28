@@ -138,8 +138,13 @@ type ChatThread struct {
 	TotalCostUSD float64   `json:"total_cost_usd"`
 	Pinned       bool      `json:"pinned"`
 	PinSummary   string    `json:"pin_summary,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// Dreamed reports that an agent has read this conversation for memory during
+	// a dream. Surfaced in the chat list so "has this been mined yet?" is
+	// visible rather than something only the scan ledger knows.
+	Dreamed   bool       `json:"dreamed,omitempty"`
+	DreamedAt *time.Time `json:"dreamed_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type ChatMessage struct {
@@ -270,6 +275,23 @@ type HeartbeatExecution struct {
 	OutputTokens  int        `json:"output_tokens"`
 	StartedAt     time.Time  `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at,omitempty"`
+}
+
+// DreamRun is one agent's pass over its chats and memories.
+type DreamRun struct {
+	ID              string     `json:"id"`
+	AgentRoleSlug   string     `json:"agent_role_slug"`
+	AgentName       string     `json:"agent_name"`
+	Status          string     `json:"status"`
+	ThreadsScanned  int        `json:"threads_scanned"`
+	FactsFound      int        `json:"facts_found"`
+	MemoriesAdded   int        `json:"memories_added"`
+	MemoriesUpdated int        `json:"memories_updated"`
+	MemoriesPruned  int        `json:"memories_pruned"`
+	Summary         string     `json:"summary"`
+	Error           string     `json:"error"`
+	StartedAt       time.Time  `json:"started_at"`
+	FinishedAt      *time.Time `json:"finished_at,omitempty"`
 }
 
 type ThreadMember struct {

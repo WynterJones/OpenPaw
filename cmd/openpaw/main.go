@@ -21,6 +21,7 @@ import (
 	"github.com/openpaw/openpaw/internal/config"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/handlers"
+	"github.com/openpaw/openpaw/internal/dreaming"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
@@ -325,6 +326,12 @@ func main() {
 	memoryMgr := memory.NewManager(cfg.DataDir)
 	agentMgr.MemoryMgr = memoryMgr
 
+	// Create dreaming manager — per-reply memory capture plus the scheduled
+	// consolidation pass. Runs on the gateway model, hence agentMgr.
+	dreamingMgr := dreaming.New(db, memoryMgr, agentMgr, broadcastFn)
+	dreamingMgr.SetNotifyFunc(notifyFn)
+	dreamingMgr.LoadConfig()
+
 	// Create terminal manager. New sessions open in the active workspace's files
 	// directory so a terminal lands where the user's work actually is, matching
 	// the cwd the CLI agents get. Per-session cwd still overrides this.
@@ -352,6 +359,9 @@ func main() {
 
 	// Wire scheduler dependencies and load schedules
 	sched.SetPromptSender(agentMgr)
+	// ...and the other direction, so agents can create and change schedules
+	// from inside a conversation rather than only run them.
+	agentMgr.Scheduler = sched
 	sched.SetNotifyFunc(notifyFn)
 	sched.LoadSchedules()
 	sched.StartDataRetention()
@@ -408,6 +418,7 @@ func main() {
 		HeartbeatMgr: heartbeatMgr,
 		BackupMgr:    backupMgr,
 		MemoryMgr:    memoryMgr,
+		DreamingMgr:  dreamingMgr,
 		TerminalMgr:  terminalMgr,
 		LLMClient:    llmClient,
 		Providers:    providerRouter,
@@ -428,6 +439,9 @@ func main() {
 
 	// Start heartbeat manager
 	heartbeatMgr.Start()
+
+	// Start dreaming (registers the cron only when enabled)
+	dreamingMgr.Start()
 
 	// Start backup manager
 	backupMgr.Start()
@@ -517,6 +531,9 @@ func main() {
 
 	// Shut down heartbeat manager
 	heartbeatMgr.Stop()
+
+	// Shut down dreaming
+	dreamingMgr.Stop()
 
 	// Shut down backup manager
 	backupMgr.Stop()
