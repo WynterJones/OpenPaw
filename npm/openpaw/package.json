@@ -1,6 +1,6 @@
 {
   "name": "@openpaw-ai/openpaw",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "AI-powered agent management platform",
   "repository": {
     "type": "git",
@@ -15,10 +15,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@openpaw-ai/darwin-arm64": "0.1.2",
-    "@openpaw-ai/darwin-x64": "0.1.2",
-    "@openpaw-ai/linux-x64": "0.1.2",
-    "@openpaw-ai/linux-arm64": "0.1.2",
-    "@openpaw-ai/win32-x64": "0.1.2"
+    "@openpaw-ai/darwin-arm64": "1.2.9",
+    "@openpaw-ai/darwin-x64": "1.2.9",
+    "@openpaw-ai/linux-x64": "1.2.9",
+    "@openpaw-ai/linux-arm64": "1.2.9",
+    "@openpaw-ai/win32-x64": "1.2.9"
   }
 }

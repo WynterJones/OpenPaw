@@ -73,7 +73,7 @@ func New(cfg Config) *Server {
 		Auth:         cfg.Auth,
 		Secrets:      cfg.Secrets,
 		Scheduler:    cfg.Scheduler,
-		WSHub:        ws.NewHub(cfg.Auth, cfg.Port),
+		WSHub:        ws.NewHub(cfg.Auth),
 		AgentManager: cfg.AgentMgr,
 		ToolMgr:      cfg.ToolMgr,
 		HeartbeatMgr: cfg.HeartbeatMgr,
@@ -132,7 +132,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	backgroundsHandler := handlers.NewBackgroundsHandler(s.DB, dataDir, mediaRegistry, s.FrontendFS)
 	workspacesHandler := handlers.NewWorkspacesHandler(s.DB, dataDir, llmClient)
 	handlers.EnsureDefaultWorkspaceDir(dataDir)
-	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, port, dataDir)
+	terminalHandler := handlers.NewTerminalHandler(s.DB, s.TerminalMgr, s.Auth, dataDir)
 
 	// Back the agent-facing tmux tools. Wired here because the watcher has to
 	// post into a chat thread (handlers) while the tools live in agents, which

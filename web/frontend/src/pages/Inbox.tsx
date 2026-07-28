@@ -88,6 +88,28 @@ function useSender(roles: AgentRole[]) {
   );
 }
 
+/**
+ * Drops the "Nabu: " the scheduler puts on the front of every title.
+ *
+ * The prefix earns its place in the notification bell, which shows no avatar and
+ * no sender line — there it is the only attribution. In the Inbox it is the
+ * third time the same name appears in one row, after the avatar and the sender
+ * line, so it goes. Stored titles are left alone rather than migrated, for the
+ * bell's sake.
+ *
+ * Matched against the sender's actual name rather than a generic "everything up
+ * to the first colon", which would eat the subject of a title like
+ * "Deploy: staging". A failed run keeps its "Failed — " marker.
+ */
+function stripSenderPrefix(title: string, senderName: string): string {
+  if (!senderName) return title;
+  const prefix = `${senderName}: `;
+  if (title.startsWith(prefix)) return title.slice(prefix.length);
+  const failed = 'Failed — ';
+  if (title.startsWith(failed + prefix)) return failed + title.slice((failed + prefix).length);
+  return title;
+}
+
 function Avatar({ src, initial, size }: { src: string; initial: string; size: string }) {
   if (src) {
     return <img src={src} alt="" className={`${size} rounded-full object-cover flex-shrink-0`} />;
@@ -335,7 +357,7 @@ export function Inbox() {
                     // shifts sideways as items are opened. Selection keeps the
                     // filled background to itself; the two states have to stay
                     // tellable apart when a read item is selected.
-                    className={`w-full text-left flex items-start gap-3 pl-2.5 pr-3 py-3 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
+                    className={`w-full text-left flex items-center gap-3 pl-2.5 pr-3 py-3 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
                       unread ? 'border-l-accent-primary' : 'border-l-transparent'
                     } ${
                       active
@@ -346,30 +368,31 @@ export function Inbox() {
                     }`}
                   >
                     <Avatar src={s.avatar} initial={s.initial} size="w-8 h-8 text-xs" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className={`text-xs truncate ${unread ? 'text-text-0 font-semibold' : 'text-text-2'}`}>
-                          {s.name}
-                        </span>
-                        <span className="ml-auto flex items-center gap-1.5 flex-shrink-0">
-                          {unread && (
-                            <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
-                          )}
-                          <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
-                        </span>
-                      </div>
+                    {/* Title and time only. The sender used to have an eyebrow
+                        line of its own above the title and the body a two-line
+                        preview below it, which put the same agent name on screen
+                        three times per row and made each row tall enough that
+                        few fit on screen. The avatar carries the sender now. */}
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
                       <p
-                        className={`text-sm leading-snug truncate mt-0.5 flex items-center gap-1.5 ${
+                        className={`min-w-0 flex-1 text-sm leading-snug truncate flex items-center gap-1.5 ${
                           unread ? 'text-text-0 font-semibold' : 'text-text-1'
                         }`}
                       >
                         {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
-                        <span className="truncate">{n.title}</span>
+                        <span className="truncate">{stripSenderPrefix(n.title, s.name)}</span>
+                        {/* The sender is now conveyed only by the avatar, which
+                            is decorative to a screen reader. Name it here so a
+                            row still says who it is from. */}
+                        <span className="sr-only">— from {s.name}</span>
                         {unread && <span className="sr-only">— unread</span>}
                       </p>
-                      <p className={`text-xs mt-0.5 line-clamp-2 leading-relaxed ${unread ? 'text-text-2' : 'text-text-3'}`}>
-                        {n.body}
-                      </p>
+                      <span className="flex items-center gap-1.5 flex-shrink-0">
+                        {unread && (
+                          <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
+                        )}
+                        <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
+                      </span>
                     </div>
                   </button>
                 );
@@ -505,7 +528,8 @@ function ReadingPane({
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-text-0 leading-snug flex items-start gap-2">
               {failed && <AlertTriangle className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" aria-hidden="true" />}
-              <span className="min-w-0">{report.title}</span>
+              {/* Same reasoning as the list: the sender has its own line below. */}
+              <span className="min-w-0">{stripSenderPrefix(report.title, sender.name)}</span>
             </h2>
             <p className="text-xs text-text-2 mt-0.5">
               <span className="text-text-1">{sender.name}</span>

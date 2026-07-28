@@ -19,6 +19,7 @@ import (
 	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/database"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/netutil"
 	"github.com/openpaw/openpaw/internal/terminal"
 )
 
@@ -46,13 +47,12 @@ type TerminalHandler struct {
 	db          *database.DB
 	terminalMgr *terminal.Manager
 	auth        *auth.Service
-	port        int
 	dataDir     string
 }
 
 // NewTerminalHandler creates a new TerminalHandler.
-func NewTerminalHandler(db *database.DB, terminalMgr *terminal.Manager, authService *auth.Service, port int, dataDir string) *TerminalHandler {
-	return &TerminalHandler{db: db, terminalMgr: terminalMgr, auth: authService, port: port, dataDir: dataDir}
+func NewTerminalHandler(db *database.DB, terminalMgr *terminal.Manager, authService *auth.Service, dataDir string) *TerminalHandler {
+	return &TerminalHandler{db: db, terminalMgr: terminalMgr, auth: authService, dataDir: dataDir}
 }
 
 func toSessionResponse(s *terminal.Session) sessionResponse {
@@ -347,25 +347,7 @@ func (h *TerminalHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 16384,
-		CheckOrigin: func(req *http.Request) bool {
-			origin := req.Header.Get("Origin")
-			if origin == "" {
-				return true // Allow non-browser clients
-			}
-			allowed := []string{
-				fmt.Sprintf("http://localhost:%d", h.port),
-				fmt.Sprintf("http://127.0.0.1:%d", h.port),
-				fmt.Sprintf("https://localhost:%d", h.port),
-				fmt.Sprintf("https://127.0.0.1:%d", h.port),
-				"http://localhost:5173",
-			}
-			for _, a := range allowed {
-				if origin == a {
-					return true
-				}
-			}
-			return false
-		},
+		CheckOrigin:     netutil.CheckWSOrigin,
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)

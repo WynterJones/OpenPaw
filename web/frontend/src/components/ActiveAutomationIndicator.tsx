@@ -2,7 +2,7 @@
  * ActiveAutomationIndicator
  *
  * Shows scheduled routines and agent heartbeats that are running right now, in
- * the same bottom-right sticky stack as terminals and chats. Unlike those two
+ * the same floating sticky stack as terminals and chats. Unlike those two
  * this card is deliberately inert — background automation has no screen to jump
  * to mid-run, so it only answers "is the system working?" and stays out of the
  * way. Hides itself when nothing is running.

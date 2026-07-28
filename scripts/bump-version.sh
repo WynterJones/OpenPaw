@@ -49,6 +49,17 @@ for pkg in openpaw darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
     fi
 done
 
+# 5. The main npm package's optionalDependencies pin the per-platform packages.
+#    They are not "version" keys, so the loop above never matched them and they
+#    sat at 0.1.2 while everything else moved — meaning a published `openpaw`
+#    would resolve 0.1.2 binaries. Rewrite the pins to match.
+MAIN_PKG="$PROJECT_ROOT/npm/openpaw/package.json"
+if [ -f "$MAIN_PKG" ]; then
+    sed -i '' -E "s|(\"@openpaw-ai/[^\"]+\": )\"[^\"]*\"|\1\"$NEW_VERSION\"|" "$MAIN_PKG" 2>/dev/null || \
+    sed -i -E "s|(\"@openpaw-ai/[^\"]+\": )\"[^\"]*\"|\1\"$NEW_VERSION\"|" "$MAIN_PKG"
+    echo "  Updated npm/openpaw/package.json optionalDependencies"
+fi
+
 echo ""
 echo "Version bumped to $NEW_VERSION"
 echo ""

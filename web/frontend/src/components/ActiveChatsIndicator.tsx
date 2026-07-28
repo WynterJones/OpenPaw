@@ -1,7 +1,7 @@
 /**
  * ActiveChatsIndicator
  *
- * A global bottom-right sticky that lists every chat currently thinking/working
+ * A global floating sticky that lists every chat currently thinking/working
  * — across all workspaces — so you can see and jump to active chats from any
  * screen. Polls the backend (source of truth = per-thread cancel funcs) and
  * hides itself when nothing is active. Mounted once in Layout.

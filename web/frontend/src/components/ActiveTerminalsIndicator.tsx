@@ -2,7 +2,7 @@
  * ActiveTerminalsIndicator
  *
  * Lists every live terminal across all workbenches and workspaces so you can
- * jump back to one from any screen. Rendered inside the bottom-right sticky
+ * jump back to one from any screen. Rendered inside the floating sticky
  * stack, directly above the active-chats card — and in its place when no chat
  * is working, since each card hides itself when empty.
  */

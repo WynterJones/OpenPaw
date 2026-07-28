@@ -1,5 +1,5 @@
 /**
- * Shared state for the ActivityDock — the bottom-right stack of "what is
+ * Shared state for the ActivityDock — the floating bottom-corner stack of "what is
  * running right now" cards.
  *
  * The dock needs a running total before any card has decided whether to render

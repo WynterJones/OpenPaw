@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -10,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/logger"
+	"github.com/openpaw/openpaw/internal/netutil"
 )
 
 type Message struct {
@@ -34,10 +34,9 @@ type Hub struct {
 	done       chan struct{}
 	mu         sync.RWMutex
 	auth       *auth.Service
-	port       int
 }
 
-func NewHub(authService *auth.Service, port int) *Hub {
+func NewHub(authService *auth.Service) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte, 256),
@@ -45,7 +44,6 @@ func NewHub(authService *auth.Service, port int) *Hub {
 		unregister: make(chan *Client),
 		done:       make(chan struct{}),
 		auth:       authService,
-		port:       port,
 	}
 }
 
@@ -159,25 +157,7 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(req *http.Request) bool {
-			origin := req.Header.Get("Origin")
-			if origin == "" {
-				return true // Allow non-browser clients
-			}
-			allowed := []string{
-				fmt.Sprintf("http://localhost:%d", h.port),
-				fmt.Sprintf("http://127.0.0.1:%d", h.port),
-				fmt.Sprintf("https://localhost:%d", h.port),
-				fmt.Sprintf("https://127.0.0.1:%d", h.port),
-				"http://localhost:5173",
-			}
-			for _, a := range allowed {
-				if origin == a {
-					return true
-				}
-			}
-			return false
-		},
+		CheckOrigin:     netutil.CheckWSOrigin,
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
