@@ -256,7 +256,7 @@ function WorkbenchContent() {
 
   if (!rootPanel || sessions.length === 0) {
     return (
-      <div className="flex-1 min-h-0 bg-surface-0/75">
+      <div className="flex-1 min-h-0">
         <NewTerminalScreen />
       </div>
     );
@@ -277,11 +277,17 @@ export function Workbench() {
     <WorkbenchProvider>
       <div className="relative h-full overflow-hidden">
         {shownBackground && (
-          <div
-            className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: `url(${shownBackground})` }}
-            aria-hidden="true"
-          />
+          <>
+            <div
+              className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+              style={{ backgroundImage: `url(${shownBackground})` }}
+              aria-hidden="true"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 bg-surface-0/65"
+              aria-hidden="true"
+            />
+          </>
         )}
         <div className="relative z-[1] flex h-full flex-col">
           <WorkbenchHeader />

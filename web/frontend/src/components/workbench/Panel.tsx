@@ -33,14 +33,14 @@ export function Panel({ node }: PanelProps) {
         {tabs.map((sessionId) => {
           const isActiveInPanel = sessionId === activeTab;
           const isGloballyActive =
-            isActiveInPanel && sessionId === activeSessionId;
+            !requestingTerminal && isActiveInPanel && sessionId === activeSessionId;
 
           return (
             <div
               key={sessionId}
               className="absolute inset-0"
               style={{
-                visibility: isActiveInPanel ? 'visible' : 'hidden',
+                visibility: isActiveInPanel && !requestingTerminal ? 'visible' : 'hidden',
               }}
             >
               <TerminalView
@@ -59,10 +59,10 @@ export function Panel({ node }: PanelProps) {
           </div>
         )}
 
-        {/* Pending "+" request. It stays on top for drop hit-testing while the
-            translucent surface keeps the workspace background visible. */}
+        {/* Pending "+" request. The old terminal is hidden above, so this
+            surface shows only the workspace background and chooser. */}
         {requestingTerminal && (
-          <div className="absolute inset-0 z-10 bg-surface-0/75">
+          <div className="absolute inset-0 z-10">
             <NewTerminalScreen panelId={node.id} onOpened={dismissTerminalRequest} />
           </div>
         )}

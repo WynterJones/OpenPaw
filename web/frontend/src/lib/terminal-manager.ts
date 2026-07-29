@@ -27,23 +27,9 @@ interface TerminalInstance {
 }
 
 const encoder = new TextEncoder();
-const TERMINAL_BACKGROUND_OPACITY = 0.9;
 
 function css(prop: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
-}
-
-function withOpacity(color: string, opacity: number): string {
-  const hex = color.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
-  if (!hex) return color;
-
-  const expanded = hex.length === 3
-    ? hex.split('').map(character => character + character).join('')
-    : hex;
-  const red = Number.parseInt(expanded.slice(0, 2), 16);
-  const green = Number.parseInt(expanded.slice(2, 4), 16);
-  const blue = Number.parseInt(expanded.slice(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
 }
 
 function buildTheme(): Record<string, string> {
@@ -53,9 +39,10 @@ function buildTheme(): Record<string, string> {
   const accentText = css('--op-accent-text') || '#F472B6';
 
   return {
-    // Keep glyphs and the cursor crisp while letting the workspace background
-    // image show through the terminal surface.
-    background: withOpacity(bg, TERMINAL_BACKGROUND_OPACITY),
+    // The workbench owns the readability scrim. Keeping the renderer itself
+    // clear prevents xterm's canvas from painting a second solid-looking layer
+    // over the user's workspace image.
+    background: 'rgba(0, 0, 0, 0)',
     foreground: fg,
     cursor: accent,
     cursorAccent: bg,
@@ -137,14 +124,17 @@ class TerminalManager {
     const containerEl = document.createElement('div');
     containerEl.style.width = '100%';
     containerEl.style.height = '100%';
+    containerEl.style.backgroundColor = 'transparent';
 
     // Open terminal into its own container
     term.open(containerEl);
-    // xterm's bundled stylesheet gives the scroll viewport an opaque black
-    // fallback. Clear that layer so the 90%-opaque renderer background can
-    // blend with OpenPaw's workspace image instead of blending with black.
-    const viewportEl = containerEl.querySelector<HTMLElement>('.xterm-viewport');
-    if (viewportEl) viewportEl.style.backgroundColor = 'transparent';
+    // xterm's bundled stylesheet hard-codes the viewport to #000. Clear each
+    // structural layer inline so stylesheet load order cannot restore it.
+    for (const layer of containerEl.querySelectorAll<HTMLElement>(
+      '.xterm, .xterm-screen, .xterm-viewport',
+    )) {
+      layer.style.backgroundColor = 'transparent';
+    }
 
     // Try WebGL addon
     try {
