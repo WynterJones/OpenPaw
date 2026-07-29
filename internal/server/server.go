@@ -308,6 +308,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Delete("/{id}", secretsHandler.Delete)
 				r.Post("/{id}/rotate", secretsHandler.Rotate)
 				r.Post("/{id}/test", secretsHandler.Test)
+				r.Post("/{id}/reveal", secretsHandler.Reveal)
 			})
 
 			// Schedules

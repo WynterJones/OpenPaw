@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { KeyRound, Plus, Pencil, Trash2, Shield, Activity, Eye, EyeOff } from 'lucide-react';
+import { KeyRound, Plus, Pencil, Trash2, Shield, Activity, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -15,6 +15,26 @@ import { api, type Secret, type Tool } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 const PAGE_SIZE = 12;
+
+// execCommand is deprecated, but remains the only clipboard option in older
+// browsers and non-secure contexts. Keep it as a fallback for copy failures.
+function copyWithExecCommand(value: string): boolean {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+
+  try {
+    return document.execCommand('copy');
+  } finally {
+    textarea.remove();
+  }
+}
 
 export function Secrets() {
   const { toast } = useToast();
@@ -35,6 +55,7 @@ export function Secrets() {
   const [toolId, setToolId] = useState('');
   const [saving, setSaving] = useState(false);
   const [showValue, setShowValue] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -82,6 +103,46 @@ export function Secrets() {
   const deleteSecret = async () => { if (!deleteId) return; try { await api.delete(`/secrets/${deleteId}`); toast('success', 'Secret deleted'); setDeleteId(null); loadData(); } catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to delete secret'); } };
   const testConnection = async (id: string) => { try { const data = await api.post<{ status: string }>(`/secrets/${id}/test`); toast(data.status === 'ok' ? 'success' : 'warning', data.status === 'ok' ? 'Connection successful' : 'Connection test returned warnings'); } catch (err) { toast('error', err instanceof Error ? err.message : 'Connection test failed'); } };
 
+  // The value is fetched on demand rather than kept in page state, so it lives
+  // in the browser only for as long as the write to the clipboard takes.
+  const copySecret = async (id: string) => {
+    const reveal = api.post<{ name: string; value: string }>(`/secrets/${id}/reveal`);
+
+    try {
+      // Start the write before awaiting the API response. Safari and some
+      // embedded browsers discard the click's user activation after an await
+      // and reject a later writeText call with NotAllowedError.
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': reveal.then(({ value }) => new Blob([value], { type: 'text/plain' })),
+            }),
+          ]);
+        } catch (clipboardError) {
+          const { value } = await reveal;
+          if (!copyWithExecCommand(value)) throw clipboardError;
+        }
+      } else {
+        const { value } = await reveal;
+        try {
+          if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+          await navigator.clipboard.writeText(value);
+        } catch (clipboardError) {
+          if (!copyWithExecCommand(value)) throw clipboardError;
+        }
+      }
+
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch (err) {
+      const message = err instanceof Error && err.name !== 'NotAllowedError'
+        ? err.message
+        : 'Clipboard access was blocked by your browser';
+      toast('error', message);
+    }
+  };
+
   const handleSearch = (val: string) => { setSearch(val); setPage(0); };
 
   const filtered = secrets.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
@@ -119,6 +180,7 @@ export function Secrets() {
                         <Shield className="w-5 h-5 text-accent-primary" />
                       </div>
                       <div className="flex items-center gap-1">
+                        <button onClick={() => copySecret(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Copy value to clipboard" aria-label="Copy value to clipboard">{copiedId === s.id ? <Check className="w-4 h-4 text-accent-primary" /> : <Copy className="w-4 h-4" />}</button>
                         <button onClick={() => testConnection(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Test connection" aria-label="Test connection"><Activity className="w-4 h-4" /></button>
                         <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Edit secret" aria-label="Edit secret"><Pencil className="w-4 h-4" /></button>
                         <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer" title="Delete" aria-label="Delete secret"><Trash2 className="w-4 h-4" /></button>
@@ -148,6 +210,7 @@ export function Secrets() {
                   { key: 'updated', header: 'Updated', hideOnMobile: true, render: (s: Secret) => (<span className="text-sm text-text-2">{new Date(s.updated_at).toLocaleDateString()}</span>) },
                   { key: 'actions', header: '', className: 'text-right', render: (s: Secret) => (
                     <div className="flex items-center justify-end gap-1">
+                      <button onClick={(e) => { e.stopPropagation(); copySecret(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Copy value to clipboard" aria-label="Copy value to clipboard">{copiedId === s.id ? <Check className="w-4 h-4 text-accent-primary" /> : <Copy className="w-4 h-4" />}</button>
                       <button onClick={(e) => { e.stopPropagation(); testConnection(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-accent-text hover:bg-surface-2 transition-colors cursor-pointer" title="Test connection" aria-label="Test connection"><Activity className="w-4 h-4" /></button>
                       <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="p-1.5 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Edit secret" aria-label="Edit secret"><Pencil className="w-4 h-4" /></button>
                       <button onClick={(e) => { e.stopPropagation(); setDeleteId(s.id); }} className="p-1.5 rounded-lg text-text-2 hover:text-red-400 hover:bg-surface-2 transition-colors cursor-pointer" title="Delete secret" aria-label="Delete secret"><Trash2 className="w-4 h-4" /></button>

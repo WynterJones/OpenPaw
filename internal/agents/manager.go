@@ -93,6 +93,9 @@ type Manager struct {
 	// them — a run with no scheduler wired in must not offer to schedule things
 	// it cannot register.
 	Scheduler SchedulerControl
+	// SecretsMgr backs get_secret, letting an agent read a credential's value
+	// when the task needs it. Nil leaves agents with names only.
+	SecretsMgr SecretDecryptor
 	// MediaRegistry backs the studio_* tools. Nil disables them.
 	MediaRegistry   *media.Registry
 	manifestCache   sync.Map // map[toolID][]byte

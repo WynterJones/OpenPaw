@@ -662,11 +662,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers[name] = handler
 	}
 
-	// Secret names (never values) so an agent can answer "is that key set yet?"
-	// itself instead of asking the user to go and look.
-	cfg.System += "\n\n---\n\n" + buildSecretsPromptSection(m.db)
-	cfg.ExtraTools = append(cfg.ExtraTools, BuildSecretToolDefs()...)
-	for name, handler := range MakeSecretToolHandlers(m.db) {
+	// Secret names so an agent can answer "is that key set yet?" itself instead
+	// of asking the user to go and look, plus get_secret for the cases where it
+	// needs the value to do the work.
+	cfg.System += "\n\n---\n\n" + buildSecretsPromptSection(m.db, m.SecretsMgr)
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildSecretToolDefs(m.SecretsMgr)...)
+	for name, handler := range MakeSecretToolHandlers(m.db, m.SecretsMgr, agentRoleSlug) {
 		cfg.ExtraHandlers[name] = handler
 	}
 

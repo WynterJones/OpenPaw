@@ -305,6 +305,9 @@ func main() {
 	agentMgr.FrontendFS = frontendFS
 	// Lets the chat agent browse Studio folders and generate media itself.
 	agentMgr.MediaRegistry = mediaRegistry
+	// Lets agents read a secret's value via get_secret when a task needs the
+	// credential itself, not just its name.
+	agentMgr.SecretsMgr = secretsMgr
 
 	// Wire notification function (creates notification + broadcasts)
 	notifyFn := func(in models.NotificationInput) {

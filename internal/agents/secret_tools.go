@@ -10,20 +10,32 @@ import (
 	llm "github.com/openpaw/openpaw/internal/llm"
 )
 
-// Secret *names* for agents — never values.
+// Secret tools for agents.
 //
 // Agents constantly need to answer "is FOO_API_KEY set yet?" while wiring up a
 // service, and without this they had to guess or ask the user to go read the
-// Secrets page and report back. Listing names closes that loop.
+// Secrets page and report back. list_secrets and check_secrets close that loop
+// using names alone.
 //
-// Values are deliberately unreachable here. A service receives its secrets as
-// environment variables at runtime, injected by the process manager — the model
-// never needs to see one, so it never gets one. That keeps credentials out of
-// chat transcripts, out of the context window, and out of whatever the model
-// provider logs.
+// get_secret goes further and hands over the decrypted value. Services normally
+// receive their secrets as environment variables injected by the process
+// manager, so the model rarely needs one — but "rarely" is not "never": calling
+// an API from the shell, or writing a config file the user asked for, both need
+// the actual string, and without this tool the agent's only move was to ask the
+// user to paste it into chat, which is strictly worse. The value still lands in
+// the context window and therefore in the provider's logs, so the tool is
+// deliberately separate from the name tools, requires a stated reason, and
+// every call is written to the audit log.
 
-// BuildSecretToolDefs returns the read-only secret tools.
-func BuildSecretToolDefs() []llm.ToolDef {
+// SecretDecryptor decrypts stored secret values. Satisfied by secrets.Manager.
+type SecretDecryptor interface {
+	Decrypt(encrypted string) (string, error)
+}
+
+// BuildSecretToolDefs returns the secret tools. get_secret is only offered when
+// a decryptor is wired in — a run that cannot decrypt must not advertise a tool
+// it would only ever fail at.
+func BuildSecretToolDefs(dec SecretDecryptor) []llm.ToolDef {
 	listParams, _ := json.Marshal(map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -46,12 +58,27 @@ func BuildSecretToolDefs() []llm.ToolDef {
 		"required": []string{"names"},
 	})
 
-	return []llm.ToolDef{
+	getParams, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{
+				"type":        "string",
+				"description": "Name of the secret to reveal, e.g. \"STRIPE_SECRET_KEY\".",
+			},
+			"reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Short reason you need the value, e.g. \"calling the Stripe API to look up the webhook signing secret\". Recorded in the audit log.",
+			},
+		},
+		"required": []string{"name", "reason"},
+	})
+
+	defs := []llm.ToolDef{
 		{
 			Type: "function",
 			Function: llm.FunctionDef{
 				Name:        "list_secrets",
-				Description: "List the NAMES of all secrets stored in OpenPaw, with their descriptions and which service owns them. Values are never returned. Use this to see what credentials are already configured.",
+				Description: "List the NAMES of all secrets stored in OpenPaw, with their descriptions and which service owns them. Values are not returned — use get_secret for those. Use this to see what credentials are already configured.",
 				Parameters:  listParams,
 			},
 		},
@@ -59,19 +86,37 @@ func BuildSecretToolDefs() []llm.ToolDef {
 			Type: "function",
 			Function: llm.FunctionDef{
 				Name:        "check_secrets",
-				Description: "Check which of the given secret names are already set and which are missing. Values are never returned. Use this when telling the user what they still need to add.",
+				Description: "Check which of the given secret names are already set and which are missing. Values are not returned — use get_secret for those. Use this when telling the user what they still need to add.",
 				Parameters:  checkParams,
 			},
 		},
 	}
+
+	if dec != nil {
+		defs = append(defs, llm.ToolDef{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name: "get_secret",
+				Description: "Reveal the decrypted VALUE of a stored secret. Use it when you actually need the credential to do the work — calling an API from the shell, or writing a config file the user asked for. " +
+					"Prefer list_secrets/check_secrets when you only need to know whether something is set. Never echo the value back into chat, into a file the user did not ask for, or into a commit. Every call is audit-logged.",
+				Parameters: getParams,
+			},
+		})
+	}
+	return defs
 }
 
-// MakeSecretToolHandlers returns handlers for the read-only secret tools.
-func MakeSecretToolHandlers(db *database.DB) map[string]llm.ToolHandler {
-	return map[string]llm.ToolHandler{
+// MakeSecretToolHandlers returns handlers for the secret tools. A nil decryptor
+// omits get_secret, matching BuildSecretToolDefs.
+func MakeSecretToolHandlers(db *database.DB, dec SecretDecryptor, agentSlug string) map[string]llm.ToolHandler {
+	handlers := map[string]llm.ToolHandler{
 		"list_secrets":  handleListSecrets(db),
 		"check_secrets": handleCheckSecrets(db),
 	}
+	if dec != nil {
+		handlers["get_secret"] = handleGetSecret(db, dec, agentSlug)
+	}
+	return handlers
 }
 
 type secretInfo struct {
@@ -198,10 +243,66 @@ func handleCheckSecrets(db *database.DB) llm.ToolHandler {
 	}
 }
 
-// buildSecretsPromptSection tells the agent the tools exist and, crucially,
-// that values are off-limits — otherwise a model that cannot find a value tool
-// tends to ask the user to paste the secret into chat.
-func buildSecretsPromptSection(db *database.DB) string {
+// handleGetSecret decrypts one secret by name. Names are matched
+// case-insensitively for the same reason check_secrets does it.
+func handleGetSecret(db *database.DB, dec SecretDecryptor, agentSlug string) llm.ToolHandler {
+	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+		var params struct {
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(input, &params); err != nil {
+			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+		}
+		params.Name = strings.TrimSpace(params.Name)
+		if params.Name == "" {
+			return llm.ToolResult{Output: "name is required", IsError: true}
+		}
+
+		var id, actualName, encrypted string
+		err := db.QueryRow(
+			"SELECT id, name, encrypted_value FROM secrets WHERE LOWER(name) = LOWER(?)",
+			params.Name,
+		).Scan(&id, &actualName, &encrypted)
+		if err != nil {
+			return llm.ToolResult{
+				Output:  fmt.Sprintf("No secret named %q is stored. Call list_secrets to see what is configured.", params.Name),
+				IsError: true,
+			}
+		}
+
+		value, err := dec.Decrypt(encrypted)
+		if err != nil {
+			return llm.ToolResult{
+				Output:  fmt.Sprintf("Secret %q exists but could not be decrypted (the encryption key may have changed). Ask the user to re-enter it in Settings → Secrets.", actualName),
+				IsError: true,
+			}
+		}
+
+		actor := "system"
+		if agentSlug != "" {
+			actor = "agent:" + agentSlug
+		}
+		db.LogAudit(actor, "secret_revealed", "secret", "secret", id, actualName+" — "+params.Reason)
+
+		// A placeholder decrypts fine but is not a usable credential; handing it
+		// over unlabelled sends the agent off to authenticate with "REPLACE_ME".
+		if value == "REPLACE_ME" {
+			return llm.ToolResult{Output: fmt.Sprintf(
+				"%s is still a placeholder (REPLACE_ME) — no real value has been set. Ask the user to add it in Settings → Secrets.", actualName)}
+		}
+
+		return llm.ToolResult{Output: fmt.Sprintf(
+			"%s=%s\n\n(Handle this value carefully: use it for the task at hand and do not repeat it back in chat or write it into files or commits.)",
+			actualName, value,
+		)}
+	}
+}
+
+// buildSecretsPromptSection tells the agent the tools exist and how to treat
+// values — otherwise a model unsure whether it can read one tends to ask the
+// user to paste the secret into chat instead.
+func buildSecretsPromptSection(db *database.DB, dec SecretDecryptor) string {
 	secrets, err := loadSecretNames(db)
 	if err != nil {
 		return ""
@@ -210,8 +311,14 @@ func buildSecretsPromptSection(db *database.DB) string {
 	var b strings.Builder
 	b.WriteString("## SECRETS\n")
 	b.WriteString("Use `list_secrets` to see which credentials are configured and `check_secrets` to test specific names.\n")
-	b.WriteString("You can read secret NAMES but never their VALUES — services receive them as environment variables at runtime. ")
-	b.WriteString("Never ask the user to paste a secret value into chat; direct them to Settings → Secrets instead.\n")
+	if dec != nil {
+		b.WriteString("When you genuinely need a credential's value — calling an API yourself, or writing a config file the user asked for — use `get_secret`; it returns the decrypted value and records the call in the audit log. ")
+		b.WriteString("Reach for it only when the work needs it, and do not repeat the value back in chat, write it into files the user did not ask for, or commit it. ")
+		b.WriteString("Services already receive their secrets as environment variables at runtime, so you usually do not need to read one.\n")
+	} else {
+		b.WriteString("You can read secret NAMES but not their VALUES — services receive them as environment variables at runtime.\n")
+	}
+	b.WriteString("Never ask the user to paste a secret value into chat; read it with `get_secret` or direct them to Settings → Secrets.\n")
 
 	if len(secrets) == 0 {
 		b.WriteString("\nNo secrets are configured yet.\n")

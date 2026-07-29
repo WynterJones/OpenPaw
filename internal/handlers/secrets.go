@@ -266,6 +266,33 @@ func (h *SecretsHandler) EnsurePlaceholders(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]interface{}{"created": created})
 }
 
+// Reveal returns a secret's decrypted value so the UI can copy it to the
+// clipboard. Kept as its own endpoint rather than a field on List so a value
+// only ever leaves the server when someone explicitly asks for that one secret,
+// and so the request can be audit-logged.
+func (h *SecretsHandler) Reveal(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var name, encrypted string
+	err := h.db.QueryRow("SELECT name, encrypted_value FROM secrets WHERE id = ?", id).Scan(&name, &encrypted)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "secret not found")
+		return
+	}
+
+	value, err := h.manager.Decrypt(encrypted)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to decrypt secret")
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	h.db.LogAudit(userID, "secret_revealed", "secret", "secret", id, name)
+
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{"name": name, "value": value})
+}
+
 func (h *SecretsHandler) Test(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
