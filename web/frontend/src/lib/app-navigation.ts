@@ -19,7 +19,7 @@ import {
   Wrench,
 } from 'lucide-react';
 
-export type AppNavGroup = 'Workspace' | 'System' | 'More';
+export type AppNavGroup = 'Workspace' | 'Knowledge' | 'System' | 'More';
 
 export interface AppNavItem {
   id: string;
@@ -37,10 +37,10 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   { id: 'inbox', to: '/inbox', icon: Inbox, label: 'Inbox', description: 'Reports and agent posts', group: 'Workspace', defaultKey: '2', keywords: ['posts', 'reports', 'notifications'] },
   { id: 'terminal', to: '/terminal', icon: TerminalSquare, label: 'Terminal', description: 'Workspace terminals and processes', group: 'Workspace', defaultKey: '3', keywords: ['shell', 'workbench'] },
   { id: 'studio', to: '/studio', icon: Clapperboard, label: 'Studio', description: 'Generate and manage media', group: 'Workspace', defaultKey: '4', keywords: ['images', 'video', 'audio', 'media'] },
-  { id: 'context', to: '/knowledge-base', icon: BookOpen, label: 'Context', description: 'Knowledge files and workspace directory', group: 'Workspace', defaultKey: '5', keywords: ['knowledge', 'files', 'directory', 'memory'] },
-  { id: 'databases', to: '/databases', icon: Database, label: 'Databases', description: 'Structured workspace data', group: 'Workspace', defaultKey: '6', keywords: ['tables', 'rows', 'airtable'] },
-  { id: 'tasks', to: '/todo-lists', icon: ListTodo, label: 'Tasks', description: 'Workspace todo lists', group: 'Workspace', defaultKey: '7', keywords: ['todos', 'lists'] },
   { id: 'dashboards', to: '/dashboards', icon: LayoutDashboard, label: 'Dashboards', description: 'Views powered by workspace data', group: 'Workspace', defaultKey: '8', keywords: ['reports', 'widgets'] },
+  { id: 'context', to: '/knowledge-base', icon: BookOpen, label: 'Context', description: 'Knowledge files and workspace directory', group: 'Knowledge', defaultKey: '5', keywords: ['knowledge', 'files', 'directory', 'memory'] },
+  { id: 'databases', to: '/databases', icon: Database, label: 'Databases', description: 'Structured workspace data', group: 'Knowledge', defaultKey: '6', keywords: ['tables', 'rows', 'airtable'] },
+  { id: 'tasks', to: '/todo-lists', icon: ListTodo, label: 'Tasks', description: 'Workspace todo lists', group: 'Knowledge', defaultKey: '7', keywords: ['todos', 'lists'] },
   { id: 'agents', to: '/agents', icon: Bot, label: 'Agents', description: 'Manage agents and the Gateway', group: 'System', defaultKey: 'a' },
   { id: 'services', to: '/services', icon: Wrench, label: 'Services', description: 'Tools and connected services', group: 'System', defaultKey: 's', keywords: ['tools'] },
   { id: 'skills', to: '/skills', icon: Sparkles, label: 'Skills', description: 'Agent skills and instructions', group: 'System', defaultKey: 'k' },

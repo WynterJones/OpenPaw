@@ -59,8 +59,8 @@ type NavItem = {
 };
 type NavGroup = { items: NavItem[] };
 
-// The places you go all day sit at the top level; everything that configures
-// how OpenPaw works is folded into the two groups below so the nav stays short.
+// The places you go all day sit at the top level. Knowledge and configuration
+// screens are folded into named groups so the primary nav stays short.
 const navGroups: NavGroup[] = [
   {
     items: [
@@ -68,14 +68,14 @@ const navGroups: NavGroup[] = [
       { to: "/inbox", icon: InboxIcon, label: "Inbox" },
       { to: "/terminal", icon: TerminalSquare, label: "Terminal" },
       { to: "/studio", icon: Clapperboard, label: "Studio" },
-      // Context and Tasks are things you open while working, not settings —
-      // they belong beside Chats and Studio rather than behind the System
-      // dropdown with the pages you configure once and forget.
-      { to: "/knowledge-base", icon: BookOpen, label: "Context" },
-      { to: "/databases", icon: Database, label: "Databases" },
-      { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
     ],
   },
+];
+
+const knowledgeItems: NavItem[] = [
+  { to: "/knowledge-base", icon: BookOpen, label: "Context" },
+  { to: "/databases", icon: Database, label: "Databases" },
+  { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
 ];
 
 const systemItems: NavItem[] = [
@@ -621,7 +621,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
 }
 
 /**
- * A collapsible nav group ("System", "More").
+ * A collapsible nav group ("Knowledge", "System", "More").
  *
  * Collapsed sidebar has no room for a label, so the group flattens to its icons
  * — the disclosure only exists to save vertical space, which is not the
@@ -797,6 +797,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </div>
           </div>
         ))}
+        <div className="mx-3 my-2 border-b border-border-0" />
+        <NavGroupNav label="Knowledge" icon={BookOpen} items={knowledgeItems} collapsed={collapsed} />
         <div className="mx-3 my-2 border-b border-border-0" />
         <NavGroupNav label="System" icon={Cpu} items={systemItems} collapsed={collapsed} />
         <div className="mx-3 my-2 border-b border-border-0" />
