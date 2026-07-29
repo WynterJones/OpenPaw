@@ -691,6 +691,15 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers[name] = handler
 	}
 
+	// Inbox reports are workspace knowledge too: agents can mine recent reports,
+	// save or update posts, and archive processed items without sending the user
+	// back to the Inbox UI.
+	cfg.System += "\n\n---\n\n" + buildInboxPromptSection()
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildInboxToolDefs()...)
+	for name, handler := range MakeInboxToolHandlers(m.db, wsID, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+
 	// Studio tools: browse the media library and generate into it. Separate
 	// from generate_image below, which is the older single-shot image path —
 	// these add folders, video and audio, and providers beyond OpenRouter.

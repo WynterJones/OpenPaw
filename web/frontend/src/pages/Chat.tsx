@@ -34,6 +34,7 @@ import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
 import { useAutocomplete } from '../hooks/useAutocomplete';
 import { useViewToggles } from '../contexts/viewToggles';
+import { activatePathInsertionTarget, clearPathInsertionTarget } from '../lib/path-insertion';
 
 type ContextItem =
   | { kind: 'file'; file: ContextFile }
@@ -189,6 +190,7 @@ export function Chat() {
   const pollingRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => () => clearPathInsertionTarget('chat-composer'), []);
   const THREADS_PER_PAGE = 10;
 
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
@@ -1164,6 +1166,19 @@ export function Chat() {
       setShowThreads(false);
     } catch (err) { toast('error', err instanceof Error ? err.message : 'Failed to create thread'); }
   };
+
+  useEffect(() => {
+    const requested = () => {
+      if (sessionStorage.getItem('openpaw_new_chat_requested') !== 'true') return;
+      sessionStorage.removeItem('openpaw_new_chat_requested');
+      void createThread();
+    };
+    requested();
+    window.addEventListener('openpaw:new-chat', requested);
+    return () => window.removeEventListener('openpaw:new-chat', requested);
+    // createThread intentionally uses the current selected agent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stopPolling = () => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -2176,6 +2191,28 @@ export function Chat() {
                     onChange={handleInputChange}
                     onKeyDown={handleInputKeyDown}
                     onPaste={handlePaste}
+                    onFocus={() => {
+                      const textarea = textareaRef.current;
+                      if (!textarea) return;
+                      activatePathInsertionTarget({
+                        id: 'chat-composer',
+                        label: 'chat',
+                        insert: path => {
+                          const target = textareaRef.current;
+                          if (!target) return;
+                          const start = target.selectionStart;
+                          const end = target.selectionEnd;
+                          setInput(current => `${current.slice(0, start)}${path}${current.slice(end)}`);
+                          requestAnimationFrame(() => {
+                            const next = textareaRef.current;
+                            if (!next) return;
+                            next.focus();
+                            next.selectionStart = next.selectionEnd = start + path.length;
+                            autoResize(next);
+                          });
+                        },
+                      });
+                    }}
                     placeholder="Ask anything... (@ agents, # services, !! context, @@ media)"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"

@@ -40,6 +40,7 @@ import type {
   WorkspaceFileContent,
   WorkspaceFilesResponse,
   WorkspaceDirectory,
+  WorkspaceSearchResult,
   ThreadPin,
   TerminalSession,
   StudioKind,
@@ -482,6 +483,10 @@ export const workspaces = {
   browse: (id: string, dir: string, path: string) =>
     api.get<{ path: string; files: WorkspaceFileNode[] }>(
       `/workspaces/${id}/browse?dir=${encodeURIComponent(dir)}&path=${encodeURIComponent(path)}`,
+    ),
+  search: (id: string, query: string, limit = 100) =>
+    api.get<WorkspaceSearchResult[]>(
+      `/workspaces/${id}/search?q=${encodeURIComponent(query)}&limit=${limit}`,
     ),
   readFile: (id: string, dir: string, path: string) =>
     api.get<WorkspaceFileContent>(

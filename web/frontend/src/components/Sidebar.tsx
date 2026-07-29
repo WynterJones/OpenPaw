@@ -37,6 +37,19 @@ import { startWindowDrag } from "../lib/tauri";
 import { Button } from "./Button";
 import { useOpenRouterBalance } from "../hooks/useOpenRouterBalance";
 import { providerName } from "../lib/provider";
+import { useHotkeys } from "../contexts/hotkeys";
+import { navigationHotkeyLabel } from "../lib/app-navigation";
+
+function HotkeyBadge({ itemId }: { itemId: string }) {
+  const { showBadges, enabled, modifier, bindings } = useHotkeys();
+  const key = bindings[itemId];
+  if (!showBadges || !enabled || !key) return null;
+  return (
+    <kbd className="ml-auto flex-shrink-0 rounded border border-border-1 bg-surface-0/60 px-1 py-0.5 text-[9px] font-medium leading-none text-text-3">
+      {navigationHotkeyLabel(modifier, key)}
+    </kbd>
+  );
+}
 
 type NavItem = {
   to: string;
@@ -475,6 +488,7 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 }
 
 function DashboardsNav({ collapsed }: { collapsed: boolean }) {
+  const { showBadges, enabled, modifier, bindings } = useHotkeys();
   const [open, setOpen] = useState(false);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -544,6 +558,11 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
         <span className="flex-1 min-w-0 text-left text-sm font-medium text-text-1 truncate">
           {activeDashboard ? activeDashboard.name : "Dashboards"}
         </span>
+        {showBadges && enabled && bindings.dashboards && (
+          <kbd className="rounded border border-border-1 bg-surface-0/60 px-1 py-0.5 text-[9px] font-medium leading-none text-text-3">
+            {navigationHotkeyLabel(modifier, bindings.dashboards)}
+          </kbd>
+        )}
         <ChevronsUpDown className="w-4 h-4 text-text-3 flex-shrink-0" aria-hidden="true" />
       </button>
 
@@ -645,6 +664,7 @@ function NavGroupNav({
             }
           >
             <item.icon className="flex-shrink-0 w-5 h-5" />
+            {!collapsed && <HotkeyBadge itemId={item.to.replace('/', '').replace('todo-lists', 'tasks').replace('knowledge-base', 'context').replace('library', 'templates')} />}
           </NavLink>
         ))}
       </div>
@@ -686,6 +706,7 @@ function NavGroupNav({
             >
               <item.icon className="flex-shrink-0 w-4 h-4" />
               <span>{item.label}</span>
+              <HotkeyBadge itemId={item.to.replace('/', '').replace('todo-lists', 'tasks').replace('knowledge-base', 'context').replace('library', 'templates')} />
             </NavLink>
           ))}
         </div>
@@ -767,6 +788,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-accent-primary text-white text-[10px] font-bold flex items-center justify-center leading-none">
                       {unread > 99 ? "99+" : unread}
                     </span>
+                  )}
+                  {!collapsed && (
+                    <HotkeyBadge itemId={item.to.replace('/', '').replace('todo-lists', 'tasks').replace('knowledge-base', 'context').replace('library', 'templates')} />
                   )}
                 </NavLink>
               ))}

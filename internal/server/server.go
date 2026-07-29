@@ -577,6 +577,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/{id}/generate-image", workspacesHandler.GenerateImage)
 				r.Post("/upload-image", workspacesHandler.UploadImage)
 				r.Get("/{id}/browse", workspacesHandler.Browse)
+				r.Get("/{id}/search", workspacesHandler.SearchFiles)
 				r.Get("/{id}/file", workspacesHandler.ReadFile)
 				r.Put("/{id}/file", workspacesHandler.WriteFile)
 				r.Get("/{id}/directories", workspacesHandler.ListDirectories)

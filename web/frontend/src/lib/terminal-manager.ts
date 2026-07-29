@@ -430,6 +430,13 @@ class TerminalManager {
     instance.term.focus();
   }
 
+  insertPath(sessionId: string, path: string): void {
+    const instance = this.instances.get(sessionId);
+    if (!instance) return;
+    this.writeToTerminal(sessionId, this.shellEscape(path));
+    instance.term.focus();
+  }
+
   setOnExit(sessionId: string, callback: ((sessionId: string) => void) | null): void {
     const instance = this.instances.get(sessionId);
     if (!instance) return;

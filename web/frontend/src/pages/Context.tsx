@@ -25,6 +25,7 @@ import {
   type ContextTree,
   type ContextTreeNode,
 } from "../lib/api";
+import { activatePathInsertionTarget, clearPathInsertionTarget } from "../lib/path-insertion";
 
 // ---- Utilities ----------------------------------------------------------------
 
@@ -290,6 +291,10 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
 
   // Upload
   const fileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => () => {
+    clearPathInsertionTarget("context-about-you");
+    clearPathInsertionTarget("context-file");
+  }, []);
 
   // Load tree
   const loadTree = useCallback(async () => {
@@ -821,6 +826,23 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                     <textarea
                       className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
                       value={aboutYouContent}
+                      onFocus={event => {
+                        const textarea = event.currentTarget;
+                        activatePathInsertionTarget({
+                          id: "context-about-you",
+                          label: "About You",
+                          insert: path => {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            setAboutYouContent(current => `${current.slice(0, start)}${path}${current.slice(end)}`);
+                            setAboutYouDirty(true);
+                            requestAnimationFrame(() => {
+                              textarea.focus();
+                              textarea.selectionStart = textarea.selectionEnd = start + path.length;
+                            });
+                          },
+                        });
+                      }}
                       onChange={(e) => {
                         setAboutYouContent(e.target.value);
                         setAboutYouDirty(e.target.value !== aboutYouSaved);
@@ -956,6 +978,23 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                     <textarea
                       className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
                       value={editedContent}
+                      onFocus={event => {
+                        const textarea = event.currentTarget;
+                        activatePathInsertionTarget({
+                          id: "context-file",
+                          label: selectedFile.name,
+                          insert: path => {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            setEditedContent(current => `${current.slice(0, start)}${path}${current.slice(end)}`);
+                            setIsDirty(true);
+                            requestAnimationFrame(() => {
+                              textarea.focus();
+                              textarea.selectionStart = textarea.selectionEnd = start + path.length;
+                            });
+                          },
+                        });
+                      }}
                       onChange={(e) => {
                         setEditedContent(e.target.value);
                         setIsDirty(e.target.value !== fileContent);

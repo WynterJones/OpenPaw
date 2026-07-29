@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { terminalManager } from "../../lib/terminal-manager";
+import { activatePathInsertionTarget, clearPathInsertionTarget } from "../../lib/path-insertion";
 
 interface TerminalViewProps {
   sessionId: string;
@@ -13,6 +14,13 @@ export function TerminalView({
   onExit,
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const activateInsertion = useCallback(() => {
+    activatePathInsertionTarget({
+      id: `terminal:${sessionId}`,
+      label: 'terminal',
+      insert: path => terminalManager.insertPath(sessionId, path),
+    });
+  }, [sessionId]);
 
   // Acquire terminal and attach/detach DOM
   useEffect(() => {
@@ -22,6 +30,7 @@ export function TerminalView({
     terminalManager.attach(sessionId, containerRef.current);
 
     return () => {
+      clearPathInsertionTarget(`terminal:${sessionId}`);
       terminalManager.detach(sessionId);
     };
   }, [sessionId]);
@@ -43,6 +52,7 @@ export function TerminalView({
   // only fills in once you type.
   useEffect(() => {
     if (!isActive) return;
+    activateInsertion();
 
     const timer = setTimeout(() => {
       terminalManager.fit(sessionId);
@@ -51,7 +61,7 @@ export function TerminalView({
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [isActive, sessionId]);
+  }, [activateInsertion, isActive, sessionId]);
 
   // Reconnect and refocus when browser tab becomes visible again
   useEffect(() => {
@@ -77,9 +87,10 @@ export function TerminalView({
   // Click anywhere in the terminal area to refocus
   const handleClick = useCallback(() => {
     if (isActive) {
+      activateInsertion();
       terminalManager.focus(sessionId);
     }
-  }, [isActive, sessionId]);
+  }, [activateInsertion, isActive, sessionId]);
 
   return (
     <div

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router";
 import { generateTheme } from "../lib/theme";
 import {
   User,
@@ -39,6 +40,7 @@ import {
   PinOff,
   Pencil,
   Moon,
+  Keyboard,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Toggle } from "../components/Toggle";
@@ -78,6 +80,8 @@ import { EngineModels } from "../components/settings/EngineModels";
 import { StudioProviders } from "../components/settings/StudioProviders";
 import { BackgroundGenerator } from "../components/settings/BackgroundGenerator";
 import { Dreaming } from "../components/settings/Dreaming";
+import { useHotkeys, type HotkeysValue } from "../contexts/hotkeys";
+import { APP_NAV_ITEMS, hotkeyLabel, navigationHotkeyLabel, type HotkeyModifier } from "../lib/app-navigation";
 
 // Tailscale remote access is for the npx/web-served build. The desktop (Tauri)
 // app has its own TBD mobile-connection story, so hide Tailscale there.
@@ -89,6 +93,7 @@ const IS_DESKTOP_APP =
 const TABS = [
   { id: "profile", label: "Profile", icon: User },
   { id: "general", label: "General", icon: Settings2 },
+  { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "network", label: "Network", icon: Wifi },
   { id: "models", label: "AI Models", icon: Bot },
@@ -410,6 +415,134 @@ function GeneralTab() {
       </Button>
     </div>
   );
+}
+
+function KeyboardTabForm({ hotkeys }: { hotkeys: HotkeysValue }) {
+  const { toast } = useToast();
+  const [enabled, setEnabled] = useState(hotkeys.enabled);
+  const [showBadges, setShowBadges] = useState(hotkeys.showBadges);
+  const [modifier, setModifier] = useState<HotkeyModifier>(hotkeys.modifier);
+  const [bindings, setBindings] = useState<Record<string, string>>(hotkeys.bindings);
+  const [saving, setSaving] = useState(false);
+
+  const duplicates = useMemo(() => {
+    const counts = new Map<string, number>();
+    Object.values(bindings).forEach(value => {
+      const key = value.toLowerCase();
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return new Set([...counts].filter(([, count]) => count > 1).map(([key]) => key));
+  }, [bindings]);
+
+  const save = async () => {
+    if (duplicates.size > 0) {
+      toast("error", "Each shortcut needs a unique key");
+      return;
+    }
+    setSaving(true);
+    try {
+      await hotkeys.update({ enabled, showBadges, modifier, bindings });
+      toast("success", "Keyboard shortcuts saved");
+    } catch (error) {
+      toast("error", error instanceof Error ? error.message : "Failed to save shortcuts");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-text-1">App shortcuts</h3>
+            <p className="mt-1 text-xs leading-relaxed text-text-3">
+              Open screens from anywhere. The command palette is always {hotkeyLabel(modifier, "P")}.
+            </p>
+          </div>
+          <Toggle enabled={enabled} onChange={setEnabled} label="Enable app shortcuts" />
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Select
+            label="Super key"
+            value={modifier}
+            onChange={event => setModifier(event.target.value as HotkeyModifier)}
+            options={[
+              { value: "ctrl", label: "Control (Ctrl)" },
+              { value: "meta", label: "Command / Windows (⌘)" },
+              { value: "alt", label: "Alt / Option" },
+            ]}
+          />
+          <div className="flex items-end">
+            <div className="flex w-full items-center justify-between rounded-lg border border-border-1 bg-surface-2 px-3 py-2">
+              <div>
+                <p className="text-sm font-medium text-text-1">Sidebar badges</p>
+                <p className="text-xs text-text-3">Show the shortcut beside each nav item</p>
+              </div>
+              <Toggle enabled={showBadges} onChange={setShowBadges} label="Show shortcut badges" />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-text-1">Navigation keys</h3>
+          <p className="mt-1 text-xs text-text-3">
+            Use one letter, number, or punctuation key. {hotkeyLabel(modifier, "P")} and {hotkeyLabel(modifier, "N")} are reserved for the palette and a new chat. Letter navigation uses Shift so editing shortcuts keep working.
+          </p>
+        </div>
+        <div className="divide-y divide-border-0 overflow-hidden rounded-xl border border-border-0">
+          {APP_NAV_ITEMS.map(item => {
+            const value = bindings[item.id] || "";
+            const duplicate = duplicates.has(value.toLowerCase());
+            return (
+              <div key={item.id} className="flex items-center gap-3 bg-surface-1 px-3 py-2.5">
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-2">
+                  <item.icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-text-1">{item.label}</span>
+                  <span className="block truncate text-xs text-text-3">{item.group}</span>
+                </span>
+                <span className="hidden text-[11px] text-text-3 sm:block">{value && navigationHotkeyLabel(modifier, value)}</span>
+                <input
+                  aria-label={`${item.label} shortcut key`}
+                  value={value}
+                  maxLength={1}
+                  disabled={!enabled}
+                  onChange={event => {
+                    const next = event.target.value.slice(-1).toLowerCase();
+                    if (next === "p" || next === "n" || /\s/.test(next)) return;
+                    setBindings(current => ({ ...current, [item.id]: next }));
+                  }}
+                  className={`h-8 w-11 rounded-lg border bg-surface-2 text-center font-mono text-sm uppercase text-text-0 outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary ${
+                    duplicate ? "border-red-500" : "border-border-1"
+                  }`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Button onClick={save} loading={saving} icon={<Save className="w-4 h-4" />}>
+        Save shortcuts
+      </Button>
+    </div>
+  );
+}
+
+function KeyboardTab() {
+  const hotkeys = useHotkeys();
+  const settingsKey = [
+    hotkeys.enabled,
+    hotkeys.modifier,
+    hotkeys.showBadges,
+    JSON.stringify(hotkeys.bindings),
+  ].join(":");
+  return <KeyboardTabForm key={settingsKey} hotkeys={hotkeys} />;
 }
 
 function NotificationsTab() {
@@ -3378,21 +3511,14 @@ function CompanionTab() {
   );
 }
 
-// Reads ?tab= so a link can open Settings on the right pane. Validated against
-// TABS rather than cast, so a stale or hand-typed value falls back to Profile
-// instead of rendering nothing.
-function initialTab(): TabId {
-  const want = new URLSearchParams(window.location.search).get("tab");
-  const match = TABS.find((t) => t.id === want);
-  return match ? match.id : "profile";
-}
-
 export function Settings() {
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: TabId = TABS.find(tab => tab.id === searchParams.get("tab"))?.id || "profile";
 
   const tabContent: Record<TabId, React.ReactNode> = {
     profile: <ProfileTab />,
     general: <GeneralTab />,
+    keyboard: <KeyboardTab />,
     notifications: <NotificationsTab />,
     network: <NetworkTab />,
     models: <ModelsTab />,
@@ -3431,7 +3557,9 @@ export function Settings() {
                       id={`tab-${tab.id}`}
                       aria-selected={activeTab === tab.id}
                       aria-controls={`tabpanel-${tab.id}`}
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => {
+                        setSearchParams({ tab: tab.id }, { replace: true });
+                      }}
                       className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                         isDanger
                           ? activeTab === tab.id

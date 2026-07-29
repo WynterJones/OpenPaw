@@ -7,6 +7,8 @@ import { ActivityDock } from './ActivityDock';
 import { ViewTogglesProvider } from '../contexts/ViewTogglesContext';
 import { useViewToggles } from '../contexts/viewToggles';
 import { useAppViewport } from '../hooks/useAppViewport';
+import { HotkeysProvider } from '../contexts/HotkeysContext';
+import { CommandPalette } from './CommandPalette';
 
 function LayoutInner() {
   const { sidebar, toggle } = useViewToggles();
@@ -31,6 +33,7 @@ function LayoutInner() {
       <BottomNav />
       {onChat && <ChatCompanions />}
       <ActivityDock />
+      <CommandPalette />
     </div>
   );
 }
@@ -38,7 +41,9 @@ function LayoutInner() {
 export function Layout() {
   return (
     <ViewTogglesProvider>
-      <LayoutInner />
+      <HotkeysProvider>
+        <LayoutInner />
+      </HotkeysProvider>
     </ViewTogglesProvider>
   );
 }

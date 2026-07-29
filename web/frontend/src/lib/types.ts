@@ -831,6 +831,16 @@ export interface WorkspaceDirectory {
   files: WorkspaceFileNode[];
 }
 
+export interface WorkspaceSearchResult {
+  name: string;
+  path: string;
+  absolute_path: string;
+  dir_id: string;
+  source: string;
+  is_dir: boolean;
+  size: number;
+}
+
 /** An image pasted into the chat composer and stored on disk. */
 export interface PastedImage {
   id: string;

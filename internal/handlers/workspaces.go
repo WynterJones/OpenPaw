@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -605,6 +606,144 @@ func (h *WorkspacesHandler) Browse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"path": rel, "files": nodes})
+}
+
+type workspaceSearchResult struct {
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	AbsolutePath string `json:"absolute_path"`
+	DirID        string `json:"dir_id"`
+	Source       string `json:"source"`
+	IsDir        bool   `json:"is_dir"`
+	Size         int64  `json:"size"`
+	score        int
+}
+
+// SearchFiles searches only the selected workspace's own files and directories
+// explicitly attached to it. It deliberately skips dependency/build metadata
+// trees: those produce noisy results and can contain hundreds of thousands of
+// entries, which would make opening the command palette feel like a disk scan.
+func (h *WorkspacesHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !h.validWorkspace(w, id) {
+		return
+	}
+
+	limit := 100
+	if parsed, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && parsed > 0 {
+		limit = min(parsed, 200)
+	}
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+
+	var workspaceName string
+	_ = h.db.QueryRow("SELECT name FROM workspaces WHERE id = ?", id).Scan(&workspaceName)
+	type root struct{ dirID, path, label string }
+	roots := []root{{path: h.filesDir(id), label: workspaceName + " files"}}
+	rows, err := h.db.Query(
+		"SELECT id, path, label FROM workspace_directories WHERE workspace_id = ? ORDER BY created_at ASC", id,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var item root
+			if rows.Scan(&item.dirID, &item.path, &item.label) == nil {
+				roots = append(roots, item)
+			}
+		}
+	}
+
+	ignored := map[string]bool{
+		".git": true, ".svn": true, ".hg": true, "node_modules": true,
+		".next": true, ".cache": true, "__pycache__": true, "dist": true,
+		"build": true, "coverage": true, "vendor": true,
+	}
+	results := make([]workspaceSearchResult, 0, limit)
+	// Leave some headroom before sorting so a later, better filename match can
+	// beat an earlier weak path match.
+	scanCap := limit * 8
+
+	for _, root := range roots {
+		if len(results) >= scanCap {
+			break
+		}
+		if info, statErr := os.Stat(root.path); statErr != nil || !info.IsDir() {
+			continue
+		}
+		scanned := 0
+		_ = filepath.WalkDir(root.path, func(path string, entry os.DirEntry, walkErr error) error {
+			if r.Context().Err() != nil {
+				return filepath.SkipAll
+			}
+			scanned++
+			if scanned > 25000 {
+				return filepath.SkipAll
+			}
+			if walkErr != nil {
+				if entry != nil && entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if path == root.path {
+				return nil
+			}
+			if entry.IsDir() && ignored[entry.Name()] {
+				return filepath.SkipDir
+			}
+			rel, relErr := filepath.Rel(root.path, path)
+			if relErr != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			// An empty search provides a useful, fast directory overview instead
+			// of recursively returning arbitrary files.
+			if query == "" && strings.Contains(rel, "/") {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			nameLower := strings.ToLower(entry.Name())
+			pathLower := strings.ToLower(rel)
+			if query != "" && !strings.Contains(nameLower, query) && !strings.Contains(pathLower, query) {
+				return nil
+			}
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil
+			}
+			score := 3
+			if nameLower == query {
+				score = 0
+			} else if strings.HasPrefix(nameLower, query) {
+				score = 1
+			} else if strings.Contains(nameLower, query) {
+				score = 2
+			}
+			results = append(results, workspaceSearchResult{
+				Name: entry.Name(), Path: rel, AbsolutePath: path, DirID: root.dirID,
+				Source: root.label, IsDir: entry.IsDir(), Size: info.Size(), score: score,
+			})
+			if len(results) >= scanCap {
+				return filepath.SkipAll
+			}
+			return nil
+		})
+	}
+
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score < results[j].score
+		}
+		if results[i].IsDir != results[j].IsDir {
+			return results[i].IsDir
+		}
+		return strings.ToLower(results[i].Path) < strings.ToLower(results[j].Path)
+	})
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	writeJSON(w, http.StatusOK, results)
 }
 
 // resolveBrowsePath maps a (workspace, dir, relative path) triple onto an

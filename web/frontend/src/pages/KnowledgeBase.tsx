@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { BookOpen, ImageIcon, UserPen, FolderTree, Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderPlus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Header';
@@ -41,16 +41,34 @@ function DirTreeNode({
   level,
   loadChildren,
   onOpenFile,
+  focusPath,
 }: {
   node: WorkspaceFileNode;
   level: number;
   loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
   onOpenFile: (node: WorkspaceFileNode) => void;
+  focusPath?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<WorkspaceFileNode[] | null>(node.children ?? null);
   const [loading, setLoading] = useState(false);
+  const rowRef = useRef<HTMLButtonElement>(null);
   const pad = { paddingLeft: `${8 + level * 16}px` };
+  const focused = focusPath === node.path;
+
+  useEffect(() => {
+    if (!focusPath || (focusPath !== node.path && !focusPath.startsWith(`${node.path}/`))) return;
+    if (focused) rowRef.current?.scrollIntoView({ block: 'center' });
+    if (!node.is_dir || open || loading || children !== null) return;
+    setOpen(true);
+    setLoading(true);
+    loadChildren(node.path)
+      .then(setChildren)
+      .catch(() => setChildren([]))
+      .finally(() => setLoading(false));
+    // The path is the stable identity; parent browse callbacks are recreated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPath, node.path]);
 
   const toggle = async () => {
     const next = !open;
@@ -71,9 +89,12 @@ function DirTreeNode({
     return (
       <div>
         <button
+          ref={rowRef}
           onClick={toggle}
           style={pad}
-          className="w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer"
+          className={`w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-1 hover:bg-surface-2 transition-colors cursor-pointer ${
+            focused ? 'bg-accent-muted ring-1 ring-inset ring-accent-primary/40' : ''
+          }`}
         >
           {open ? (
             <ChevronDown className="w-3.5 h-3.5 text-text-3 flex-shrink-0" aria-hidden="true" />
@@ -99,6 +120,7 @@ function DirTreeNode({
                 level={level + 1}
                 loadChildren={loadChildren}
                 onOpenFile={onOpenFile}
+                focusPath={focusPath}
               />
             ))}
           </div>
@@ -114,10 +136,13 @@ function DirTreeNode({
 
   return (
     <button
+      ref={rowRef}
       onClick={() => onOpenFile(node)}
       style={pad}
       title={`Open ${node.name}`}
-      className="group w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-2 hover:bg-surface-2 hover:text-text-1 transition-colors cursor-pointer text-left"
+      className={`group w-full flex items-center gap-1.5 rounded-lg pr-2 py-1.5 text-sm text-text-2 hover:bg-surface-2 hover:text-text-1 transition-colors cursor-pointer text-left ${
+        focused ? 'bg-accent-muted ring-1 ring-inset ring-accent-primary/40' : ''
+      }`}
     >
       <span className="w-3.5 flex-shrink-0" aria-hidden="true" />
       <File className="w-4 h-4 text-text-3 group-hover:text-accent-primary flex-shrink-0 transition-colors" aria-hidden="true" />
@@ -135,12 +160,14 @@ function AttachedDirectorySection({
   removing,
   loadChildren,
   onOpenFile,
+  focusPath,
 }: {
   dir: WorkspaceDirectory;
   onRemove: () => void;
   removing: boolean;
   loadChildren: (path: string) => Promise<WorkspaceFileNode[]>;
   onOpenFile: (node: WorkspaceFileNode) => void;
+  focusPath?: string;
 }) {
   return (
     <div className="mb-5">
@@ -172,6 +199,7 @@ function AttachedDirectorySection({
               level={0}
               loadChildren={loadChildren}
               onOpenFile={onOpenFile}
+              focusPath={focusPath}
             />
           ))}
         </div>
@@ -180,7 +208,15 @@ function AttachedDirectorySection({
   );
 }
 
-function WorkspaceDirectoryPanel() {
+function WorkspaceDirectoryPanel({
+  requestedDirId = '',
+  requestedFile,
+  focusPath,
+}: {
+  requestedDirId?: string;
+  requestedFile?: string;
+  focusPath?: string;
+}) {
   const [tree, setTree] = useState<WorkspaceFileNode[]>([]);
   const [dirs, setDirs] = useState<WorkspaceDirectory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,6 +256,15 @@ function WorkspaceDirectoryPanel() {
       cancelled = true;
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!requestedFile || !wsId) return;
+    setEditing({
+      dirId: requestedDirId,
+      path: requestedFile,
+      name: requestedFile.split('/').filter(Boolean).pop() || requestedFile,
+    });
+  }, [requestedDirId, requestedFile, wsId]);
 
   const reveal = async () => {
     if (!wsId) return;
@@ -321,6 +366,7 @@ function WorkspaceDirectoryPanel() {
                     level={0}
                     loadChildren={(p) => workspaces.browse(wsId!, '', p).then((r) => r.files)}
                     onOpenFile={(f) => setEditing({ dirId: '', path: f.path, name: f.name })}
+                    focusPath={requestedDirId === '' ? focusPath : undefined}
                   />
                 ))}
               </div>
@@ -333,6 +379,7 @@ function WorkspaceDirectoryPanel() {
                 removing={removingId === dir.id}
                 loadChildren={(p) => workspaces.browse(wsId!, dir.id, p).then((r) => r.files)}
                 onOpenFile={(f) => setEditing({ dirId: dir.id, path: f.path, name: f.name })}
+                focusPath={requestedDirId === dir.id ? focusPath : undefined}
               />
             ))}
           </div>
@@ -353,8 +400,8 @@ function WorkspaceDirectoryPanel() {
 }
 
 export function KnowledgeBase() {
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<KnowledgeTab>(initialTabFrom(searchParams.get('tab')));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = initialTabFrom(searchParams.get('tab'));
 
   return (
     <div className="flex flex-col h-full">
@@ -363,7 +410,9 @@ export function KnowledgeBase() {
         {knowledgeTabs.map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setSearchParams(t.key === 'context' ? {} : { tab: t.key }, { replace: true });
+            }}
             className={`px-3 md:px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors relative cursor-pointer ${
               tab === t.key ? 'text-text-0' : 'text-text-3 hover:text-text-1'
             }`}
@@ -381,7 +430,13 @@ export function KnowledgeBase() {
 
       <div className="flex-1 min-h-0">
         {tab === 'context' && <ContextPanel view="files" />}
-        {tab === 'directory' && <WorkspaceDirectoryPanel />}
+        {tab === 'directory' && (
+          <WorkspaceDirectoryPanel
+            requestedDirId={searchParams.get('dir') || ''}
+            requestedFile={searchParams.get('file') || undefined}
+            focusPath={searchParams.get('focus') || undefined}
+          />
+        )}
         {tab === 'about' && <ContextPanel view="about" />}
         {tab === 'media' && <MediaLibraryPanel />}
       </div>

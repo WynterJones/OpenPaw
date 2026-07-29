@@ -3,14 +3,68 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/openpaw/openpaw/internal/database"
 )
+
+func searchFilesReq(t *testing.T, h *WorkspacesHandler, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Get("/workspaces/{id}/search", h.SearchFiles)
+	req := httptest.NewRequest(http.MethodGet,
+		"/workspaces/"+DefaultWorkspaceID+"/search?q="+url.QueryEscape(query), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSearchFiles_StaysInWorkspaceAndAttachedDirectories(t *testing.T) {
+	h, files := newTestWorkspacesHandler(t)
+	if err := os.MkdirAll(filepath.Join(files, "projects", "openpaw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(files, "projects", "openpaw", "roadmap.md"), []byte("plan"), 0o644)
+	if err := os.MkdirAll(filepath.Join(files, "node_modules", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(files, "node_modules", "hidden", "roadmap.md"), []byte("noise"), 0o644)
+
+	attached := t.TempDir()
+	_ = os.WriteFile(filepath.Join(attached, "favorite-sites.md"), []byte("links"), 0o644)
+	dirID := uuid.NewString()
+	if _, err := h.db.Exec(
+		"INSERT INTO workspace_directories (id, workspace_id, path, label) VALUES (?, ?, ?, ?)",
+		dirID, DefaultWorkspaceID, attached, "Reference",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := searchFilesReq(t, h, "roadmap")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var results []workspaceSearchResult
+	decodeTestJSON(t, rec, &results)
+	if len(results) != 1 || results[0].Path != "projects/openpaw/roadmap.md" {
+		t.Fatalf("workspace results = %#v", results)
+	}
+	if !strings.HasPrefix(results[0].AbsolutePath, files) {
+		t.Fatalf("result escaped workspace: %s", results[0].AbsolutePath)
+	}
+
+	rec = searchFilesReq(t, h, "favorite")
+	decodeTestJSON(t, rec, &results)
+	if len(results) != 1 || results[0].DirID != dirID || results[0].Source != "Reference" {
+		t.Fatalf("attached results = %#v", results)
+	}
+}
 
 func newTestWorkspacesHandler(t *testing.T) (*WorkspacesHandler, string) {
 	t.Helper()

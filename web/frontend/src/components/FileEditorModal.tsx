@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { X, Save, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 import { workspaces } from '../lib/api-helpers';
+import { activatePathInsertionTarget, clearPathInsertionTarget } from '../lib/path-insertion';
 
 interface FileEditorModalProps {
   workspaceId: string;
@@ -39,6 +40,7 @@ export function FileEditorModal({ workspaceId, dirId, path, name, onClose }: Fil
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => () => clearPathInsertionTarget(`file-editor:${dirId}:${path}`), [dirId, path]);
 
   const dirty = content !== original;
 
@@ -175,6 +177,22 @@ export function FileEditorModal({ workspaceId, dirId, path, name, onClose }: Fil
               ref={textareaRef}
               value={content}
               onChange={e => setContent(e.target.value)}
+              onFocus={event => {
+                const textarea = event.currentTarget;
+                activatePathInsertionTarget({
+                  id: `file-editor:${dirId}:${path}`,
+                  label: name,
+                  insert: insertedPath => {
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    setContent(current => `${current.slice(0, start)}${insertedPath}${current.slice(end)}`);
+                    requestAnimationFrame(() => {
+                      textarea.focus();
+                      textarea.selectionStart = textarea.selectionEnd = start + insertedPath.length;
+                    });
+                  },
+                });
+              }}
               onKeyDown={onKeyDown}
               spellCheck={false}
               autoComplete="off"
