@@ -731,7 +731,8 @@ func (h *WorkspacesHandler) SearchFiles(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ignored := map[string]bool{
-		".git": true, ".svn": true, ".hg": true, "node_modules": true,
+		".git": true, ".svn": true, ".hg": true, ".claude": true,
+		"node_modules": true, "worktrees": true,
 		".next": true, ".cache": true, "__pycache__": true, "dist": true,
 		"build": true, "coverage": true, "vendor": true,
 	}
@@ -765,7 +766,7 @@ func (h *WorkspacesHandler) SearchFiles(w http.ResponseWriter, r *http.Request) 
 			if path == root.path {
 				return nil
 			}
-			if entry.IsDir() && ignored[entry.Name()] {
+			if entry.IsDir() && ignored[strings.ToLower(entry.Name())] {
 				return filepath.SkipDir
 			}
 			rel, relErr := filepath.Rel(root.path, path)

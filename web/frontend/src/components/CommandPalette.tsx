@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
 import {
   ArrowRight,
+  Check,
+  Copy,
   File,
   Folder,
   FolderSearch,
@@ -16,6 +18,7 @@ import type { Workspace, WorkspaceSearchResult } from '../lib/types';
 import { getPathInsertionTarget, type PathInsertionTarget } from '../lib/path-insertion';
 import { useHotkeys } from '../contexts/hotkeys';
 import { useToast } from './Toast';
+import { copyText } from '../lib/clipboard';
 
 type PaletteItem =
   | { kind: 'nav'; id: string; label: string; description: string; group: string; to: string; icon: typeof Search; keyCode?: string; keywords: string }
@@ -91,8 +94,10 @@ export function CommandPalette() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [files, setFiles] = useState<WorkspaceSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const insertionTargetRef = useRef<PathInsertionTarget | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileMode = query.startsWith('!');
   const fileQuery = fileMode ? query.slice(1).trim() : '';
 
@@ -104,10 +109,15 @@ export function CommandPalette() {
       setQuery('');
       setFiles([]);
       setActiveIndex(0);
+      setCopiedPath(null);
       inputRef.current?.focus();
     });
     return () => cancelAnimationFrame(frame);
   }, [paletteOpen]);
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!paletteOpen || !fileMode || !workspace) return;
@@ -197,6 +207,20 @@ export function CommandPalette() {
     navigate(`/knowledge-base?${params.toString()}`);
   };
 
+  const copyPath = async (event: React.MouseEvent<HTMLButtonElement>, path: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await copyText(path);
+      setCopiedPath(path);
+      toast('success', 'Path copied to clipboard');
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedPath(null), 1500);
+    } catch {
+      toast('error', 'Could not copy path');
+    }
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -277,36 +301,57 @@ export function CommandPalette() {
                     {group}
                   </p>
                 )}
-                <button
-                  id={`command-${item.id}`}
-                  role="option"
-                  aria-selected={index === activeIndex}
+                <div
                   onMouseMove={() => setActiveIndex(index)}
-                  onClick={() => run(item)}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors cursor-pointer ${
+                  className={`group flex w-full items-center rounded-xl transition-colors ${
                     index === activeIndex ? 'bg-accent-muted' : 'hover:bg-surface-2'
                   }`}
                 >
-                  <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
-                    index === activeIndex ? 'bg-accent-primary/15 text-accent-text' : 'bg-surface-2 text-text-2'
-                  }`}>
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-text-0">
-                      <Highlight text={label} query={fileMode ? fileQuery : query} />
+                  <button
+                    id={`command-${item.id}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    onClick={() => run(item)}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left cursor-pointer"
+                  >
+                    <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
+                      index === activeIndex ? 'bg-accent-primary/15 text-accent-text' : 'bg-surface-2 text-text-2'
+                    }`}>
+                      <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
-                    <span className="block truncate text-xs text-text-3">
-                      <Highlight text={description} query={fileMode ? fileQuery : query} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-text-0">
+                        <Highlight text={label} query={fileMode ? fileQuery : query} />
+                      </span>
+                      <span className="block truncate text-xs text-text-3">
+                        <Highlight text={description} query={fileMode ? fileQuery : query} />
+                      </span>
                     </span>
-                  </span>
-                  {item.kind !== 'file' && item.keyCode && (
-                    <kbd className="flex-shrink-0 rounded-md border border-border-1 bg-surface-2 px-1.5 py-1 text-[10px] font-medium text-text-3">
-                      {item.keyCode}
-                    </kbd>
+                    {item.kind !== 'file' && item.keyCode && (
+                      <kbd className="flex-shrink-0 rounded-md border border-border-1 bg-surface-2 px-1.5 py-1 text-[10px] font-medium text-text-3">
+                        {item.keyCode}
+                      </kbd>
+                    )}
+                    {item.kind === 'file' && index === activeIndex && <ArrowRight className="h-4 w-4 flex-shrink-0 text-text-3" />}
+                  </button>
+                  {item.kind === 'file' && (
+                    <button
+                      type="button"
+                      onClick={event => copyPath(event, item.result.absolute_path)}
+                      className={`op-touch-visible mr-2 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-1 bg-surface-2 text-text-2 transition-all hover:border-accent-primary/40 hover:text-accent-text focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 cursor-pointer ${
+                        copiedPath === item.result.absolute_path
+                          ? 'opacity-100 text-emerald-400'
+                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                      }`}
+                      title={copiedPath === item.result.absolute_path ? 'Copied' : 'Copy path'}
+                      aria-label={copiedPath === item.result.absolute_path ? 'Path copied' : `Copy path for ${item.result.name}`}
+                    >
+                      {copiedPath === item.result.absolute_path
+                        ? <Check className="h-4 w-4" aria-hidden="true" />
+                        : <Copy className="h-4 w-4" aria-hidden="true" />}
+                    </button>
                   )}
-                  {item.kind === 'file' && index === activeIndex && <ArrowRight className="h-4 w-4 flex-shrink-0 text-text-3" />}
-                </button>
+                </div>
               </div>
             );
           })}
@@ -320,8 +365,8 @@ export function CommandPalette() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-0 bg-surface-0/50 px-4 py-2 text-[11px] text-text-3">
-          <span className="truncate">{fileMode ? `Only ${workspace?.name || 'the active workspace'} and its attached directories` : 'Quick links are scoped to the active workspace'}</span>
-          <span className="flex items-center gap-2">
+          <span className="w-full truncate sm:w-auto sm:flex-1">{fileMode ? `Only ${workspace?.name || 'the active workspace'} and its attached directories` : 'Quick links are scoped to the active workspace'}</span>
+          <span className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 sm:w-auto sm:justify-start">
             <span><kbd className="font-mono">↑↓</kbd> choose</span>
             <span><kbd className="font-mono">Enter</kbd> open</span>
             {fileMode && <span><kbd className="font-mono">⇧ Enter</kbd> insert path</span>}

@@ -31,10 +31,17 @@ func TestSearchFiles_StaysInWorkspaceAndAttachedDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(files, "projects", "openpaw", "roadmap.md"), []byte("plan"), 0o644)
-	if err := os.MkdirAll(filepath.Join(files, "node_modules", "hidden"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, ignoredPath := range []string{
+		"node_modules/hidden/roadmap.md",
+		".claude/worktrees/branch/roadmap.md",
+		"worktrees/branch/roadmap.md",
+	} {
+		fullPath := filepath.Join(files, ignoredPath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.WriteFile(fullPath, []byte("noise"), 0o644)
 	}
-	_ = os.WriteFile(filepath.Join(files, "node_modules", "hidden", "roadmap.md"), []byte("noise"), 0o644)
 
 	attached := t.TempDir()
 	_ = os.WriteFile(filepath.Join(attached, "favorite-sites.md"), []byte("links"), 0o644)

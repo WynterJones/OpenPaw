@@ -8,6 +8,7 @@ import { useDragReorder } from '../hooks/useDragReorder';
 import type { Workbench as WorkbenchType } from '../lib/api';
 import { NewTerminalScreen } from '../components/workbench/NewTerminalScreen';
 import { MobileWorkspaceSwitcher } from '../components/MobileWorkspaceSwitcher';
+import { useDesign } from '../contexts/DesignContext';
 
 const TAB_COLORS = [
   '',
@@ -255,7 +256,7 @@ function WorkbenchContent() {
 
   if (!rootPanel || sessions.length === 0) {
     return (
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 bg-surface-0/75">
         <NewTerminalScreen />
       </div>
     );
@@ -269,11 +270,23 @@ function WorkbenchContent() {
 }
 
 export function Workbench() {
+  const { bgImage, previewBg } = useDesign();
+  const shownBackground = previewBg ?? bgImage;
+
   return (
     <WorkbenchProvider>
-      <div className="flex flex-col h-full">
-        <WorkbenchHeader />
-        <WorkbenchContent />
+      <div className="relative h-full overflow-hidden">
+        {shownBackground && (
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${shownBackground})` }}
+            aria-hidden="true"
+          />
+        )}
+        <div className="relative z-[1] flex h-full flex-col">
+          <WorkbenchHeader />
+          <WorkbenchContent />
+        </div>
       </div>
     </WorkbenchProvider>
   );

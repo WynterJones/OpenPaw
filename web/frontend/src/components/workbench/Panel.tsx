@@ -59,11 +59,10 @@ export function Panel({ node }: PanelProps) {
           </div>
         )}
 
-        {/* Pending "+" request. Opaque and on top: it also has to hide the
-            terminal underneath from the drop hit-test, so a folder dropped here
-            opens a terminal instead of being pasted into the old one. */}
+        {/* Pending "+" request. It stays on top for drop hit-testing while the
+            translucent surface keeps the workspace background visible. */}
         {requestingTerminal && (
-          <div className="absolute inset-0 z-10 bg-surface-0">
+          <div className="absolute inset-0 z-10 bg-surface-0/75">
             <NewTerminalScreen panelId={node.id} onOpened={dismissTerminalRequest} />
           </div>
         )}
