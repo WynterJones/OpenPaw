@@ -52,7 +52,7 @@ func BuildServiceControlToolDefs() []llm.ToolDef {
 }
 
 // MakeServiceControlHandlers returns the service_control handler.
-func (m *Manager) MakeServiceControlHandlers() map[string]llm.ToolHandler {
+func (m *Manager) MakeServiceControlHandlers(workspaceID string) map[string]llm.ToolHandler {
 	return map[string]llm.ToolHandler{
 		"service_control": func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 			var params struct {
@@ -66,7 +66,7 @@ func (m *Manager) MakeServiceControlHandlers() map[string]llm.ToolHandler {
 				return llm.ToolResult{Output: "Services are not available in this context.", IsError: true}
 			}
 
-			toolID, name := m.resolveService(params.Service)
+			toolID, name := m.resolveService(params.Service, workspaceID)
 			if toolID == "" {
 				return llm.ToolResult{
 					Output:  fmt.Sprintf("No service named %q. Use the exact name or ID from the services list.", params.Service),
@@ -151,26 +151,37 @@ func (m *Manager) serviceStatusLine(toolID, name string) string {
 }
 
 // resolveService maps an ID or a name to (id, name).
-func (m *Manager) resolveService(ref string) (string, string) {
+func (m *Manager) resolveService(ref, workspaceID string) (string, string) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", ""
 	}
 	var id, name string
 	m.db.QueryRow(
-		"SELECT id, name FROM tools WHERE id = ? AND deleted_at IS NULL", ref,
+		`SELECT id, name FROM tools
+		 WHERE id = ? AND deleted_at IS NULL
+		   AND (workspace_id IS NULL OR workspace_id = ?)`,
+		ref, workspaceID,
 	).Scan(&id, &name)
 	if id != "" {
 		return id, name
 	}
 	m.db.QueryRow(
-		"SELECT id, name FROM tools WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL LIMIT 1", ref,
+		`SELECT id, name FROM tools
+		 WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL
+		   AND (workspace_id IS NULL OR workspace_id = ?)
+		 LIMIT 1`,
+		ref, workspaceID,
 	).Scan(&id, &name)
 	if id != "" {
 		return id, name
 	}
 	m.db.QueryRow(
-		"SELECT id, name FROM tools WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' AND deleted_at IS NULL LIMIT 1", ref,
+		`SELECT id, name FROM tools
+		 WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' AND deleted_at IS NULL
+		   AND (workspace_id IS NULL OR workspace_id = ?)
+		 LIMIT 1`,
+		ref, workspaceID,
 	).Scan(&id, &name)
 	return id, name
 }

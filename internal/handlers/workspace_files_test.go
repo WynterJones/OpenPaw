@@ -66,6 +66,42 @@ func TestSearchFiles_StaysInWorkspaceAndAttachedDirectories(t *testing.T) {
 	}
 }
 
+func TestSearchFiles_FuzzyMatchesAndRanksNames(t *testing.T) {
+	h, files := newTestWorkspacesHandler(t)
+	for _, path := range []string{
+		"notes/openpaw-report.md",
+		"notes/old-product-roadmap.md",
+		"reports/openpaw-release-draft.md",
+	} {
+		fullPath := filepath.Join(files, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rec := searchFilesReq(t, h, "oprp")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var results []workspaceSearchResult
+	decodeTestJSON(t, rec, &results)
+	if len(results) == 0 {
+		t.Fatalf("fuzzy results = %#v, want an ordered-character match", results)
+	}
+	if results[0].Name != "openpaw-report.md" {
+		t.Fatalf("first fuzzy result = %q, want closest filename match", results[0].Name)
+	}
+
+	rec = searchFilesReq(t, h, "reports draft")
+	decodeTestJSON(t, rec, &results)
+	if len(results) != 1 || results[0].Name != "openpaw-release-draft.md" {
+		t.Fatalf("multi-term fuzzy results = %#v", results)
+	}
+}
+
 func newTestWorkspacesHandler(t *testing.T) (*WorkspacesHandler, string) {
 	t.Helper()
 	dataDir := t.TempDir()

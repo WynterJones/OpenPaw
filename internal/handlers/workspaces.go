@@ -619,6 +619,84 @@ type workspaceSearchResult struct {
 	score        int
 }
 
+func fuzzySubsequenceScore(candidate, query string) (int, bool) {
+	candidateRunes := []rune(strings.ToLower(candidate))
+	queryRunes := []rune(strings.ToLower(query))
+	if len(queryRunes) == 0 {
+		return 0, true
+	}
+
+	score := len(candidateRunes)
+	lastMatch := -1
+	streak := 0
+	for _, wanted := range queryRunes {
+		match := -1
+		for index := lastMatch + 1; index < len(candidateRunes); index++ {
+			if candidateRunes[index] == wanted {
+				match = index
+				break
+			}
+		}
+		if match < 0 {
+			return 0, false
+		}
+
+		gap := match - lastMatch - 1
+		score += gap * 5
+		if gap == 0 {
+			streak++
+			score -= min(streak*2, 10)
+		} else {
+			streak = 0
+		}
+		if match == 0 || strings.ContainsRune("/\\._- ", candidateRunes[match-1]) {
+			score -= 6
+		}
+		lastMatch = match
+	}
+	return max(score, 0), true
+}
+
+// fuzzyFileScore keeps familiar exact/prefix/substring results at the top, but
+// also accepts ordered character matches such as "oprd" → "openpaw-report.md".
+// Space-separated query terms must all match, which makes "src auth" useful
+// for narrowing a large tree without requiring an exact path fragment.
+func fuzzyFileScore(name, path, query string) (int, bool) {
+	nameLower := strings.ToLower(name)
+	pathLower := strings.ToLower(path)
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return 0, true
+	}
+	if nameLower == query {
+		return 0, true
+	}
+	if strings.HasPrefix(nameLower, query) {
+		return 100 + len(nameLower) - len(query), true
+	}
+	if index := strings.Index(nameLower, query); index >= 0 {
+		return 200 + index*4 + len(nameLower) - len(query), true
+	}
+	if index := strings.Index(pathLower, query); index >= 0 {
+		return 300 + index*2 + len(pathLower) - len(query), true
+	}
+
+	total := 500
+	for _, term := range strings.Fields(query) {
+		nameScore, nameOK := fuzzySubsequenceScore(nameLower, term)
+		pathScore, pathOK := fuzzySubsequenceScore(pathLower, term)
+		if !nameOK && !pathOK {
+			return 0, false
+		}
+		if nameOK && (!pathOK || nameScore <= pathScore) {
+			total += nameScore
+		} else {
+			total += 100 + pathScore
+		}
+	}
+	return total, true
+}
+
 // SearchFiles searches only the selected workspace's own files and directories
 // explicitly attached to it. It deliberately skips dependency/build metadata
 // trees: those produce noisy results and can contain hundreds of thousands of
@@ -705,20 +783,13 @@ func (h *WorkspacesHandler) SearchFiles(w http.ResponseWriter, r *http.Request) 
 			}
 			nameLower := strings.ToLower(entry.Name())
 			pathLower := strings.ToLower(rel)
-			if query != "" && !strings.Contains(nameLower, query) && !strings.Contains(pathLower, query) {
+			score, matched := fuzzyFileScore(nameLower, pathLower, query)
+			if !matched {
 				return nil
 			}
 			info, infoErr := entry.Info()
 			if infoErr != nil {
 				return nil
-			}
-			score := 3
-			if nameLower == query {
-				score = 0
-			} else if strings.HasPrefix(nameLower, query) {
-				score = 1
-			} else if strings.Contains(nameLower, query) {
-				score = 2
 			}
 			results = append(results, workspaceSearchResult{
 				Name: entry.Name(), Path: rel, AbsolutePath: path, DirID: root.dirID,

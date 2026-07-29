@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	maxSubAgentTasks     = 5
-	maxConcurrentSubAg   = 5
-	subAgentMaxTurns     = 10
-	subAgentTimeoutMin   = 10
+	maxSubAgentTasks   = 5
+	maxConcurrentSubAg = 5
+	subAgentMaxTurns   = 10
+	subAgentTimeoutMin = 10
 )
 
 // delegateAgentInfo holds info about an agent available for delegation.
@@ -38,12 +38,12 @@ type delegateTaskInput struct {
 
 // delegateTaskResult is the result from a single sub-agent.
 type delegateTaskResult struct {
-	AgentSlug string `json:"agent_slug"`
-	AgentName string `json:"agent_name"`
-	Task      string `json:"task"`
-	Status    string `json:"status"`
-	Result    string `json:"result"`
-	Error     string `json:"error,omitempty"`
+	AgentSlug string  `json:"agent_slug"`
+	AgentName string  `json:"agent_name"`
+	Task      string  `json:"task"`
+	Status    string  `json:"status"`
+	Result    string  `json:"result"`
+	Error     string  `json:"error,omitempty"`
 	CostUSD   float64 `json:"cost_usd"`
 }
 
@@ -299,12 +299,13 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 
 	// Sub-agents get call_tool (for HTTP tools) but NOT delegate_task (no recursion)
 	if m.ToolMgr != nil {
-		toolsSection := m.buildToolsPromptSection(agentSlug, m.db.ActiveWorkspaceID())
+		workspaceID := m.threadWorkspaceID(threadID)
+		toolsSection := m.buildToolsPromptSection(agentSlug, workspaceID)
 		if toolsSection != "" {
 			cfg.System += "\n\n---\n\n" + toolsSection
 			cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildCallToolDef())
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{
-				"call_tool": m.makeCallToolHandler(),
+				"call_tool": m.makeCallToolHandler(workspaceID),
 			}
 		}
 	}

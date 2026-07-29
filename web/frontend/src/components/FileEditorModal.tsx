@@ -13,10 +13,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, FileText, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Save, FileText, Loader2, AlertTriangle, FolderSearch } from 'lucide-react';
 import { Button } from './Button';
 import { workspaces } from '../lib/api-helpers';
 import { activatePathInsertionTarget, clearPathInsertionTarget } from '../lib/path-insertion';
+import { useHotkeys } from '../contexts/hotkeys';
 
 interface FileEditorModalProps {
   workspaceId: string;
@@ -33,6 +34,7 @@ function errorMessage(e: unknown, fallback: string): string {
 }
 
 export function FileEditorModal({ workspaceId, dirId, path, name, onClose }: FileEditorModalProps) {
+  const { setPaletteOpen } = useHotkeys();
   const [content, setContent] = useState('');
   const [original, setOriginal] = useState('');
   const [loading, setLoading] = useState(true);
@@ -136,6 +138,16 @@ export function FileEditorModal({ workspaceId, dirId, path, name, onClose }: Fil
           {!dirty && savedAt && (
             <span className="text-[11px] text-text-3 flex-shrink-0">Saved {savedAt}</span>
           )}
+          <button
+            type="button"
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Insert workspace path"
+            title="Insert workspace path"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-text-2 transition-colors hover:bg-surface-2 hover:text-text-0 cursor-pointer"
+          >
+            <FolderSearch className="h-4 w-4" aria-hidden="true" />
+          </button>
           <Button
             size="sm"
             icon={saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -175,6 +187,7 @@ export function FileEditorModal({ workspaceId, dirId, path, name, onClose }: Fil
           ) : (
             <textarea
               ref={textareaRef}
+              data-openpaw-hotkeys="ignore"
               value={content}
               onChange={e => setContent(e.target.value)}
               onFocus={event => {

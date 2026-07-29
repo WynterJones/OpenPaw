@@ -171,7 +171,7 @@ func (m *Manager) buildToolsPromptSection(agentRoleSlug, workspaceID string) str
 
 // buildProjectsPromptSection queries the DB for user projects and their repos,
 // resolving each repo's preferred coding CLI tool to a tool UUID.
-func (m *Manager) buildProjectsPromptSection() string {
+func (m *Manager) buildProjectsPromptSection(workspaceID string) string {
 	rows, err := m.db.Query(
 		`SELECT p.id, p.name, pr.name, pr.folder_path, pr.command
 		 FROM projects p
@@ -198,8 +198,11 @@ func (m *Manager) buildProjectsPromptSection() string {
 		}
 		var tid string
 		m.db.QueryRow(
-			"SELECT id FROM tools WHERE library_slug = ? AND enabled = 1 AND deleted_at IS NULL LIMIT 1",
-			librarySlug,
+			`SELECT id FROM tools
+			 WHERE library_slug = ? AND enabled = 1 AND deleted_at IS NULL
+			   AND (workspace_id IS NULL OR workspace_id = ?)
+			 LIMIT 1`,
+			librarySlug, workspaceID,
 		).Scan(&tid)
 		slugToToolID[librarySlug] = tid
 		return tid
@@ -316,8 +319,10 @@ func (m *Manager) buildDashboardsPromptSection(workspaceID string) string {
 	return sb.String()
 }
 
-// makeCallToolHandler returns a tool handler closure that invokes custom tools via the ToolManager.
-func (m *Manager) makeCallToolHandler() llm.ToolHandler {
+// makeCallToolHandler returns a workspace-bound handler. The prompt only lists
+// services available in that workspace, and this enforcement prevents a model
+// from bypassing the list by guessing a service UUID from another workspace.
+func (m *Manager) makeCallToolHandler(workspaceID string) llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var params struct {
 			ToolID   string `json:"tool_id"`
@@ -330,6 +335,19 @@ func (m *Manager) makeCallToolHandler() llm.ToolHandler {
 		}
 		if params.ToolID == "" || params.Endpoint == "" {
 			return llm.ToolResult{Output: "tool_id and endpoint are required", IsError: true}
+		}
+		var available int
+		err := m.db.QueryRow(
+			`SELECT COUNT(*) FROM tools
+			 WHERE id = ? AND deleted_at IS NULL
+			   AND (workspace_id IS NULL OR workspace_id = ?)`,
+			params.ToolID, workspaceID,
+		).Scan(&available)
+		if err != nil || available == 0 {
+			return llm.ToolResult{
+				Output:  "Service is not available in this workspace.",
+				IsError: true,
+			}
 		}
 
 		var payload []byte

@@ -42,12 +42,36 @@ function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim().toLowerCase();
   if (!q) return <>{text}</>;
   const index = text.toLowerCase().indexOf(q);
-  if (index < 0) return <>{text}</>;
+  if (index >= 0) {
+    return (
+      <>
+        {text.slice(0, index)}
+        <mark className="rounded-sm bg-accent-primary/25 text-inherit">{text.slice(index, index + q.length)}</mark>
+        {text.slice(index + q.length)}
+      </>
+    );
+  }
+
+  // The server accepts ordered-character fuzzy matches. Mirror that here so
+  // "oprd" visibly explains why "openpaw-report.md" matched.
+  const compactQuery = q.replace(/\s+/g, '');
+  const characters = [...text];
+  const lowered = characters.map(character => character.toLowerCase());
+  const matched = new Set<number>();
+  let from = 0;
+  for (const character of compactQuery) {
+    const match = lowered.indexOf(character, from);
+    if (match < 0) return <>{text}</>;
+    matched.add(match);
+    from = match + 1;
+  }
   return (
     <>
-      {text.slice(0, index)}
-      <mark className="rounded-sm bg-accent-primary/25 text-inherit">{text.slice(index, index + q.length)}</mark>
-      {text.slice(index + q.length)}
+      {characters.map((character, characterIndex) => (
+        matched.has(characterIndex)
+          ? <mark key={characterIndex} className="rounded-sm bg-accent-primary/25 text-inherit">{character}</mark>
+          : character
+      ))}
     </>
   );
 }

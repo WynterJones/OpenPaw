@@ -18,7 +18,7 @@ export interface HotkeysValue extends HotkeySettings {
 export const defaultHotkeySettings: HotkeySettings = {
   enabled: true,
   modifier: 'ctrl',
-  showBadges: true,
+  showBadges: false,
   bindings: {},
 };
 

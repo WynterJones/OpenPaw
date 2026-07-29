@@ -55,12 +55,10 @@ func BuildInboxToolDefs() []llm.ToolDef {
 }
 
 func inboxWorkspaceClause(workspaceID string) (string, []interface{}) {
-	if workspaceID == database.DefaultWorkspaceID {
-		// Legacy notifications predate workspace_id. Treat them as Default so
-		// they remain visible without leaking into every other workspace.
-		return "(workspace_id = ? OR workspace_id = '')", []interface{}{workspaceID}
-	}
-	return "workspace_id = ?", []interface{}{workspaceID}
+	// Legacy notifications predate workspace_id and are still shown in the
+	// Inbox UI. Keep those visible from the active workspace's agent tools;
+	// explicitly assigned posts remain isolated to their own workspace.
+	return "(workspace_id = ? OR workspace_id = '')", []interface{}{workspaceID}
 }
 
 func MakeInboxToolHandlers(db *database.DB, workspaceID, agentSlug string, broadcast func(string, interface{})) map[string]llm.ToolHandler {

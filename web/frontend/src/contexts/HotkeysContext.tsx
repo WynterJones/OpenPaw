@@ -11,7 +11,7 @@ import { HotkeysContext, type HotkeySettings } from './hotkeys';
 const defaults: HotkeySettings = {
   enabled: true,
   modifier: 'ctrl',
-  showBadges: true,
+  showBadges: false,
   bindings: DEFAULT_HOTKEY_BINDINGS,
 };
 
@@ -26,7 +26,7 @@ function parseSettings(data: Record<string, string>): HotkeySettings {
   return {
     enabled: data.hotkeys_enabled !== 'false',
     modifier: modifier === 'meta' || modifier === 'alt' ? modifier : 'ctrl',
-    showBadges: data.hotkey_badges !== 'false',
+    showBadges: data.hotkey_badges === 'true',
     bindings,
   };
 }
@@ -35,6 +35,17 @@ function matchesModifier(event: KeyboardEvent, modifier: HotkeyModifier) {
   if (modifier === 'meta') return event.metaKey && !event.ctrlKey && !event.altKey;
   if (modifier === 'alt') return event.altKey && !event.ctrlKey && !event.metaKey;
   return event.ctrlKey && !event.metaKey && !event.altKey;
+}
+
+function shortcutKey(event: KeyboardEvent) {
+  if (event.code.startsWith('Digit')) return event.code.slice('Digit'.length);
+  if (event.code.startsWith('Key')) return event.code.slice('Key'.length).toLowerCase();
+  return event.key.toLowerCase();
+}
+
+function isProtectedTypingSurface(event: KeyboardEvent) {
+  return event.target instanceof Element
+    && event.target.closest('[data-openpaw-hotkeys="ignore"]') !== null;
 }
 
 export function HotkeysProvider({ children }: { children: ReactNode }) {
@@ -62,8 +73,13 @@ export function HotkeysProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!settings.enabled || event.isComposing || !matchesModifier(event, settings.modifier)) return;
-      const key = event.key.toLowerCase();
+      if (
+        !settings.enabled
+        || event.isComposing
+        || isProtectedTypingSurface(event)
+        || !matchesModifier(event, settings.modifier)
+      ) return;
+      const key = shortcutKey(event);
       if (key === 'p') {
         event.preventDefault();
         setPaletteOpen(open => !open);
@@ -84,8 +100,10 @@ export function HotkeysProvider({ children }: { children: ReactNode }) {
         navigate(item.to);
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    // Capture before rich controls can stop propagation. Protected editors are
+    // excluded above so terminal and file-editing shortcuts still reach them.
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [navigate, runNewChat, settings]);
 
   const update = useCallback(async (next: Partial<HotkeySettings>) => {

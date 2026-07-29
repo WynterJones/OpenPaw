@@ -57,7 +57,7 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	}
 
 	// Inject user projects so gateway can resolve project references
-	projectsSection := m.buildProjectsPromptSection()
+	projectsSection := m.buildProjectsPromptSection(workspaceID)
 	if projectsSection != "" {
 		gatewayPrompt += "\n\n" + projectsSection
 	}
@@ -534,13 +534,13 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 			cfg.System += "\n\n---\n\n" + toolsSection
 			cfg.ExtraTools = append(cfg.ExtraTools, llm.BuildCallToolDef())
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{
-				"call_tool": m.makeCallToolHandler(),
+				"call_tool": m.makeCallToolHandler(wsID),
 			}
 
 			// Being able to call a service but not fix one made every stopped
 			// service the user's problem to go and solve on the Services page.
 			cfg.ExtraTools = append(cfg.ExtraTools, BuildServiceControlToolDefs()...)
-			for name, handler := range m.MakeServiceControlHandlers() {
+			for name, handler := range m.MakeServiceControlHandlers(wsID) {
 				cfg.ExtraHandlers[name] = handler
 			}
 			cfg.System += "\n\n---\n\n" + buildServiceControlPromptSection()

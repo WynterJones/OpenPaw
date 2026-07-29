@@ -110,7 +110,7 @@ func TestRetargetDashboardWorkOrder(t *testing.T) {
 					ToolID:      tc.toolID,
 				},
 			}
-			h.retargetDashboardWorkOrder(resp)
+			h.retargetDashboardWorkOrder(resp, DefaultWorkspaceID)
 
 			if resp.Action != tc.wantAction {
 				t.Errorf("action = %q, want %q", resp.Action, tc.wantAction)

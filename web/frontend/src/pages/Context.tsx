@@ -15,6 +15,7 @@ import {
   UserPen,
   Pencil,
   PanelLeft,
+  FolderSearch,
 } from "lucide-react";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
@@ -26,6 +27,7 @@ import {
   type ContextTreeNode,
 } from "../lib/api";
 import { activatePathInsertionTarget, clearPathInsertionTarget } from "../lib/path-insertion";
+import { useHotkeys } from "../contexts/hotkeys";
 
 // ---- Utilities ----------------------------------------------------------------
 
@@ -239,6 +241,7 @@ function FileItem({
 
 export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
   const { toast } = useToast();
+  const { setPaletteOpen } = useHotkeys();
 
   // Tree data
   const [tree, setTree] = useState<ContextTree>({ folders: [], files: [] });
@@ -796,16 +799,28 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                     About You
                   </span>
                 </div>
-                <Button
-                  variant={aboutYouDirty ? "primary" : "ghost"}
-                  size="sm"
-                  loading={aboutYouSaving}
-                  disabled={!aboutYouDirty}
-                  onClick={saveAboutYou}
-                  icon={<Save className="w-3.5 h-3.5" />}
-                >
-                  Save
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setPaletteOpen(true)}
+                    aria-label="Insert workspace path"
+                    title="Insert workspace path"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-text-2 transition-colors hover:bg-surface-2 hover:text-text-0 cursor-pointer"
+                  >
+                    <FolderSearch className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <Button
+                    variant={aboutYouDirty ? "primary" : "ghost"}
+                    size="sm"
+                    loading={aboutYouSaving}
+                    disabled={!aboutYouDirty}
+                    onClick={saveAboutYou}
+                    icon={<Save className="w-3.5 h-3.5" />}
+                  >
+                    Save
+                  </Button>
+                </div>
               </div>
 
               {/* About You body */}
@@ -824,6 +839,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                 ) : (
                   <div className="flex-1 px-3 md:px-5 pb-3 md:pb-5">
                     <textarea
+                      data-openpaw-hotkeys="ignore"
                       className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
                       value={aboutYouContent}
                       onFocus={event => {
@@ -939,6 +955,18 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                 </div>
 
                 <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+                  {isTextMime(selectedFile.mime_type) && (
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setPaletteOpen(true)}
+                      aria-label="Insert workspace path"
+                      title="Insert workspace path"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-text-2 transition-colors hover:bg-surface-2 hover:text-text-0 cursor-pointer"
+                    >
+                      <FolderSearch className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
                   {/* Save button (text files only) */}
                   {isTextMime(selectedFile.mime_type) && (
                     <Button
@@ -976,6 +1004,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                 ) : isTextMime(selectedFile.mime_type) ? (
                   <div className="flex-1 px-3 md:px-5 pb-3 md:pb-5 pt-3">
                     <textarea
+                      data-openpaw-hotkeys="ignore"
                       className="w-full h-full resize-none bg-surface-1 text-text-1 text-sm font-mono p-3 md:p-4 outline-none leading-relaxed rounded-lg border border-border-0"
                       value={editedContent}
                       onFocus={event => {

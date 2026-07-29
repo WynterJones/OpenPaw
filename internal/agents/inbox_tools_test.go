@@ -16,6 +16,9 @@ func TestInboxToolsCRUDArchiveAndWorkspaceIsolation(t *testing.T) {
 	var broadcasts int
 	first := MakeInboxToolHandlers(db, workspaceID, "reporter", func(_ string, _ interface{}) { broadcasts++ })
 	second := MakeInboxToolHandlers(db, otherWorkspace, "other", nil)
+	_, _ = db.Exec(`INSERT INTO notifications
+		(id, title, body, detail, prompt, workspace_id, priority, source_agent_slug, source_type, source_id, link)
+		VALUES ('legacy-post', 'Legacy report', '', 'Visible in the Inbox', '', '', 'normal', '', 'schedule', '', '')`)
 
 	created := callDatabaseTool(t, first, "manage_inbox_post", `{
 		"action":"create",
@@ -37,6 +40,10 @@ func TestInboxToolsCRUDArchiveAndWorkspaceIsolation(t *testing.T) {
 	list := callDatabaseTool(t, first, "list_inbox_posts", `{"search":"openpaw","limit":5}`)
 	if list.IsError || !strings.Contains(list.Output, "Five useful sites") || !strings.Contains(list.Output, "https://openpaw.dev") {
 		t.Fatalf("list result = %s", list.Output)
+	}
+	legacy := callDatabaseTool(t, first, "list_inbox_posts", `{"search":"Legacy report","limit":5}`)
+	if legacy.IsError || !strings.Contains(legacy.Output, "Legacy report") {
+		t.Fatalf("legacy Inbox post was hidden from active workspace: %s", legacy.Output)
 	}
 	otherList := callDatabaseTool(t, second, "list_inbox_posts", `{"status":"all"}`)
 	if strings.Contains(otherList.Output, "Five useful sites") {

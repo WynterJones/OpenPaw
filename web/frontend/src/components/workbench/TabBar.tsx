@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Columns2, Rows2, Pencil, FolderOpen } from 'lucide-react';
+import { X, Plus, Columns2, Rows2, Pencil, FolderOpen, FolderSearch } from 'lucide-react';
 import { FolderPicker } from './FolderPicker';
 import { useWorkbench, type PanelNode } from './WorkbenchProvider';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useHotkeys } from '../../contexts/hotkeys';
 
 const TAB_COLORS = [
   '',
@@ -25,6 +26,7 @@ interface TabBarProps {
 }
 
 export function TabBar({ node, onRequestNewTerminal, onDismissNewTerminal }: TabBarProps) {
+  const { setPaletteOpen } = useHotkeys();
   const {
     sessions,
     activeSessionId,
@@ -122,6 +124,16 @@ export function TabBar({ node, onRequestNewTerminal, onDismissNewTerminal }: Tab
         title="New terminal in a folder…"
       >
         <FolderOpen className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => setPaletteOpen(true)}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-3 transition-colors hover:bg-surface-2/50 hover:text-text-1 cursor-pointer"
+        title="Insert workspace path"
+        aria-label="Insert workspace path"
+      >
+        <FolderSearch className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
       {pickingFolder && (
         <FolderPicker

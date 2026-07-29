@@ -37,6 +37,7 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 	}
 
 	agentID := generateAgentID()
+	workspaceID := m.threadWorkspaceID(threadID)
 	now := time.Now().UTC()
 	agent := models.Agent{
 		ID:          agentID,
@@ -103,7 +104,7 @@ func (m *Manager) spawnBuilder(ctx context.Context, cfg spawnConfig, workOrder *
 			// (e.g. live-test the stats tool a dashboard depends on), not just edit
 			// files.
 			ExtraTools:    []llm.ToolDef{llm.BuildCallToolDef()},
-			ExtraHandlers: map[string]llm.ToolHandler{"call_tool": m.makeCallToolHandler()},
+			ExtraHandlers: map[string]llm.ToolHandler{"call_tool": m.makeCallToolHandler(workspaceID)},
 			OnEvent: func(event StreamEvent) {
 				switch event.Type {
 				case EventTextDelta:

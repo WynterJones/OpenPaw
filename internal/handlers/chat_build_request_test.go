@@ -143,3 +143,37 @@ func TestRequestBuild_ExistingServiceBecomesAnUpdate(t *testing.T) {
 		t.Errorf("label = %q, want Update Service", card["action_label"])
 	}
 }
+
+func TestRequestBuild_IgnoresServiceFromAnotherWorkspace(t *testing.T) {
+	db := newTestDB(t)
+	h := newBuildTestHandler(t, db)
+	otherWorkspace := "11111111-1111-1111-1111-111111111111"
+
+	if _, err := db.Exec("INSERT INTO workspaces (id, name) VALUES (?, 'Other')", otherWorkspace); err != nil {
+		t.Fatalf("insert workspace: %v", err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO chat_threads (id, title, workspace_id) VALUES ('t1', 'Private API', ?)",
+		DefaultWorkspaceID,
+	); err != nil {
+		t.Fatalf("insert thread: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO tools (id, name, description, type, config, enabled, status, workspace_id)
+		 VALUES ('other-tool', 'Private API', '', 'custom', '{}', 1, 'ready', ?)`,
+		otherWorkspace,
+	); err != nil {
+		t.Fatalf("insert service: %v", err)
+	}
+
+	if _, err := h.RequestBuild(
+		context.Background(), "t1", "service", "Private API", "", "Build it in this workspace.",
+	); err != nil {
+		t.Fatalf("RequestBuild: %v", err)
+	}
+
+	card := confirmationCard(t, db, "t1")
+	if card["action"] != "build_tool" {
+		t.Errorf("cross-workspace service changed action to %q, want build_tool", card["action"])
+	}
+}

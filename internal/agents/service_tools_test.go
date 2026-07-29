@@ -89,9 +89,48 @@ func newServiceTestManager(t *testing.T, mgr *fakeToolMgr) (*Manager, *database.
 
 func callServiceControl(t *testing.T, m *Manager, service, action string) string {
 	t.Helper()
-	handler := m.MakeServiceControlHandlers()["service_control"]
+	handler := m.MakeServiceControlHandlers(database.DefaultWorkspaceID)["service_control"]
 	input, _ := json.Marshal(map[string]string{"service": service, "action": action})
 	return handler(context.Background(), "", input).Output
+}
+
+func TestServiceHandlersRejectAnotherWorkspace(t *testing.T) {
+	fake := &fakeToolMgr{}
+	m, db, _ := newServiceTestManager(t, fake)
+	otherWorkspace := "11111111-1111-1111-1111-111111111111"
+	if _, err := db.Exec(
+		"INSERT INTO workspaces (id, name) VALUES (?, 'Other')", otherWorkspace,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO tools (id, name, description, type, config, enabled, status, workspace_id)
+		 VALUES ('other-tool', 'Private Other Service', '', 'custom', '{}', 1, 'running', ?)`,
+		otherWorkspace,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	control := m.MakeServiceControlHandlers(database.DefaultWorkspaceID)["service_control"]
+	input, _ := json.Marshal(map[string]string{"service": "other-tool", "action": "status"})
+	result := control(context.Background(), "", input)
+	if !result.IsError || !strings.Contains(result.Output, "No service") {
+		t.Fatalf("cross-workspace service control result = %#v", result)
+	}
+
+	call := m.makeCallToolHandler(database.DefaultWorkspaceID)
+	callInput, _ := json.Marshal(map[string]string{
+		"tool_id": "other-tool", "endpoint": "/private", "method": "GET",
+	})
+	result = call(context.Background(), "", callInput)
+	if !result.IsError || !strings.Contains(result.Output, "not available in this workspace") {
+		t.Fatalf("cross-workspace service call result = %#v", result)
+	}
+
+	prompt := m.buildToolsPromptSection("", database.DefaultWorkspaceID)
+	if strings.Contains(prompt, "Private Other Service") {
+		t.Fatalf("cross-workspace service leaked into prompt: %s", prompt)
+	}
 }
 
 // Rebuilding a service that is still running failed on the port the old process

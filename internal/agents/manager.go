@@ -177,10 +177,12 @@ func (m *Manager) buildAgentList(workspaceID string) string {
 		 FROM agent_roles ar
 		 LEFT JOIN agent_tool_access ata ON ata.agent_role_slug = ar.slug
 		 LEFT JOIN tools t ON t.id = ata.tool_id
+		  AND t.deleted_at IS NULL
+		  AND (t.workspace_id IS NULL OR t.workspace_id = ?)
 		 WHERE ar.enabled = 1 AND (ar.workspace_id IS NULL OR ar.workspace_id = ?)
 		 GROUP BY ar.slug, ar.name, ar.description
 		 ORDER BY ar.sort_order ASC`,
-		workspaceID,
+		workspaceID, workspaceID,
 	)
 	if err != nil {
 		return ""

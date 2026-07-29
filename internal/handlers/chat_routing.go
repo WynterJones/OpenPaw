@@ -444,7 +444,7 @@ func (h *ChatHandler) handleGatewayAction(parentCtx context.Context, threadID, c
 
 	// If a work order is needed, spawn the appropriate agent (attributed to gateway/builder).
 	if resp.WorkOrder != nil {
-		h.retargetDashboardWorkOrder(resp)
+		h.retargetDashboardWorkOrder(resp, h.chatThreadWorkspaceID(threadID))
 		h.addThreadMember(threadID, "builder")
 		majorActions := map[string]bool{"build_tool": true, "update_tool": true, "build_dashboard": true, "build_custom_dashboard": true}
 		if majorActions[resp.Action] && h.isConfirmationEnabled() {
@@ -841,9 +841,10 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	// Create a tool record
 	toolID := uuid.New().String()
 	now := time.Now().UTC()
+	workspaceID := h.chatThreadWorkspaceID(threadID)
 	if _, err := h.db.Exec(
-		"INSERT INTO tools (id, name, description, type, config, enabled, status, owner_agent_slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		toolID, resp.WorkOrder.Title, resp.WorkOrder.Description, "custom", "{}", false, "building", "builder", now, now,
+		"INSERT INTO tools (id, name, description, type, config, enabled, status, owner_agent_slug, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		toolID, resp.WorkOrder.Title, resp.WorkOrder.Description, "custom", "{}", false, "building", "builder", workspaceID, now, now,
 	); err != nil {
 		logger.Error("Failed to insert tool record: %v", err)
 	}
@@ -869,13 +870,29 @@ func (h *ChatHandler) handleBuildTool(ctx context.Context, threadID, userID stri
 	}
 }
 
+func (h *ChatHandler) chatThreadWorkspaceID(threadID string) string {
+	var workspaceID string
+	if threadID != "" {
+		_ = h.db.QueryRow("SELECT workspace_id FROM chat_threads WHERE id = ?", threadID).Scan(&workspaceID)
+	}
+	if workspaceID == "" {
+		workspaceID = h.db.ActiveWorkspaceID()
+	}
+	return workspaceID
+}
+
 // findWorkOrderToolID resolves the service a work order points at — the ID the
 // gateway supplied if it is real, otherwise a lookup by name. Returns "" when
 // no such service exists.
-func (h *ChatHandler) findWorkOrderToolID(wo *agents.GatewayWorkOrder) string {
+func (h *ChatHandler) findWorkOrderToolID(wo *agents.GatewayWorkOrder, workspaceID string) string {
 	var toolID string
 	if wo.ToolID != "" {
-		h.db.QueryRow("SELECT id FROM tools WHERE id = ? AND deleted_at IS NULL", wo.ToolID).Scan(&toolID)
+		h.db.QueryRow(
+			`SELECT id FROM tools
+			 WHERE id = ? AND deleted_at IS NULL
+			   AND (workspace_id IS NULL OR workspace_id = ?)`,
+			wo.ToolID, workspaceID,
+		).Scan(&toolID)
 		if toolID != "" {
 			return toolID
 		}
@@ -884,12 +901,20 @@ func (h *ChatHandler) findWorkOrderToolID(wo *agents.GatewayWorkOrder) string {
 		return ""
 	}
 	h.db.QueryRow(
-		"SELECT id FROM tools WHERE name = ? AND deleted_at IS NULL LIMIT 1", wo.Title,
+		`SELECT id FROM tools
+		 WHERE name = ? AND deleted_at IS NULL
+		   AND (workspace_id IS NULL OR workspace_id = ?)
+		 LIMIT 1`,
+		wo.Title, workspaceID,
 	).Scan(&toolID)
 	if toolID == "" {
 		h.db.QueryRow(
-			"SELECT id FROM tools WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' ESCAPE '\\' AND deleted_at IS NULL LIMIT 1",
-			escapeLike(wo.Title),
+			`SELECT id FROM tools
+			 WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' ESCAPE '\\'
+			   AND deleted_at IS NULL
+			   AND (workspace_id IS NULL OR workspace_id = ?)
+			 LIMIT 1`,
+			escapeLike(wo.Title), workspaceID,
 		).Scan(&toolID)
 	}
 	return toolID
@@ -923,7 +948,7 @@ func (h *ChatHandler) findDashboardByTitle(title string) (string, string) {
 // dropped. A dashboard that matches the title (and no service that does) is
 // unambiguous, so correct the action here, before the confirmation card is
 // written, so the card reads "Update Dashboard" too.
-func (h *ChatHandler) retargetDashboardWorkOrder(resp *agents.GatewayResponse) {
+func (h *ChatHandler) retargetDashboardWorkOrder(resp *agents.GatewayResponse, workspaceID string) {
 	if resp.WorkOrder == nil {
 		return
 	}
@@ -942,7 +967,7 @@ func (h *ChatHandler) retargetDashboardWorkOrder(resp *agents.GatewayResponse) {
 	if dashID == "" {
 		// Only fall back to the title when no real service matches it — an
 		// existing service is the gateway getting it right.
-		if h.findWorkOrderToolID(resp.WorkOrder) != "" {
+		if h.findWorkOrderToolID(resp.WorkOrder, workspaceID) != "" {
 			return
 		}
 		dashID, dashType = h.findDashboardByTitle(resp.WorkOrder.Title)
@@ -963,23 +988,9 @@ func (h *ChatHandler) retargetDashboardWorkOrder(resp *agents.GatewayResponse) {
 }
 
 func (h *ChatHandler) handleUpdateTool(ctx context.Context, threadID, userID string, resp *agents.GatewayResponse, gatewayCostUSD float64, gatewayInTok, gatewayOutTok int) {
-	// Look up the existing tool by ID (if gateway provided it) or by name
-	var toolID string
-	if resp.WorkOrder.ToolID != "" {
-		toolID = resp.WorkOrder.ToolID
-	} else {
-		h.db.QueryRow(
-			"SELECT id FROM tools WHERE name = ? AND deleted_at IS NULL LIMIT 1",
-			resp.WorkOrder.Title,
-		).Scan(&toolID)
-	}
-	if toolID == "" {
-		// Try case-insensitive partial match as fallback
-		h.db.QueryRow(
-			"SELECT id FROM tools WHERE LOWER(name) LIKE '%' || LOWER(?) || '%' AND deleted_at IS NULL LIMIT 1",
-			resp.WorkOrder.Title,
-		).Scan(&toolID)
-	}
+	// Resolve inside the originating chat's workspace so an explicit UUID from
+	// another workspace cannot be used to update a private service.
+	toolID := h.findWorkOrderToolID(resp.WorkOrder, h.chatThreadWorkspaceID(threadID))
 	if toolID == "" {
 		h.saveAssistantMessage(threadID, "", "Could not find an existing service named **"+resp.WorkOrder.Title+"** to update.", 0, 0, 0)
 		h.endAgentWork(threadID)

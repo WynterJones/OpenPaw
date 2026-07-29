@@ -37,9 +37,10 @@ func (h *ChatHandler) RequestBuild(ctx context.Context, threadID, kind, title, d
 	// An existing service or dashboard by this name means update, not a second
 	// copy alongside it. retarget handles the dashboard case; the tool lookup
 	// here covers a service the agent described as new.
-	h.retargetDashboardWorkOrder(resp)
+	workspaceID := h.chatThreadWorkspaceID(threadID)
+	h.retargetDashboardWorkOrder(resp, workspaceID)
 	if resp.Action == "build_tool" {
-		if toolID := h.findWorkOrderToolID(resp.WorkOrder); toolID != "" {
+		if toolID := h.findWorkOrderToolID(resp.WorkOrder, workspaceID); toolID != "" {
 			resp.Action = "update_tool"
 			resp.WorkOrder.ToolID = toolID
 		}

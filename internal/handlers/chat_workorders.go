@@ -177,7 +177,7 @@ func (h *ChatHandler) ConfirmWork(w http.ResponseWriter, r *http.Request) {
 		}
 		// Catches rows written before routing learned to tell dashboards from
 		// services, so an old "update service" card still lands on the dashboard.
-		h.retargetDashboardWorkOrder(resp)
+		h.retargetDashboardWorkOrder(resp, h.chatThreadWorkspaceID(threadID))
 
 		gwName := h.agentManager.GatewayName()
 		buildingMsg := gwName + " is building..."
