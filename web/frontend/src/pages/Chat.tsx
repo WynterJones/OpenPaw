@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Loader2, Trash2, Pencil, Check, X,
   Coins, Minimize2, Square, Users, AlertTriangle,
   Paperclip, FileText, FolderOpen, FolderPlus, ListTodo, Bot, CircleCheck, CircleDot, ImageIcon, Wrench, Pin, Sparkles,
-  Clock, CornerDownLeft, MonitorPlay, BrainCircuit,
+  Clock, CornerDownLeft, MonitorPlay, Brain,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
@@ -1602,18 +1602,6 @@ export function Chat() {
                           <span className="w-2 h-2 flex-shrink-0 rounded-full bg-accent-primary" />
                         ) : null}
                         <span className="text-sm font-medium truncate">{thread.title}</span>
-                        {/* An agent has already mined this chat for memory during
-                            a dream, so it won't be read again unless it continues.
-                            Marked here because the chat list is where you decide
-                            whether a conversation still needs attention. */}
-                        {thread.dreamed && (
-                          <span
-                            className="flex-shrink-0 ml-auto text-accent-primary/60"
-                            title={thread.dreamed_at ? `Scanned for memory ${timeAgo(thread.dreamed_at)}` : 'Scanned for memory'}
-                          >
-                            <BrainCircuit className="w-3.5 h-3.5" aria-label="Scanned for memory" />
-                          </span>
-                        )}
                       </div>
                       <p className="text-xs text-text-3 mt-0.5">
                         {activeThreadIds.has(thread.id)
@@ -1621,7 +1609,21 @@ export function Chat() {
                           : unreadThreadIds.has(thread.id) && activeThread !== thread.id
                           ? <span className="text-accent-primary/70">New messages</span>
                           : <>
-                              {timeAgo(thread.updated_at)}
+                              <span className="inline-flex items-center gap-1.5">
+                                {timeAgo(thread.updated_at)}
+                                {/* Dreaming reads but does not archive the chat.
+                                    Keep this quiet metadata beside the date instead
+                                    of competing with the conversation title. */}
+                                {thread.dreamed && (
+                                  <span
+                                    className="inline-flex flex-shrink-0 text-text-3"
+                                    title={thread.dreamed_at ? `Scanned for memory ${timeAgo(thread.dreamed_at)}` : 'Scanned for memory'}
+                                    aria-label="Scanned for memory"
+                                  >
+                                    <Brain className="w-3.5 h-3.5" aria-hidden="true" />
+                                  </span>
+                                )}
+                              </span>
                               {thread.total_cost_usd > 0 && <span className="ml-2 text-text-3/70">${thread.total_cost_usd < 0.01 ? thread.total_cost_usd.toFixed(4) : thread.total_cost_usd.toFixed(2)}</span>}
                             </>
                         }
