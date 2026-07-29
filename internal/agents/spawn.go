@@ -264,12 +264,14 @@ func (m *Manager) SpawnToolBuilder(ctx context.Context, workOrder *models.WorkOr
 func (m *Manager) SpawnDashboardBuilder(ctx context.Context, workOrder *models.WorkOrder, threadID, userID string, placeholderMsgID ...string) (*models.Agent, error) {
 	// Build available tools section for the prompt
 	toolsSection := ""
+	workspaceID := m.threadWorkspaceID(workOrder.ThreadID)
 	if m.ToolMgr != nil {
-		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
+		ts := m.buildToolsPromptSection("", workspaceID)
 		if ts != "" {
 			toolsSection = "## Available Services\n\n" + ts + "\nUse the service IDs and endpoints above in your widget dataSource configurations.\n"
 		}
 	}
+	toolsSection += "\n" + buildDatabasesPromptSection(m.db, workspaceID)
 
 	prompt := fmt.Sprintf(DashboardBuilderPrompt, workOrder.Description, workOrder.Requirements, toolsSection)
 
@@ -313,12 +315,14 @@ func (m *Manager) SpawnCustomDashboardBuilder(ctx context.Context, workOrder *mo
 
 	// Build available tools section for the prompt
 	toolsSection := ""
+	workspaceID := m.threadWorkspaceID(workOrder.ThreadID)
 	if m.ToolMgr != nil {
-		ts := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
+		ts := m.buildToolsPromptSection("", workspaceID)
 		if ts != "" {
 			toolsSection = "## Available Services\n\n" + ts + "\nUse the service IDs and endpoints above with OpenPaw.callTool(toolId, endpoint).\n"
 		}
 	}
+	toolsSection += "\n" + buildDatabasesPromptSection(m.db, workspaceID)
 
 	isUpdate := workOrder.Type == string(WorkOrderDashboardCustomUpdate)
 	var prompt string

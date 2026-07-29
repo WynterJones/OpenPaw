@@ -26,6 +26,7 @@ const HeartbeatMonitor = lazy(() => import('./pages/HeartbeatMonitor').then(m =>
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
 const TodoLists = lazy(() => import('./pages/TodoLists').then(m => ({ default: m.TodoLists })));
 const Inbox = lazy(() => import('./pages/Inbox').then(m => ({ default: m.Inbox })));
+const Databases = lazy(() => import('./pages/Databases').then(m => ({ default: m.Databases })));
 
 const DocsLayout = lazy(() => import('./components/docs/DocsLayout').then(m => ({ default: m.DocsLayout })));
 const DocsHome = lazy(() => import('./pages/docs/DocsHome').then(m => ({ default: m.DocsHome })));
@@ -49,6 +50,7 @@ const pageTitles: Record<string, string> = {
   '/scheduler': 'Scheduler',
   '/logs': 'Logs',
   '/knowledge-base': 'Context',
+  '/databases': 'Databases',
   '/heartbeat': 'Heartbeat',
   '/library': 'Templates',
   '/todo-lists': 'Tasks',
@@ -138,6 +140,7 @@ function AppRoutes() {
         <Route path="/scheduler" element={<Scheduler />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
+        <Route path="/databases" element={<Databases />} />
         <Route path="/context" element={<Navigate to="/knowledge-base" replace />} />
         <Route path="/media" element={<Navigate to="/knowledge-base?tab=media" replace />} />
         <Route path="/heartbeat" element={<HeartbeatMonitor />} />

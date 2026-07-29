@@ -57,6 +57,10 @@ type Stats struct {
 	AgentTasks      int `json:"agent_tasks"`
 	TodoLists       int `json:"todo_lists"`
 	TodoItems       int `json:"todo_items"`
+	Databases       int `json:"databases"`
+	DatabaseTables  int `json:"database_tables"`
+	DatabaseColumns int `json:"database_columns"`
+	DatabaseRows    int `json:"database_rows"`
 }
 
 func exportData(db *database.DB, dataDir, destDir string) (int, error) {
@@ -106,6 +110,15 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 	if n, err := exportDashboards(db, destDir); err == nil {
 		files = append(files, n...)
 		stats.Dashboards = countPrefix(n, "dashboards/")
+	}
+
+	// Workspace databases
+	if n, databases, tables, columns, rows, err := exportDatabases(db, destDir); err == nil {
+		files = append(files, n...)
+		stats.Databases = databases
+		stats.DatabaseTables = tables
+		stats.DatabaseColumns = columns
+		stats.DatabaseRows = rows
 	}
 
 	// Tools
@@ -203,7 +216,7 @@ func exportData(db *database.DB, dataDir, destDir string) (int, error) {
 
 	// Write manifest
 	manifest := Manifest{
-		Version:   "1.1",
+		Version:   "1.2",
 		Timestamp: time.Now().UTC(),
 		Files:     files,
 		Stats:     stats,
@@ -308,11 +321,11 @@ func exportAgentRoles(db *database.DB, dataDir, destDir string) ([]string, error
 			"id": id, "slug": slug, "name": name, "description": desc,
 			"system_prompt": prompt, "model": model, "avatar_path": avatar,
 			"avatar_description": avatarDesc,
-			"enabled": enabled == 1, "sort_order": sortOrder,
+			"enabled":            enabled == 1, "sort_order": sortOrder,
 			"is_preset": isPreset == 1, "heartbeat_enabled": hbEnabled == 1,
 			"identity_initialized": identityInit == 1,
-			"library_slug": librarySlug, "library_version": libraryVersion,
-			"folder": folder,
+			"library_slug":         librarySlug, "library_version": libraryVersion,
+			"folder":     folder,
 			"created_at": createdAt, "updated_at": updatedAt,
 		}
 
@@ -396,7 +409,7 @@ func exportContext(db *database.DB, destDir string) ([]string, error) {
 				"mime_type": mimeType, "size_bytes": sizeBytes,
 				"is_about_you": isAboutYou == 1,
 				"workspace_id": nullStr(workspaceID),
-				"created_at": createdAt, "updated_at": updatedAt,
+				"created_at":   createdAt, "updated_at": updatedAt,
 			}
 			contextFiles = append(contextFiles, f)
 		}
@@ -436,9 +449,9 @@ func exportDashboards(db *database.DB, destDir string) ([]string, error) {
 			"id": id, "name": name, "description": desc,
 			"dashboard_type": dashType, "owner_agent_slug": ownerSlug,
 			"bg_image": bgImage, "layout": json.RawMessage(layout),
-			"widgets": json.RawMessage(widgets),
+			"widgets":      json.RawMessage(widgets),
 			"workspace_id": nullStr(workspaceID),
-			"created_at": createdAt, "updated_at": updatedAt,
+			"created_at":   createdAt, "updated_at": updatedAt,
 		}
 		path := fmt.Sprintf("dashboards/%s.json", id)
 		if err := writeJSONFile(filepath.Join(destDir, path), d); err == nil {
@@ -513,7 +526,7 @@ func exportSchedules(db *database.DB, destDir string) ([]string, error) {
 			"prompt_content": promptContent, "thread_id": threadID,
 			"dashboard_id": dashboardID, "widget_id": widgetID,
 			"workspace_id": nullStr(workspaceID),
-			"created_at": createdAt, "updated_at": updatedAt,
+			"created_at":   createdAt, "updated_at": updatedAt,
 		}
 		schedules = append(schedules, s)
 	}
@@ -1238,7 +1251,7 @@ func exportTodoLists(db *database.DB, destDir string) ([]string, int, int, error
 			"completed": completed == 1, "sort_order": sortOrder,
 			"due_date": dueDate, "last_actor_agent_slug": lastActorSlug,
 			"last_actor_note": lastActorNote,
-			"created_at": createdAt, "updated_at": updatedAt, "completed_at": completedAt,
+			"created_at":      createdAt, "updated_at": updatedAt, "completed_at": completedAt,
 		})
 	}
 
@@ -1254,6 +1267,126 @@ func exportTodoLists(db *database.DB, destDir string) ([]string, int, int, error
 	files = append(files, path)
 
 	return files, len(lists), len(items), nil
+}
+
+func exportDatabases(db *database.DB, destDir string) ([]string, int, int, int, int, error) {
+	databaseRows, err := db.Query(
+		"SELECT id, workspace_id, name, description, created_at, updated_at FROM user_databases ORDER BY workspace_id, name",
+	)
+	if err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	defer databaseRows.Close()
+
+	databases := []map[string]interface{}{}
+	for databaseRows.Next() {
+		var id, workspaceID, name, description string
+		var createdAt, updatedAt time.Time
+		if err := databaseRows.Scan(&id, &workspaceID, &name, &description, &createdAt, &updatedAt); err != nil {
+			return nil, 0, 0, 0, 0, err
+		}
+		databases = append(databases, map[string]interface{}{
+			"id": id, "workspace_id": workspaceID, "name": name, "description": description,
+			"created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	if err := databaseRows.Err(); err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	if len(databases) == 0 {
+		return nil, 0, 0, 0, 0, nil
+	}
+
+	tableRows, err := db.Query(
+		"SELECT id, database_id, name, sort_order, created_at, updated_at FROM user_database_tables ORDER BY database_id, sort_order",
+	)
+	if err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	defer tableRows.Close()
+	tables := []map[string]interface{}{}
+	for tableRows.Next() {
+		var id, databaseID, name string
+		var sortOrder int
+		var createdAt, updatedAt time.Time
+		if err := tableRows.Scan(&id, &databaseID, &name, &sortOrder, &createdAt, &updatedAt); err != nil {
+			return nil, 0, 0, 0, 0, err
+		}
+		tables = append(tables, map[string]interface{}{
+			"id": id, "database_id": databaseID, "name": name, "sort_order": sortOrder,
+			"created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	if err := tableRows.Err(); err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+
+	columnRows, err := db.Query(
+		"SELECT id, table_id, name, type, options, sort_order, created_at, updated_at FROM user_database_columns ORDER BY table_id, sort_order",
+	)
+	if err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	defer columnRows.Close()
+	columns := []map[string]interface{}{}
+	for columnRows.Next() {
+		var id, tableID, name, columnType, optionsJSON string
+		var sortOrder int
+		var createdAt, updatedAt time.Time
+		if err := columnRows.Scan(&id, &tableID, &name, &columnType, &optionsJSON, &sortOrder, &createdAt, &updatedAt); err != nil {
+			return nil, 0, 0, 0, 0, err
+		}
+		var options interface{}
+		if json.Unmarshal([]byte(optionsJSON), &options) != nil {
+			options = map[string]interface{}{}
+		}
+		columns = append(columns, map[string]interface{}{
+			"id": id, "table_id": tableID, "name": name, "type": columnType,
+			"options": options, "sort_order": sortOrder, "created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	if err := columnRows.Err(); err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+
+	rowRows, err := db.Query(
+		"SELECT id, table_id, data, sort_order, created_at, updated_at FROM user_database_rows ORDER BY table_id, sort_order",
+	)
+	if err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	defer rowRows.Close()
+	rows := []map[string]interface{}{}
+	for rowRows.Next() {
+		var id, tableID, valuesJSON string
+		var sortOrder int
+		var createdAt, updatedAt time.Time
+		if err := rowRows.Scan(&id, &tableID, &valuesJSON, &sortOrder, &createdAt, &updatedAt); err != nil {
+			return nil, 0, 0, 0, 0, err
+		}
+		var values interface{}
+		if json.Unmarshal([]byte(valuesJSON), &values) != nil {
+			values = map[string]interface{}{}
+		}
+		rows = append(rows, map[string]interface{}{
+			"id": id, "table_id": tableID, "values": values, "sort_order": sortOrder,
+			"created_at": createdAt, "updated_at": updatedAt,
+		})
+	}
+	if err := rowRows.Err(); err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+
+	path := "databases.json"
+	if err := writeJSONFile(filepath.Join(destDir, path), map[string]interface{}{
+		"databases": databases,
+		"tables":    tables,
+		"columns":   columns,
+		"rows":      rows,
+	}); err != nil {
+		return nil, 0, 0, 0, 0, err
+	}
+	return []string{path}, len(databases), len(tables), len(columns), len(rows), nil
 }
 
 func copyFile(src, dst string) error {

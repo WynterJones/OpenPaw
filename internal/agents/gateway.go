@@ -19,7 +19,8 @@ import (
 
 func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID string, history []ThreadMessage, hints *GatewayRoutingHints) (*GatewayResponse, *llm.UsageInfo, error) {
 	// Build dynamic agent list for gateway
-	agentList := m.buildAgentList(m.threadWorkspaceID(threadID))
+	workspaceID := m.threadWorkspaceID(threadID)
+	agentList := m.buildAgentList(workspaceID)
 	gatewayPrompt := GatewayRoutingPromptFor(m.GatewayName())
 
 	// Inject gateway identity (SOUL, USER, GOAL, memory)
@@ -37,7 +38,7 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 
 	// Inject available tools info so gateway knows what tools exist for routing decisions
 	if m.ToolMgr != nil {
-		toolsSection := m.buildToolsPromptSection("", m.db.ActiveWorkspaceID())
+		toolsSection := m.buildToolsPromptSection("", workspaceID)
 		if toolsSection != "" {
 			gatewayPrompt += "\n\n## SYSTEM SERVICES (read-only info for routing decisions)\n\n" + toolsSection
 			gatewayPrompt += "\nWhen a user's request requires a service (e.g. weather data, API calls), route to an agent that can use the service — do NOT try to answer directly.\n"
@@ -50,7 +51,7 @@ func (m *Manager) GatewayAnalyze(ctx context.Context, userMessage, threadID stri
 	gatewayPrompt += buildStudioRoutingNote(m.MediaRegistry)
 
 	// Inject existing dashboards so gateway can match update requests
-	dashSection := m.buildDashboardsPromptSection()
+	dashSection := m.buildDashboardsPromptSection(workspaceID)
 	if dashSection != "" {
 		gatewayPrompt += "\n\n" + dashSection
 	}
@@ -678,6 +679,15 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 	}
 	for name, handler := range MakeContextToolHandlers(m.db, m.DataDir, agentRoleSlug, m.broadcast) {
+		cfg.ExtraHandlers[name] = handler
+	}
+
+	// Workspace databases provide durable structured data for interactive chats
+	// and unattended schedules alike. Scope by this run's workspace rather than
+	// the globally active one so concurrent runs never cross-contaminate data.
+	cfg.System += "\n\n---\n\n" + buildDatabasesPromptSection(m.db, wsID)
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildDatabaseToolDefs()...)
+	for name, handler := range MakeDatabaseToolHandlers(m.db, wsID, agentRoleSlug, m.broadcast) {
 		cfg.ExtraHandlers[name] = handler
 	}
 

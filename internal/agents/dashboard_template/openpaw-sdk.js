@@ -59,6 +59,18 @@
       return request('getTools');
     },
 
+    // Query a workspace database table. Returns:
+    // { columns: string[], rows: any[][], records: object[], total: number }.
+    async queryDatabase(tableId, options) {
+      options = options || {};
+      return request('queryDatabase', {
+        tableId: String(tableId),
+        search: options.search || '',
+        limit: options.limit || 100,
+        offset: options.offset || 0,
+      });
+    },
+
     // Persistent per-dashboard key/value store. This dashboard runs in a
     // sandboxed frame where localStorage and cookies do not work — anything
     // that must survive a reload goes here. Values are any JSON-serialisable

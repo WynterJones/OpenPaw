@@ -15,12 +15,12 @@ import (
 	"github.com/openpaw/openpaw/internal/auth"
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/database"
+	"github.com/openpaw/openpaw/internal/dreaming"
 	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/mcp"
 	"github.com/openpaw/openpaw/internal/media"
-	"github.com/openpaw/openpaw/internal/dreaming"
 	"github.com/openpaw/openpaw/internal/memory"
 	mw "github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/scheduler"
@@ -48,25 +48,25 @@ type Server struct {
 }
 
 type Config struct {
-	DB           *database.DB
-	Auth         *auth.Service
-	Secrets      *secrets.Manager
-	Scheduler    *scheduler.Scheduler
-	AgentMgr     *agents.Manager
-	ToolMgr      *toolmgr.Manager
-	HeartbeatMgr *heartbeat.Manager
-	BackupMgr    *backup.Manager
-	MemoryMgr    *memory.Manager
-	DreamingMgr  *dreaming.Manager
-	TerminalMgr  *terminal.Manager
-	LLMClient    *llm.Client
-	Providers    *llm.ProviderRouter
-	MCPRegistry  *mcp.Registry
+	DB            *database.DB
+	Auth          *auth.Service
+	Secrets       *secrets.Manager
+	Scheduler     *scheduler.Scheduler
+	AgentMgr      *agents.Manager
+	ToolMgr       *toolmgr.Manager
+	HeartbeatMgr  *heartbeat.Manager
+	BackupMgr     *backup.Manager
+	MemoryMgr     *memory.Manager
+	DreamingMgr   *dreaming.Manager
+	TerminalMgr   *terminal.Manager
+	LLMClient     *llm.Client
+	Providers     *llm.ProviderRouter
+	MCPRegistry   *mcp.Registry
 	MediaRegistry *media.Registry
-	FrontendFS   fs.FS
-	ToolsDir     string
-	DataDir      string
-	Port         int
+	FrontendFS    fs.FS
+	ToolsDir      string
+	DataDir       string
+	Port          int
 }
 
 func New(cfg Config) *Server {
@@ -169,6 +169,7 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 	// Constructed after updateBroadcast so read/archive changes can tell open
 	// clients to refresh their unread counts.
 	notificationsHandler := handlers.NewNotificationsHandler(s.DB, updateBroadcast)
+	databasesHandler := handlers.NewDatabasesHandler(s.DB, updateBroadcast)
 	pixelLabHandler := handlers.NewPixelLabHandler(s.DB, secretsMgr, dataDir)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
@@ -463,6 +464,26 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Put("/files/{id}/move", contextHandler.MoveFile)
 				r.Get("/about-you", contextHandler.GetAboutYou)
 				r.Put("/about-you", contextHandler.UpdateAboutYou)
+			})
+
+			// Workspace databases
+			r.Route("/databases", func(r chi.Router) {
+				r.Get("/", databasesHandler.List)
+				r.Post("/", databasesHandler.Create)
+				r.Get("/{id}", databasesHandler.Get)
+				r.Put("/{id}", databasesHandler.Update)
+				r.Delete("/{id}", databasesHandler.Delete)
+				r.Post("/{id}/tables", databasesHandler.CreateTable)
+				r.Put("/tables/{tableId}", databasesHandler.UpdateTable)
+				r.Delete("/tables/{tableId}", databasesHandler.DeleteTable)
+				r.Post("/tables/{tableId}/columns", databasesHandler.CreateColumn)
+				r.Put("/columns/{columnId}", databasesHandler.UpdateColumn)
+				r.Delete("/columns/{columnId}", databasesHandler.DeleteColumn)
+				r.Get("/tables/{tableId}/rows", databasesHandler.ListRows)
+				r.Get("/tables/{tableId}/query", databasesHandler.QueryRows)
+				r.Post("/tables/{tableId}/rows", databasesHandler.CreateRow)
+				r.Put("/rows/{rowId}", databasesHandler.UpdateRow)
+				r.Delete("/rows/{rowId}", databasesHandler.DeleteRow)
 			})
 
 			// Chat attachments

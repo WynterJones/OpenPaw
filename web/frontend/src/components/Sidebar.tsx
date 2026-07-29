@@ -27,6 +27,7 @@ import {
   Settings2,
   Trash2,
   Brain,
+  BookOpen,
 } from "lucide-react";
 import { api, type Dashboard, type WSMessage } from "../lib/api";
 import { workspaces, notificationsApi } from "../lib/api-helpers";
@@ -57,7 +58,8 @@ const navGroups: NavGroup[] = [
       // Context and Tasks are things you open while working, not settings —
       // they belong beside Chats and Studio rather than behind the System
       // dropdown with the pages you configure once and forget.
-      { to: "/knowledge-base", icon: Database, label: "Context" },
+      { to: "/knowledge-base", icon: BookOpen, label: "Context" },
+      { to: "/databases", icon: Database, label: "Databases" },
       { to: "/todo-lists", icon: ListTodo, label: "Tasks" },
     ],
   },

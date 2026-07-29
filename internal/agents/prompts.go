@@ -33,6 +33,7 @@ OpenPaw is an AI agent factory — a self-hosted platform where specialist AI ag
 - **Services** — custom HTTP services that agents can call (build, start/stop, manage secrets)
 - **Dashboards** — data visualization from service endpoints (config-based or custom HTML/JS)
 - **Context** — knowledge base files agents can reference ("About You" for user info)
+- **Databases** — workspace-scoped structured tables agents can search and fully manage; dashboards can use them as live data sources
 - **Schedules** — cron-based automation (trigger services or agent prompts on a schedule)
 - **Projects** — git repos with coding CLI service assignments
 - **Skills** — reusable instruction sets agents can install
@@ -431,7 +432,7 @@ CHARTS — put chart configuration in "config", live data comes from "dataSource
 DISPLAY — put display data in "data":
   "metric-card"   — data: { "label": "Title", "value": "42", "unit": "C", "trend": "up" }
   "status-card"   — data: { "label": "API", "status": "ok", "message": "Healthy" }
-  "data-table"    — data: { "headers": ["Col1","Col2"], "rows": [["a","b"]] }
+  "data-table"    — data: { "columns": ["Col1","Col2"], "rows": [["a","b"]] }
   "key-value"     — data: { "Key": "Value", "Key2": "Value2" }
   "text-block"    — data: { "content": "Descriptive text here" }
   "progress-bar"  — data: { "label": "Usage", "value": 73, "max": 100 }
@@ -445,6 +446,11 @@ DISPLAY — put display data in "data":
 
 ## Data Source Rules
 - Use "type": "tool" when connecting to a running service. Set "toolId" to the service's UUID and "endpoint" to its API path.
+- Use "type": "database" for a live workspace database table:
+  { "type": "database", "databaseId": "<database-id>", "tableId": "<table-id>", "limit": 100, "refreshInterval": 30 }
+  The result is { "columns": [...], "rows": [[...]], "records": [{...}], "total": N }.
+  For a "data-table" widget, omit dataPath so columns/rows render directly.
+  For charts, set "dataPath": "records" and configure xKey/yKeys using column names.
 - Use "type": "static" when data is hardcoded in the "data" field (e.g. labels, descriptions).
 - "refreshInterval": seconds between auto-refreshes. Use 300 (5min) as default. Set 0 for no auto-refresh.
 - "dataPath": dot-notation to extract a nested value from the service's JSON response (e.g. "current.temperature").
@@ -466,7 +472,7 @@ Requirements: %s
 
 ## SCAFFOLD (already exists — read first)
 - index.html — HTML shell with theme CSS vars, SDK and dashboard.js imports. Modify the <body> structure as needed.
-- openpaw-sdk.js — API client: OpenPaw.callTool(), OpenPaw.getTools(), OpenPaw.storage, OpenPaw.refresh(), OpenPaw.theme. DO NOT MODIFY THIS FILE.
+- openpaw-sdk.js — API client: OpenPaw.callTool(), OpenPaw.getTools(), OpenPaw.queryDatabase(), OpenPaw.storage, OpenPaw.refresh(), OpenPaw.theme. DO NOT MODIFY THIS FILE.
 - dashboard.js — Empty starter. This is your main file to build the dashboard.
 - style.css — Base styles using --op-* design tokens. Add your styles here or create new CSS files.
 
@@ -480,6 +486,10 @@ await OpenPaw.callTool(toolId, endpoint, payload?)
 // List all available services
 await OpenPaw.getTools()
 // Returns: array of service objects {id, name, description, status, ...}
+
+// Read/search a live workspace database table
+await OpenPaw.queryDatabase(tableId, { search?: '', limit?: 100, offset?: 0 })
+// Returns: { columns: string[], rows: any[][], records: object[], total: number }
 
 // Auto-refresh helper — calls callback immediately, then every intervalMs
 const stop = OpenPaw.refresh(callback, intervalMs)
@@ -582,6 +592,7 @@ Key files:
 
 await OpenPaw.callTool(toolId, endpoint, payload?)
 await OpenPaw.getTools()
+await OpenPaw.queryDatabase(tableId, { search?: '', limit?: 100, offset?: 0 })
 OpenPaw.refresh(callback, intervalMs) → returns stop function
 OpenPaw.theme — current CSS vars as JS object
 

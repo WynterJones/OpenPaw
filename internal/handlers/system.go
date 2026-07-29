@@ -147,6 +147,7 @@ func (h *SystemHandler) DeleteData(w http.ResponseWriter, r *http.Request) {
 		"schedules",
 		"secrets",
 		"dashboards",
+		"user_databases",
 		"todo_items",
 		"todo_lists",
 		"agent_tasks",

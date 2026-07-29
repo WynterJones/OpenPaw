@@ -19,6 +19,7 @@ import {
   Palette,
   Shield,
   Boxes,
+  Database,
 } from 'lucide-react';
 
 interface DocsContext {
@@ -63,6 +64,12 @@ const features = [
     description: 'Upload documents, files, and knowledge that agents can reference. Organize into folders and mark files as "About You" for personal context.',
   },
   {
+    icon: Database,
+    name: 'Workspace Databases',
+    id: 'workspace-databases',
+    description: 'Create Airtable-style structured databases with multiple tables, typed columns, inline editing, and search. Agents and scheduled automations can fully manage rows and schema, while dashboards can use any table as a live data source.',
+  },
+  {
     icon: KeyRound,
     name: 'Secrets Management',
     id: 'secrets',
@@ -90,7 +97,7 @@ const features = [
     icon: LayoutDashboard,
     name: 'Dashboards',
     id: 'dashboards',
-    description: 'Build custom dashboards with widgets that pull data from services. Metric cards, charts, tables, and more — all configurable and real-time.',
+    description: 'Build custom dashboards with widgets that pull live data from services or workspace databases. Metric cards, charts, tables, and more — all configurable and real-time.',
   },
   {
     icon: Globe,

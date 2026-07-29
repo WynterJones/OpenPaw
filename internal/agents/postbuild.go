@@ -133,18 +133,19 @@ func (m *Manager) postBuildCustomDashboard(workOrder *models.WorkOrder, dashboar
 	}
 
 	dashboardID := workOrder.ToolID // We store dashboardID in ToolID field
+	workspaceID := m.threadWorkspaceID(workOrder.ThreadID)
 	now := time.Now().UTC()
 
 	// Check if updating an existing dashboard
 	var existingID string
-	m.db.QueryRow("SELECT id FROM dashboards WHERE id = ?", dashboardID).Scan(&existingID)
+	m.db.QueryRow("SELECT id FROM dashboards WHERE id = ? AND workspace_id = ?", dashboardID, workspaceID).Scan(&existingID)
 
 	action := "created"
 	if existingID != "" {
 		// Update existing
 		m.db.Exec(
-			"UPDATE dashboards SET description = ?, dashboard_type = 'custom', updated_at = ? WHERE id = ?",
-			workOrder.Description, now, existingID,
+			"UPDATE dashboards SET description = ?, dashboard_type = 'custom', updated_at = ? WHERE id = ? AND workspace_id = ?",
+			workOrder.Description, now, existingID, workspaceID,
 		)
 		action = "updated"
 	} else {
@@ -152,7 +153,7 @@ func (m *Manager) postBuildCustomDashboard(workOrder *models.WorkOrder, dashboar
 		// the column-default (Default) workspace, so it shows in the right place.
 		m.db.Exec(
 			"INSERT INTO dashboards (id, name, description, layout, widgets, dashboard_type, owner_agent_slug, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			dashboardID, workOrder.Title, workOrder.Description, "{}", "[]", "custom", "builder", m.threadWorkspaceID(workOrder.ThreadID), now, now,
+			dashboardID, workOrder.Title, workOrder.Description, "{}", "[]", "custom", "builder", workspaceID, now, now,
 		)
 	}
 
@@ -191,13 +192,14 @@ func (m *Manager) postBuildDashboard(workOrder *models.WorkOrder, builderOutput 
 	}
 
 	// Check if updating an existing dashboard — prefer ID from work order, then name match
+	workspaceID := m.threadWorkspaceID(workOrder.ThreadID)
 	var existingID string
 	if workOrder.ToolID != "" {
-		m.db.QueryRow("SELECT id FROM dashboards WHERE id = ?", workOrder.ToolID).Scan(&existingID)
+		m.db.QueryRow("SELECT id FROM dashboards WHERE id = ? AND workspace_id = ?", workOrder.ToolID, workspaceID).Scan(&existingID)
 	}
 	if existingID == "" {
 		m.db.QueryRow(
-			"SELECT id FROM dashboards WHERE name = ?", config.Name,
+			"SELECT id FROM dashboards WHERE name = ? AND workspace_id = ?", config.Name, workspaceID,
 		).Scan(&existingID)
 	}
 
@@ -208,8 +210,8 @@ func (m *Manager) postBuildDashboard(workOrder *models.WorkOrder, builderOutput 
 	if existingID != "" {
 		// Update existing
 		m.db.Exec(
-			"UPDATE dashboards SET description = ?, layout = ?, widgets = ?, updated_at = ? WHERE id = ?",
-			config.Description, layoutStr, widgetsStr, now, existingID,
+			"UPDATE dashboards SET description = ?, layout = ?, widgets = ?, updated_at = ? WHERE id = ? AND workspace_id = ?",
+			config.Description, layoutStr, widgetsStr, now, existingID, workspaceID,
 		)
 		action = "updated"
 	} else {
@@ -217,7 +219,7 @@ func (m *Manager) postBuildDashboard(workOrder *models.WorkOrder, builderOutput 
 		dashboardID = uuid.New().String()
 		m.db.Exec(
 			"INSERT INTO dashboards (id, name, description, layout, widgets, owner_agent_slug, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			dashboardID, config.Name, config.Description, layoutStr, widgetsStr, "builder", m.threadWorkspaceID(workOrder.ThreadID), now, now,
+			dashboardID, config.Name, config.Description, layoutStr, widgetsStr, "builder", workspaceID, now, now,
 		)
 	}
 

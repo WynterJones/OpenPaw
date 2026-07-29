@@ -264,6 +264,9 @@ func TestServeAssets_SDKComesFromEmbed(t *testing.T) {
 	if !strings.Contains(body, "storageSet") {
 		t.Errorf("served SDK has no storage API:\n%s", body)
 	}
+	if !strings.Contains(body, "queryDatabase") {
+		t.Errorf("served SDK has no database query API:\n%s", body)
+	}
 }
 
 // The traversal guard compared a bare prefix, so a dashboard could read out of

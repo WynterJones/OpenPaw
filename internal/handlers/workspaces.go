@@ -193,9 +193,61 @@ func (h *WorkspacesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Database names are unique inside a workspace. Preserve databases when a
+	// workspace is removed, but disambiguate any names that would collide after
+	// moving them into Default.
+	collisions, err := h.db.Query(`
+		SELECT source.id, source.name
+		  FROM user_databases source
+		  JOIN user_databases target
+		    ON target.workspace_id = ? AND target.name = source.name COLLATE NOCASE
+		 WHERE source.workspace_id = ?`, DefaultWorkspaceID, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to prepare workspace databases")
+		return
+	}
+	type databaseRename struct{ id, name string }
+	var renames []databaseRename
+	for collisions.Next() {
+		var rename databaseRename
+		if err := collisions.Scan(&rename.id, &rename.name); err != nil {
+			collisions.Close()
+			writeError(w, http.StatusInternalServerError, "failed to prepare workspace databases")
+			return
+		}
+		renames = append(renames, rename)
+	}
+	collisions.Close()
+	for _, rename := range renames {
+		candidate := fmt.Sprintf("%s (%s)", rename.name, rename.id)
+		for copyNumber := 2; ; copyNumber++ {
+			var count int
+			if err := h.db.QueryRow(
+				`SELECT COUNT(*) FROM user_databases
+				  WHERE workspace_id IN (?, ?) AND id <> ? AND name = ? COLLATE NOCASE`,
+				DefaultWorkspaceID, id, rename.id, candidate,
+			).Scan(&count); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to prepare workspace databases")
+				return
+			}
+			if count == 0 {
+				break
+			}
+			candidate = fmt.Sprintf("%s (%s, copy %d)", rename.name, rename.id, copyNumber)
+		}
+		if _, err := h.db.Exec("UPDATE user_databases SET name = ? WHERE id = ? AND workspace_id = ?", candidate, rename.id, id); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to prepare workspace databases")
+			return
+		}
+	}
+
 	// Reassign scoped rows to the Default workspace to avoid data loss.
 	for _, tbl := range []string{"chat_threads", "dashboards", "context_files", "context_folders", "todo_lists"} {
 		h.db.Exec("UPDATE "+tbl+" SET workspace_id = ? WHERE workspace_id = ?", DefaultWorkspaceID, id)
+	}
+	if _, err := h.db.Exec("UPDATE user_databases SET workspace_id = ? WHERE workspace_id = ?", DefaultWorkspaceID, id); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to preserve workspace databases")
+		return
 	}
 	// Schedules / heartbeat use nullable workspace_id (= global) — null them out.
 	h.db.Exec("UPDATE schedules SET workspace_id = NULL WHERE workspace_id = ?", id)

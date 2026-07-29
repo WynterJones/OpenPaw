@@ -18,6 +18,7 @@ import (
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/models"
+	"github.com/openpaw/openpaw/internal/userdb"
 )
 
 type DashboardsHandler struct {
@@ -154,7 +155,7 @@ func (h *DashboardsHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *DashboardsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	d, err := h.scanDashboard(h.db.QueryRow(
-		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ?", id,
+		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ? AND workspace_id = ?", id, activeWorkspaceID(h.db),
 	))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dashboard not found")
@@ -167,7 +168,8 @@ func (h *DashboardsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var exists string
-	err := h.db.QueryRow("SELECT id FROM dashboards WHERE id = ?", id).Scan(&exists)
+	workspaceID := activeWorkspaceID(h.db)
+	err := h.db.QueryRow("SELECT id FROM dashboards WHERE id = ? AND workspace_id = ?", id, workspaceID).Scan(&exists)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dashboard not found")
 		return
@@ -210,8 +212,8 @@ func (h *DashboardsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		args = append(args, *req.BgImage)
 	}
 
-	args = append(args, id)
-	if _, err := h.db.Exec("UPDATE dashboards SET "+strings.Join(setClauses, ", ")+" WHERE id = ?", args...); err != nil {
+	args = append(args, id, workspaceID)
+	if _, err := h.db.Exec("UPDATE dashboards SET "+strings.Join(setClauses, ", ")+" WHERE id = ? AND workspace_id = ?", args...); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update dashboard")
 		return
 	}
@@ -220,7 +222,7 @@ func (h *DashboardsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(userID, "dashboard_updated", "dashboard", "dashboard", id, "")
 
 	d, _ := h.scanDashboard(h.db.QueryRow(
-		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ?", id,
+		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ? AND workspace_id = ?", id, workspaceID,
 	))
 	writeJSON(w, http.StatusOK, toDashboardResponse(d))
 }
@@ -230,9 +232,10 @@ func (h *DashboardsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	// Check dashboard type before deletion for cleanup
 	var dashType string
-	h.db.QueryRow("SELECT dashboard_type FROM dashboards WHERE id = ?", id).Scan(&dashType)
+	workspaceID := activeWorkspaceID(h.db)
+	h.db.QueryRow("SELECT dashboard_type FROM dashboards WHERE id = ? AND workspace_id = ?", id, workspaceID).Scan(&dashType)
 
-	result, err := h.db.Exec("DELETE FROM dashboards WHERE id = ?", id)
+	result, err := h.db.Exec("DELETE FROM dashboards WHERE id = ? AND workspace_id = ?", id, workspaceID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete dashboard")
 		return
@@ -382,7 +385,7 @@ func (h *DashboardsHandler) RefreshData(w http.ResponseWriter, r *http.Request) 
 	id := chi.URLParam(r, "id")
 
 	d, err := h.scanDashboard(h.db.QueryRow(
-		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ?", id,
+		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ? AND workspace_id = ?", id, activeWorkspaceID(h.db),
 	))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dashboard not found")
@@ -392,11 +395,15 @@ func (h *DashboardsHandler) RefreshData(w http.ResponseWriter, r *http.Request) 
 	var widgets []struct {
 		ID         string `json:"id"`
 		DataSource *struct {
-			Type     string `json:"type"`
-			ToolID   string `json:"toolId"`
-			Endpoint string `json:"endpoint"`
-			Method   string `json:"method"`
-			DataPath string `json:"dataPath"`
+			Type       string `json:"type"`
+			ToolID     string `json:"toolId"`
+			Endpoint   string `json:"endpoint"`
+			Method     string `json:"method"`
+			DataPath   string `json:"dataPath"`
+			DatabaseID string `json:"databaseId"`
+			TableID    string `json:"tableId"`
+			Search     string `json:"search"`
+			Limit      int    `json:"limit"`
 		} `json:"dataSource"`
 	}
 	if err := json.Unmarshal([]byte(d.Widgets), &widgets); err != nil {
@@ -405,34 +412,50 @@ func (h *DashboardsHandler) RefreshData(w http.ResponseWriter, r *http.Request) 
 	}
 
 	results := make(map[string]interface{})
-	for _, w := range widgets {
-		if w.DataSource == nil || w.DataSource.Type != "tool" || w.DataSource.ToolID == "" {
-			continue
-		}
-		if h.toolMgr == nil {
-			continue
-		}
-
-		endpoint := w.DataSource.Endpoint
-		if endpoint == "" {
-			endpoint = "/"
-		}
-
-		data, err := h.toolMgr.CallTool(w.DataSource.ToolID, endpoint, nil)
-		if err != nil {
-			results[w.ID] = map[string]string{"error": err.Error()}
+	databaseStore := userdb.NewStore(h.db)
+	workspaceID := activeWorkspaceID(h.db)
+	for _, widget := range widgets {
+		if widget.DataSource == nil {
 			continue
 		}
 
 		var parsed interface{}
-		if json.Unmarshal(data, &parsed) == nil {
-			if w.DataSource.DataPath != "" {
-				parsed = extractDataPath(parsed, w.DataSource.DataPath)
+		switch widget.DataSource.Type {
+		case "tool":
+			if widget.DataSource.ToolID == "" || h.toolMgr == nil {
+				continue
 			}
-			results[w.ID] = parsed
-		} else {
-			results[w.ID] = string(data)
+			endpoint := widget.DataSource.Endpoint
+			if endpoint == "" {
+				endpoint = "/"
+			}
+			data, err := h.toolMgr.CallTool(widget.DataSource.ToolID, endpoint, nil)
+			if err != nil {
+				results[widget.ID] = map[string]string{"error": err.Error()}
+				continue
+			}
+			if json.Unmarshal(data, &parsed) != nil {
+				parsed = string(data)
+			}
+		case "database":
+			if widget.DataSource.TableID == "" {
+				results[widget.ID] = map[string]string{"error": "database table is not configured"}
+				continue
+			}
+			data, err := databaseStore.NamedRows(workspaceID, widget.DataSource.TableID, widget.DataSource.Search, widget.DataSource.Limit, 0)
+			if err != nil {
+				results[widget.ID] = map[string]string{"error": err.Error()}
+				continue
+			}
+			raw, _ := json.Marshal(data)
+			_ = json.Unmarshal(raw, &parsed)
+		default:
+			continue
 		}
+		if widget.DataSource.DataPath != "" {
+			parsed = extractDataPath(parsed, widget.DataSource.DataPath)
+		}
+		results[widget.ID] = parsed
 	}
 
 	writeJSON(w, http.StatusOK, results)
@@ -443,6 +466,14 @@ func (h *DashboardsHandler) GetWidgetData(w http.ResponseWriter, r *http.Request
 	dashboardID := chi.URLParam(r, "id")
 	widgetID := chi.URLParam(r, "widgetId")
 	timeRange := r.URL.Query().Get("range")
+	var exists string
+	if err := h.db.QueryRow(
+		"SELECT id FROM dashboards WHERE id = ? AND workspace_id = ?",
+		dashboardID, activeWorkspaceID(h.db),
+	).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "dashboard not found")
+		return
+	}
 
 	if timeRange == "" {
 		timeRange = "24h"
@@ -504,7 +535,7 @@ func (h *DashboardsHandler) CollectData(w http.ResponseWriter, r *http.Request) 
 	id := chi.URLParam(r, "id")
 
 	d, err := h.scanDashboard(h.db.QueryRow(
-		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ?", id,
+		"SELECT "+dashboardCols+" FROM dashboards WHERE id = ? AND workspace_id = ?", id, activeWorkspaceID(h.db),
 	))
 	if err != nil {
 		writeError(w, http.StatusNotFound, "dashboard not found")

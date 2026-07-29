@@ -277,9 +277,10 @@ func (m *Manager) buildProjectsPromptSection() string {
 
 // buildDashboardsPromptSection queries the DB for existing dashboards and builds a prompt section
 // so the gateway knows about them and can include dashboard_id when updating.
-func (m *Manager) buildDashboardsPromptSection() string {
+func (m *Manager) buildDashboardsPromptSection(workspaceID string) string {
 	rows, err := m.db.Query(
-		"SELECT id, name, description, dashboard_type FROM dashboards ORDER BY updated_at DESC LIMIT 20",
+		"SELECT id, name, description, dashboard_type FROM dashboards WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT 20",
+		workspaceID,
 	)
 	if err != nil {
 		return ""

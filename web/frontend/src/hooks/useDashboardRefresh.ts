@@ -28,7 +28,7 @@ export function useDashboardRefresh(
   }, [dashboardId, refreshFn]);
 
   const handleWsMessage = useCallback((msg: WSMessage) => {
-    if (msg.type === 'agent_completed' || msg.type === 'audit_log_created') {
+    if (msg.type === 'agent_completed' || msg.type === 'audit_log_created' || msg.type === 'database_updated') {
       if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current);
       wsDebounceRef.current = window.setTimeout(refresh, WS_DEBOUNCE_MS);
     }

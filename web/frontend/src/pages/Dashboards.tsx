@@ -82,7 +82,7 @@ export function Dashboards() {
       const iframe = iframeRef.current;
       if (!iframe?.contentWindow || e.source !== iframe.contentWindow) return;
 
-      const { type, id, action, toolId, endpoint, payload, key, value } = e.data || {};
+      const { type, id, action, toolId, endpoint, payload, key, value, tableId, search, limit, offset } = e.data || {};
 
       if (type === 'openpaw_request') {
         const hdrs: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -122,6 +122,19 @@ export function Dashboards() {
             case 'getTools':
               promise = fetch('/api/v1/tools', { headers: hdrs, credentials: 'same-origin' }).then(json);
               break;
+            case 'queryDatabase': {
+              if (!tableId) throw new Error('tableId is required');
+              const query = new URLSearchParams();
+              if (search) query.set('search', String(search));
+              if (limit) query.set('limit', String(limit));
+              if (offset) query.set('offset', String(offset));
+              const suffix = query.toString() ? `?${query.toString()}` : '';
+              promise = fetch(`/api/v1/databases/tables/${encodeURIComponent(String(tableId))}/query${suffix}`, {
+                headers: hdrs,
+                credentials: 'same-origin',
+              }).then(json);
+              break;
+            }
             case 'storageGet':
               promise = fetch(storageUrl(key), { headers: hdrs, credentials: 'same-origin' }).then(json);
               break;

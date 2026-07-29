@@ -229,6 +229,7 @@ func (h *AuthHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 		"schedules",
 		"secrets",
 		"dashboards",
+		"user_databases",
 		"agent_roles",
 		"audit_logs",
 		"settings",

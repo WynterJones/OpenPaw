@@ -294,9 +294,13 @@ export interface DashboardWidgetConfig {
   title: string;
   position: { col: number; row: number; colSpan: number; rowSpan: number };
   dataSource?: {
-    type: 'tool' | 'static';
-    toolId: string;
-    endpoint: string;
+    type: 'tool' | 'database' | 'static';
+    toolId?: string;
+    endpoint?: string;
+    databaseId?: string;
+    tableId?: string;
+    search?: string;
+    limit?: number;
     method?: string;
     refreshInterval?: number;
     dataPath?: string;
@@ -316,6 +320,66 @@ export interface Dashboard {
   bg_image: string;
   created_at: string;
   updated_at: string;
+}
+
+export type UserDatabaseColumnType =
+  | 'text'
+  | 'long_text'
+  | 'number'
+  | 'checkbox'
+  | 'date'
+  | 'url'
+  | 'email'
+  | 'select';
+
+export interface UserDatabaseColumn {
+  id: string;
+  table_id: string;
+  name: string;
+  type: UserDatabaseColumnType;
+  options: { choices?: string[]; [key: string]: unknown };
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDatabaseTable {
+  id: string;
+  database_id: string;
+  name: string;
+  sort_order: number;
+  row_count: number;
+  columns: UserDatabaseColumn[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDatabase {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string;
+  table_count: number;
+  row_count: number;
+  tables?: UserDatabaseTable[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDatabaseRow {
+  id: string;
+  table_id: string;
+  values: Record<string, unknown>;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDatabaseRowPage {
+  rows: UserDatabaseRow[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface LogStats {
