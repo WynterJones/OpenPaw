@@ -284,7 +284,7 @@ export function Workbench() {
               aria-hidden="true"
             />
             <div
-              className="pointer-events-none absolute inset-0 bg-surface-0/65"
+              className="pointer-events-none absolute inset-0 bg-surface-0/90"
               aria-hidden="true"
             />
           </>
