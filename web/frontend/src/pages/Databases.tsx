@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   ChevronDown,
@@ -24,6 +25,7 @@ import { Modal } from '../components/Modal';
 import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../components/Toast';
 import { api, type UserDatabase, type UserDatabaseColumn, type UserDatabaseColumnType, type UserDatabaseRow, type UserDatabaseRowPage, type UserDatabaseTable, type WSMessage } from '../lib/api';
+import { handleExternalLinkClick } from '../lib/openExternal';
 import { useWebSocket } from '../lib/useWebSocket';
 
 const LAST_DATABASE_KEY = 'openpaw-last-database';
@@ -81,6 +83,96 @@ function CellEditor({
   const shown = value === null || value === undefined ? '' : String(value);
   const [draft, setDraft] = useState(shown);
   const [editingLink, setEditingLink] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPosition, setPreviewPosition] = useState<{
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
+  const previewAnchorRef = useRef<HTMLDivElement>(null);
+  const previewOpenTimer = useRef<number | null>(null);
+  const previewCloseTimer = useRef<number | null>(null);
+  const previewId = useId();
+  const showPreview = shown.length > 48 || shown.includes('\n');
+
+  const positionPreview = useCallback(() => {
+    const anchor = previewAnchorRef.current;
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const gutter = 12;
+    const gap = 8;
+    const width = Math.min(
+      520,
+      Math.max(240, rect.width),
+      Math.max(240, window.innerWidth - gutter * 2),
+    );
+    const left = Math.min(
+      Math.max(gutter, rect.left),
+      Math.max(gutter, window.innerWidth - width - gutter),
+    );
+    const spaceBelow = window.innerHeight - rect.bottom - gutter - gap;
+    const spaceAbove = rect.top - gutter - gap;
+    const placeBelow = spaceBelow >= 160 || spaceBelow >= spaceAbove;
+    const availableHeight = Math.max(88, placeBelow ? spaceBelow : spaceAbove);
+
+    setPreviewPosition({
+      left,
+      width,
+      maxHeight: Math.min(288, availableHeight),
+      ...(placeBelow
+        ? { top: rect.bottom + gap }
+        : { bottom: window.innerHeight - rect.top + gap }),
+    });
+  }, []);
+
+  const cancelPreviewClose = () => {
+    if (previewCloseTimer.current !== null) {
+      window.clearTimeout(previewCloseTimer.current);
+      previewCloseTimer.current = null;
+    }
+  };
+
+  const openPreview = (delay = 180) => {
+    if (!showPreview) return;
+    cancelPreviewClose();
+    if (previewOpenTimer.current !== null) window.clearTimeout(previewOpenTimer.current);
+    previewOpenTimer.current = window.setTimeout(() => {
+      positionPreview();
+      setPreviewOpen(true);
+      previewOpenTimer.current = null;
+    }, delay);
+  };
+
+  const closePreview = () => {
+    if (previewOpenTimer.current !== null) {
+      window.clearTimeout(previewOpenTimer.current);
+      previewOpenTimer.current = null;
+    }
+    cancelPreviewClose();
+    previewCloseTimer.current = window.setTimeout(() => {
+      setPreviewOpen(false);
+      previewCloseTimer.current = null;
+    }, 120);
+  };
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    const reposition = () => positionPreview();
+    window.addEventListener('resize', reposition);
+    document.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      document.removeEventListener('scroll', reposition, true);
+    };
+  }, [positionPreview, previewOpen]);
+
+  useEffect(() => () => {
+    if (previewOpenTimer.current !== null) window.clearTimeout(previewOpenTimer.current);
+    if (previewCloseTimer.current !== null) window.clearTimeout(previewCloseTimer.current);
+  }, []);
 
   if (column.type === 'checkbox') {
     return (
@@ -102,7 +194,7 @@ function CellEditor({
       <select
         value={shown}
         onChange={event => onSave(event.target.value || null)}
-        className="w-full h-9 px-2 bg-transparent text-sm text-text-1 outline-none cursor-pointer"
+        className="w-full h-9 border-0 px-2 bg-transparent text-sm text-text-1 outline-none ring-0 focus:border-0 focus:ring-0 cursor-pointer"
         aria-label={column.name}
       >
         <option value="">—</option>
@@ -118,26 +210,47 @@ function CellEditor({
   };
 
   const href = cellLink(column, shown);
-  const showPreview = shown.length > 48 || shown.includes('\n');
-  const preview = showPreview && (
+  const preview = showPreview && previewOpen && previewPosition && createPortal(
     <div
+      id={previewId}
       role="tooltip"
-      className="hidden group-hover/cell:block group-focus-within/cell:block absolute z-50 left-2 top-[calc(100%-2px)] w-[min(28rem,calc(100vw-3rem))] h-28 overflow-y-auto rounded-lg border border-border-1 bg-surface-2 px-3 py-2 text-xs leading-relaxed text-text-1 whitespace-pre-wrap break-words shadow-xl"
+      style={previewPosition}
+      className="fixed z-[100] overflow-y-auto overscroll-contain rounded-xl border border-border-1/70 bg-surface-2/95 p-3 text-text-1 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-md"
+      onMouseEnter={cancelPreviewClose}
+      onMouseLeave={closePreview}
     >
-      {shown}
-    </div>
+      <div className="sticky -top-3 z-[1] -mx-3 -mt-3 mb-2 flex items-center gap-2 border-b border-border-0 bg-surface-2/95 px-3 py-2 backdrop-blur-md">
+        <ColumnTypeIcon type={column.type} />
+        <span className="min-w-0 truncate text-xs font-medium text-text-2">{column.name}</span>
+        <span className="ml-auto whitespace-nowrap rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-text-3">
+          Full value
+        </span>
+      </div>
+      <div className="whitespace-pre-wrap break-words text-[13px] leading-5">{shown}</div>
+    </div>,
+    document.body,
   );
 
   if (href && !editingLink) {
     const external = column.type === 'url';
     return (
-      <div className="group/cell relative flex items-center gap-1 min-h-9 px-2.5">
+      <div
+        ref={previewAnchorRef}
+        className="group/cell relative flex items-center gap-1 min-h-9 px-2.5"
+        onMouseEnter={() => openPreview()}
+        onMouseLeave={closePreview}
+        onFocusCapture={() => openPreview(0)}
+        onBlurCapture={closePreview}
+      >
         <a
           href={href}
           target={external ? '_blank' : undefined}
           rel={external ? 'noopener noreferrer' : undefined}
+          onClick={event => {
+            if (external) handleExternalLinkClick(event, href);
+          }}
           className="min-w-0 flex-1 inline-flex items-center gap-1.5 text-accent-text hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary rounded"
-          title={shown}
+          aria-describedby={previewOpen ? previewId : undefined}
         >
           <span className="truncate">{shown}</span>
           {external && <ExternalLink className="w-3 h-3 flex-shrink-0" aria-hidden="true" />}
@@ -157,7 +270,14 @@ function CellEditor({
   }
 
   return (
-    <div className="group/cell relative min-h-9">
+    <div
+      ref={previewAnchorRef}
+      className="group/cell relative min-h-9"
+      onMouseEnter={() => openPreview()}
+      onMouseLeave={closePreview}
+      onFocusCapture={() => openPreview(0)}
+      onBlurCapture={closePreview}
+    >
       <input
         autoFocus={editingLink}
         type={column.type === 'date' ? 'date' : column.type === 'number' ? 'number' : column.type === 'email' ? 'email' : column.type === 'url' ? 'url' : 'text'}
@@ -172,8 +292,9 @@ function CellEditor({
             event.currentTarget.blur();
           }
         }}
-        className="w-full h-9 px-2.5 bg-transparent text-sm text-text-1 outline-none focus:bg-accent-primary/5"
+        className="w-full h-9 border-0 px-2.5 bg-transparent text-sm text-text-1 outline-none ring-0 focus:border-0 focus:bg-accent-primary/5 focus:ring-0"
         aria-label={column.name}
+        aria-describedby={previewOpen ? previewId : undefined}
       />
       {preview}
     </div>
@@ -727,7 +848,7 @@ export function Databases() {
                 <table className="border-separate border-spacing-0 min-w-full w-max text-sm">
                   <thead className="sticky top-0 z-20">
                     <tr>
-                      <th className="sticky left-0 z-30 w-12 min-w-12 h-10 border-r border-b border-border-0/60 bg-surface-2 text-[10px] font-medium text-text-3 text-center">
+                      <th className="sticky left-0 z-30 w-12 min-w-12 h-10 border-r border-b border-border-0/45 bg-surface-2 text-[10px] font-medium text-text-3 text-center">
                         #
                       </th>
                       {selectedTable.columns.map(column => (
@@ -738,7 +859,7 @@ export function Databases() {
                             minWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
                             maxWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
                           }}
-                          className="group/header relative h-10 border-r border-b border-border-0/60 bg-surface-2 text-left font-medium text-text-1"
+                          className="group/header relative h-10 border-r border-b border-border-0/45 bg-surface-2 text-left font-medium text-text-1"
                         >
                           <div className="flex items-center gap-2 px-2.5">
                             <ColumnTypeIcon type={column.type} />
@@ -771,7 +892,7 @@ export function Databases() {
                           />
                         </th>
                       ))}
-                      <th className="sticky right-0 z-30 w-12 min-w-12 h-10 border-b border-border-0/60 bg-surface-2">
+                      <th className="sticky right-0 z-30 w-12 min-w-12 h-10 border-b border-border-0/45 bg-surface-2">
                         <button
                           onClick={() => openColumnModal()}
                           className="w-full h-full flex items-center justify-center text-text-3 hover:text-accent-text hover:bg-surface-3 cursor-pointer"
@@ -785,8 +906,8 @@ export function Databases() {
                   </thead>
                   <tbody>
                     {rows.map((row, rowIndex) => (
-                      <tr key={row.id} className="group/row">
-                        <td className="database-grid-cell sticky left-0 z-10 h-10 border-r border-border-0/50 bg-surface-1 text-[11px] text-text-3 text-center">
+                      <tr key={row.id} className="database-grid-row group/row">
+                        <td className="database-grid-cell sticky left-0 z-10 h-10 text-[11px] text-text-3 text-center">
                           <span className="group-hover/row:hidden">{rowIndex + 1}</span>
                           <button
                             onClick={() => deleteRow(row.id)}
@@ -805,7 +926,7 @@ export function Databases() {
                               minWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
                               maxWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
                             }}
-                            className="database-grid-cell h-10 bg-surface-0 hover:bg-surface-1/70 focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent-primary"
+                            className="database-grid-cell h-10 focus-within:relative focus-within:z-[1] focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent-primary/70"
                           >
                             <CellEditor
                               key={`${row.id}:${column.id}:${String(row.values[column.id] ?? '')}`}
@@ -815,7 +936,7 @@ export function Databases() {
                             />
                           </td>
                         ))}
-                        <td className="database-grid-cell sticky right-0 bg-surface-1" />
+                        <td className="database-grid-cell sticky right-0" />
                       </tr>
                     ))}
                     <tr>

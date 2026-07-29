@@ -86,7 +86,59 @@ html[data-desktop] [data-tauri-drag-region] :is(button, a, input, select, textar
 }
 
 .database-grid-cell {
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--op-border-0) 58%, transparent);
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--op-border-0) 36%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--op-border-0) 22%, transparent);
+  transition: background-color 120ms ease;
+}
+
+.database-grid-row:nth-child(odd) > .database-grid-cell {
+  background-color: color-mix(in srgb, var(--op-surface-1) 18%, var(--op-surface-0));
+}
+
+.database-grid-row:nth-child(even) > .database-grid-cell {
+  background-color: color-mix(in srgb, var(--op-surface-1) 42%, var(--op-surface-0));
+}
+
+.database-grid-row:hover > .database-grid-cell {
+  background-color: color-mix(in srgb, var(--op-surface-2) 54%, var(--op-surface-0));
+}
+
+/* xterm asks WebKit for a permanently visible native scrollbar. Keep it
+   functional, but explicitly theme every piece so the system's white
+   scrollbar cannot leak into a transparent terminal. */
+.openpaw-terminal .xterm,
+.openpaw-terminal .xterm .xterm-viewport {
+  color-scheme: dark;
+  scrollbar-color: color-mix(in srgb, var(--op-border-1) 72%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.openpaw-terminal .xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
+.openpaw-terminal .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px !important;
+  background: transparent !important;
+}
+
+.openpaw-terminal .xterm .xterm-viewport::-webkit-scrollbar-track,
+.openpaw-terminal .xterm .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+.openpaw-terminal .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--op-border-1) 72%, transparent) !important;
+  background-clip: padding-box !important;
+}
+
+.openpaw-terminal .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--op-text-3) 78%, transparent) !important;
+  background-clip: padding-box !important;
 }
 
 html {

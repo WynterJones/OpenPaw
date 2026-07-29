@@ -96,7 +96,7 @@ export function TerminalView({
     <div
       ref={containerRef}
       data-openpaw-hotkeys="ignore"
-      className="h-full w-full p-1 md:p-4"
+      className="openpaw-terminal h-full w-full p-1 md:p-4"
       style={{ minHeight: 100 }}
       onClick={handleClick}
     />
