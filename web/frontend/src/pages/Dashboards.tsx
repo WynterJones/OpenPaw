@@ -59,6 +59,8 @@ export function Dashboards() {
   const [renameSaving, setRenameSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [viewRefreshing, setViewRefreshing] = useState(false);
+  const [iframeRevision, setIframeRevision] = useState(0);
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
@@ -198,7 +200,7 @@ export function Dashboards() {
   );
 
   useEffect(() => {
-    loadDashboards();
+    void loadDashboards().catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Respond to sidebar navigation to a specific dashboard (?id=) after load
@@ -210,7 +212,7 @@ export function Dashboards() {
     }
   }, [searchParams, dashboards]);
 
-  const loadDashboards = async () => {
+  const loadDashboards = async (preferredId?: string, preserveCurrent = false) => {
     try {
       const data = await api.get<Dashboard[]>('/dashboards');
       const list = Array.isArray(data) ? data : [];
@@ -221,14 +223,36 @@ export function Dashboards() {
         const urlId = searchParams.get('id');
         const lastId = localStorage.getItem(LAST_DASHBOARD_KEY);
         const found =
-          list.find(d => d.id === urlId) || list.find(d => d.id === lastId);
+          list.find(d => d.id === preferredId) ||
+          list.find(d => d.id === urlId) ||
+          list.find(d => d.id === lastId);
         setSelectedId(found ? found.id : list[0].id);
       }
+      return list;
     } catch (e) {
       console.warn('loadDashboards failed:', e);
-      setDashboards([]);
+      if (!preserveCurrent) setDashboards([]);
+      throw e;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshView = async () => {
+    if (!selectedId || viewRefreshing || refreshing) return;
+    setViewRefreshing(true);
+    try {
+      if (isCustom) {
+        await loadDashboards(selectedId, true);
+        setIframeRevision(value => value + 1);
+        toast('success', 'Latest dashboard loaded');
+      } else {
+        await refresh();
+      }
+    } catch {
+      toast('error', 'Failed to refresh dashboard');
+    } finally {
+      setViewRefreshing(false);
     }
   };
 
@@ -465,18 +489,15 @@ export function Dashboards() {
             )}
           </div>
 
-          {/* Refresh button (hidden for custom dashboards) */}
-          {!isCustom && (
-            <button
-              onClick={() => refresh()}
-              disabled={refreshing}
-              className="p-1.5 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50"
-              title="Refresh data"
-              aria-label="Refresh data"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-          )}
+          <button
+            onClick={refreshView}
+            disabled={viewRefreshing || refreshing}
+            className="p-1.5 rounded-lg text-text-2 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            title={isCustom ? 'Reload latest dashboard' : 'Refresh data'}
+            aria-label={isCustom ? 'Reload latest dashboard' : 'Refresh data'}
+          >
+            <RefreshCw className={`w-4 h-4 ${viewRefreshing || refreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       } />
 
@@ -485,7 +506,8 @@ export function Dashboards() {
           {selected?.bg_image && <DashboardBackground bgImage={selected.bg_image} />}
           <iframe
             ref={iframeRef}
-            src={`/api/v1/dashboards/${selected!.id}/assets/index.html`}
+            key={`${selected!.id}-${iframeRevision}`}
+            src={`/api/v1/dashboards/${selected!.id}/assets/index.html?v=${encodeURIComponent(selected!.updated_at)}-${iframeRevision}`}
             sandbox="allow-scripts"
             className="absolute inset-0 w-full h-full border-0 z-[1] bg-transparent"
             title={selected!.name}

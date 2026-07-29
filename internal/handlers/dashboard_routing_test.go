@@ -257,6 +257,9 @@ func TestServeAssets_SDKComesFromEmbed(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
 	body := rec.Body.String()
 	if body == stale {
 		t.Fatal("served the stale on-disk SDK")

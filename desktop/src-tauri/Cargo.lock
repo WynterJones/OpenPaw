@@ -2210,6 +2210,7 @@ dependencies = [
 name = "openpaw-desktop"
 version = "1.3.1"
 dependencies = [
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

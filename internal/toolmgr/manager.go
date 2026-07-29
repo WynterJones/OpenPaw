@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -216,7 +217,10 @@ func (m *Manager) StartTool(toolID string) error {
 
 	m.ensureToolDataDir(toolID)
 
-	port := m.allocatePort()
+	port, err := m.allocatePort()
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	cmd := exec.CommandContext(ctx, binaryPath)
@@ -507,12 +511,23 @@ func (m *Manager) GetStatus(toolID string) map[string]interface{} {
 	}
 }
 
-func (m *Manager) allocatePort() int {
+func (m *Manager) allocatePort() (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	port := m.nextPort
-	m.nextPort++
-	return port
+
+	// A previous desktop build could force-kill the backend before it had a
+	// chance to stop service children. Skip any ports those stale processes
+	// still own so enabled services can recover immediately on the next launch.
+	for port := m.nextPort; port <= 65535; port++ {
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		_ = listener.Close()
+		m.nextPort = port + 1
+		return port, nil
+	}
+	return 0, fmt.Errorf("no available service ports starting at %d", m.nextPort)
 }
 
 func (m *Manager) monitorProcess(toolID string) {
@@ -586,7 +601,6 @@ func (m *Manager) monitorProcess(toolID string) {
 	}
 	m.mu.Unlock()
 }
-
 
 func closeLogFile(rt *RunningTool) {
 	if rt.logFile != nil {

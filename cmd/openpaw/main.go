@@ -20,8 +20,8 @@ import (
 	"github.com/openpaw/openpaw/internal/backup"
 	"github.com/openpaw/openpaw/internal/config"
 	"github.com/openpaw/openpaw/internal/database"
-	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/dreaming"
+	"github.com/openpaw/openpaw/internal/handlers"
 	"github.com/openpaw/openpaw/internal/heartbeat"
 	llm "github.com/openpaw/openpaw/internal/llm"
 	"github.com/openpaw/openpaw/internal/logger"
@@ -412,33 +412,30 @@ func main() {
 
 	// Create server
 	srv := server.New(server.Config{
-		DB:           db,
-		Auth:         authService,
-		Secrets:      secretsMgr,
-		Scheduler:    sched,
-		AgentMgr:     agentMgr,
-		ToolMgr:      toolMgr,
-		HeartbeatMgr: heartbeatMgr,
-		BackupMgr:    backupMgr,
-		MemoryMgr:    memoryMgr,
-		DreamingMgr:  dreamingMgr,
-		TerminalMgr:  terminalMgr,
-		LLMClient:    llmClient,
-		Providers:    providerRouter,
+		DB:            db,
+		Auth:          authService,
+		Secrets:       secretsMgr,
+		Scheduler:     sched,
+		AgentMgr:      agentMgr,
+		ToolMgr:       toolMgr,
+		HeartbeatMgr:  heartbeatMgr,
+		BackupMgr:     backupMgr,
+		MemoryMgr:     memoryMgr,
+		DreamingMgr:   dreamingMgr,
+		TerminalMgr:   terminalMgr,
+		LLMClient:     llmClient,
+		Providers:     providerRouter,
 		MediaRegistry: mediaRegistry,
-		MCPRegistry:  mcpRegistry,
-		FrontendFS:   frontendFS,
-		ToolsDir:     toolsDir,
-		DataDir:      cfg.DataDir,
-		Port:         cfg.Port,
+		MCPRegistry:   mcpRegistry,
+		FrontendFS:    frontendFS,
+		ToolsDir:      toolsDir,
+		DataDir:       cfg.DataDir,
+		Port:          cfg.Port,
 	})
 	wsHub = srv.WSHub
 
 	// Start WebSocket hub
 	go srv.WSHub.Run()
-
-	// Start tool process manager (auto-starts enabled tools)
-	go toolMgr.Start()
 
 	// Start heartbeat manager
 	heartbeatMgr.Start()
@@ -522,6 +519,11 @@ func main() {
 			logger.Fatal("Server error: %v", err)
 		}
 	}()
+
+	// Auto-start enabled services only after OpenPaw has bound its listeners.
+	// Generated services can call back into OpenPaw during startup, so starting
+	// them before the API is reachable makes app launch depend on a race.
+	go toolMgr.Start()
 
 	restartRequested := false
 	select {

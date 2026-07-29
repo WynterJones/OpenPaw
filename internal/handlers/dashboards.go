@@ -337,6 +337,10 @@ func (h *DashboardsHandler) ServeAssets(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	// Custom dashboards are edited in place by agents. Their asset URLs stay
+	// stable, so WebKit can otherwise keep showing the previous HTML, JS, or CSS
+	// after a successful build.
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
 
 	// The dashboard renders in an iframe sandboxed with `allow-scripts` but NOT
 	// `allow-same-origin`, so the document has an opaque origin. CSP `'self'`

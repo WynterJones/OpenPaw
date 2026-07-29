@@ -165,7 +165,7 @@ fn main() {
                 if let Some(state) = window.try_state::<SidecarState>() {
                     if let Ok(mut guard) = state.child.lock() {
                         if let Some(child) = guard.take() {
-                            let _ = child.kill();
+                            terminate_sidecar(child);
                         }
                     }
                 }
@@ -207,4 +207,20 @@ async fn dismiss_splash(handle: &tauri::AppHandle) {
 
 struct SidecarState {
     child: std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
+}
+
+#[cfg(unix)]
+fn terminate_sidecar(child: tauri_plugin_shell::process::CommandChild) {
+    // CommandChild::kill sends SIGKILL on Unix. That prevented the Go backend
+    // from stopping its service children, leaving their ports occupied on the
+    // next app launch. SIGTERM enters the backend's normal shutdown path.
+    let result = unsafe { libc::kill(child.pid() as libc::pid_t, libc::SIGTERM) };
+    if result != 0 {
+        let _ = child.kill();
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_sidecar(child: tauri_plugin_shell::process::CommandChild) {
+    let _ = child.kill();
 }
