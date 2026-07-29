@@ -357,7 +357,7 @@ export function Inbox() {
                     // shifts sideways as items are opened. Selection keeps the
                     // filled background to itself; the two states have to stay
                     // tellable apart when a read item is selected.
-                    className={`w-full text-left flex items-center gap-3 pl-2.5 pr-3 py-3 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
+                    className={`w-full text-left flex items-start gap-3 pl-2.5 pr-3 py-3.5 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
                       unread ? 'border-l-accent-primary' : 'border-l-transparent'
                     } ${
                       active
@@ -368,31 +368,35 @@ export function Inbox() {
                     }`}
                   >
                     <Avatar src={s.avatar} initial={s.initial} size="w-8 h-8 text-xs" />
-                    {/* Title and time only. The sender used to have an eyebrow
-                        line of its own above the title and the body a two-line
-                        preview below it, which put the same agent name on screen
-                        three times per row and made each row tall enough that
-                        few fit on screen. The avatar carries the sender now. */}
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <p
-                        className={`min-w-0 flex-1 text-sm leading-snug truncate flex items-center gap-1.5 ${
-                          unread ? 'text-text-0 font-semibold' : 'text-text-1'
-                        }`}
-                      >
-                        {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
-                        <span className="truncate">{stripSenderPrefix(n.title, s.name)}</span>
-                        {/* The sender is now conveyed only by the avatar, which
-                            is decorative to a screen reader. Name it here so a
-                            row still says who it is from. */}
-                        <span className="sr-only">— from {s.name}</span>
-                        {unread && <span className="sr-only">— unread</span>}
-                      </p>
-                      <span className="flex items-center gap-1.5 flex-shrink-0">
-                        {unread && (
-                          <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
-                        )}
-                        <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={`min-w-0 flex-1 text-sm leading-snug truncate flex items-center gap-1.5 ${
+                            unread ? 'text-text-0 font-semibold' : 'text-text-1'
+                          }`}
+                        >
+                          {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
+                          <span className="truncate">{stripSenderPrefix(n.title, s.name)}</span>
+                          {/* The sender is conveyed by the avatar, which is
+                              decorative to a screen reader. Name it here so a
+                              row still says who it is from. */}
+                          <span className="sr-only">— from {s.name}</span>
+                          {unread && <span className="sr-only">— unread</span>}
+                        </p>
+                        <span className="flex items-center gap-1.5 flex-shrink-0">
+                          {unread && (
+                            <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
+                          )}
+                          <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
+                        </span>
+                      </div>
+                      {n.body && (
+                        <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${
+                          unread ? 'text-text-2' : 'text-text-3'
+                        }`}>
+                          {n.body}
+                        </p>
+                      )}
                     </div>
                   </button>
                 );

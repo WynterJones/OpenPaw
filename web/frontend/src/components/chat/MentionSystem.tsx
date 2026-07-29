@@ -5,6 +5,7 @@ import type { Components } from 'react-markdown';
 import type { AgentRole } from '../../lib/api';
 import { MentionBadge } from './MentionBadge';
 import { CollapsibleCode } from './CollapsibleCode';
+import { InlineCode } from './InlineCode';
 import { handleExternalLinkClick } from '../../lib/openExternal';
 import { downloadFile } from '../../lib/download';
 
@@ -199,10 +200,11 @@ export function mentionComponents(roles: AgentRole[]): Partial<Components> {
     table: ({ children, ...props }) => (
       <div className="prose-table-wrap"><table {...props}>{children}</table></div>
     ),
+    code: InlineCode,
     pre: ({ children }) => {
       if (Children.count(children) === 1) {
         const child = Children.toArray(children)[0];
-        if (isValidElement(child) && child.type === 'code') {
+        if (isValidElement(child) && (child.type === 'code' || child.type === InlineCode)) {
           const childProps = child.props as Record<string, unknown>;
           const raw = extractText(childProps.children as ReactNode);
           const className = childProps.className as string | undefined;

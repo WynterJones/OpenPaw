@@ -12,29 +12,10 @@ import { SearchBar } from '../components/SearchBar';
 import { ViewToggle } from '../components/ViewToggle';
 import { usePersistentViewMode } from '../components/viewMode';
 import { api, type Secret, type Tool } from '../lib/api';
+import { copyWithExecCommand } from '../lib/clipboard';
 import { useToast } from '../components/Toast';
 
 const PAGE_SIZE = 12;
-
-// execCommand is deprecated, but remains the only clipboard option in older
-// browsers and non-secure contexts. Keep it as a fallback for copy failures.
-function copyWithExecCommand(value: string): boolean {
-  const textarea = document.createElement('textarea');
-  textarea.value = value;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  textarea.style.pointerEvents = 'none';
-  document.body.appendChild(textarea);
-  textarea.select();
-  textarea.setSelectionRange(0, value.length);
-
-  try {
-    return document.execCommand('copy');
-  } finally {
-    textarea.remove();
-  }
-}
 
 export function Secrets() {
   const { toast } = useToast();
