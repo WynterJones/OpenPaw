@@ -36,8 +36,6 @@ import {
   Terminal,
   Cloud,
   Sparkles,
-  Pin,
-  PinOff,
   Pencil,
   Moon,
   Keyboard,
@@ -3317,7 +3315,7 @@ function CompanionCard({
   const idle = clipForName(character, "idle");
   const frames = idle?.frames?.length ? idle.frames : character.base_url ? [character.base_url] : [];
 
-  const togglePin = async () => {
+  const toggleChatAvatar = async () => {
     await api.put(`/pixellab/characters/${character.id}`, { pinned: !character.pinned });
     await companionStore.loadAll();
     onChange();
@@ -3359,10 +3357,11 @@ function CompanionCard({
               <Button
                 variant={character.pinned ? "secondary" : "ghost"}
                 size="sm"
-                onClick={togglePin}
-                icon={character.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                onClick={toggleChatAvatar}
+                icon={character.pinned ? <CheckCircle className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                title={character.pinned ? "Disable this animated chat avatar" : "Use this companion in chat"}
               >
-                {character.pinned ? "Pinned" : "Pin"}
+                {character.pinned ? "In chat" : "Use in chat"}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => onEdit(character)} icon={<Pencil className="w-3.5 h-3.5" />}>
                 <span className="sr-only">Edit</span>
@@ -3373,10 +3372,11 @@ function CompanionCard({
             </div>
           </div>
           <Select
+            label="Chat avatar for"
             value={character.agent_slug}
             onChange={(e) => assign(e.target.value)}
             options={[
-              { value: "", label: "Any agent (global)" },
+              { value: "", label: "Any agent (fallback)" },
               ...agentRoles.map((a) => ({ value: a.slug, label: a.name })),
             ]}
           />
@@ -3475,7 +3475,9 @@ function CompanionTab() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-semibold text-text-1">Companions</h3>
-            <p className="text-xs text-text-3">Pin them to chat — they react as agents work.</p>
+            <p className="text-xs text-text-3">
+              Use them as agent avatars — animated during live replies and still in chat history.
+            </p>
           </div>
           <Button onClick={() => { setEditChar(null); setWizardOpen(true); }} icon={<Plus className="w-4 h-4" />} disabled={!configured}>
             Create companion

@@ -11,6 +11,7 @@ import { ConfirmationCardUI, ToolSummaryCardUI } from './Cards';
 import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { SubAgentPanel } from './SubAgentPanel';
 import { EmojiPicker } from './EmojiPicker';
+import { CompanionAvatar } from '../companion/CompanionAvatar';
 
 function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[]; onReact: (emoji: string) => void; trailing?: ReactNode }) {
   return (
@@ -101,14 +102,9 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   return (
     <div className="streaming-entrance flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
-        {/* Until the working agent is known, show a neutral placeholder rather
-            than the Gateway avatar — guessing wrong means the avatar and name
-            visibly swap a second later. */}
-        <div className={`w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1 ${role ? '' : 'animate-pulse'}`}>
-          {role && (
-            <img src={role.avatar_path} alt={role.name} className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover" />
-          )}
-        </div>
+        {/* CompanionAvatar keeps the active reply animated, while showing a
+            neutral placeholder until the working agent is known. */}
+        <CompanionAvatar role={role} active />
         {role ? (
           <p className="text-sm font-semibold text-accent-primary md:hidden">{role.name}</p>
         ) : (
@@ -301,13 +297,7 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
   return (
     <div className="flex flex-col md:flex-row gap-1 md:gap-3">
       <div className="flex items-center gap-2 md:block">
-        <div className="w-7 h-7 md:w-8 md:h-8 rounded-md bg-surface-2 flex items-center justify-center flex-shrink-0 overflow-hidden ring-1 ring-border-1">
-          <img
-            src={role?.avatar_path || '/gateway-avatar.png'}
-            alt={role?.name || 'AI'}
-            className="w-7 h-7 md:w-8 md:h-8 rounded-md object-cover"
-          />
-        </div>
+        <CompanionAvatar role={role} />
         {role && (
           <p className="text-sm font-semibold text-accent-primary md:hidden">{role.name}</p>
         )}

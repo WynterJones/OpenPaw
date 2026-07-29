@@ -21,7 +21,7 @@ import { CLI_CONTEXT_LIMIT } from '../lib/provider';
 import type { TodoItem, MediaItem, Tool, ThreadPin } from '../lib/types';
 import { useToast } from '../components/Toast';
 import { ProviderSwitcher } from '../components/chat/ProviderSwitcher';
-import { companionStore } from '../lib/companionStore';
+import { CompanionAvatar } from '../components/companion/CompanionAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
@@ -645,14 +645,6 @@ export function Chat() {
   const [routingIndicator, setRoutingIndicator] = useState<string | null>(null);
   const [activeAgentSlug, setActiveAgentSlug] = useState<string | null>(null);
   const [subAgentTasks, setSubAgentTasks] = useState<SubAgentTask[]>([]);
-
-  // Companions are mounted app-wide in Layout, so they can only know whether a
-  // conversation is on screen if this page says so. Cleared on unmount, which
-  // is what stops them floating over Settings.
-  useEffect(() => {
-    companionStore.setChatOpen(Boolean(activeThread));
-    return () => companionStore.setChatOpen(false);
-  }, [activeThread]);
 
   // Messages typed while a turn was running, in the order they were typed.
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
@@ -1854,14 +1846,26 @@ export function Chat() {
                   />
                 )}
                 {routingIndicator && !thinking && !isStreaming && (
-                  <div className="flex items-center gap-2 px-3 py-1.5">
-                    <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />
-                    <span className="text-xs text-text-2 font-medium">{routingIndicator}</span>
+                  <div className="flex items-start gap-3">
+                    <CompanionAvatar role={thinkingRole || null} active />
+                    <div className="min-w-0 pt-0.5">
+                      {thinkingRole && (
+                        <p className="mb-1 text-xs font-medium text-accent-primary">{thinkingRole.name}</p>
+                      )}
+                      <div className="flex items-center gap-2 px-1 py-1.5">
+                        <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin text-accent-primary" />
+                        <span className="text-xs font-medium text-text-2">{routingIndicator}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {thinking && !isStreaming && (
                   <div className="flex gap-3">
+                    <CompanionAvatar role={thinkingRole || null} active />
                     <div className="max-w-[85%] md:max-w-[75%]">
+                      {thinkingRole && (
+                        <p className="mb-1 px-1 text-xs font-medium text-accent-primary">{thinkingRole.name}</p>
+                      )}
                       <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-surface-2">
                         <button
                           onClick={() => thinkingText && setThinkingExpanded(!thinkingExpanded)}

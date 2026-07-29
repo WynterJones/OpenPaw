@@ -2,7 +2,7 @@ import { Outlet, useLocation } from 'react-router';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { BackgroundImage } from './BackgroundImage';
-import { ChatCompanions } from './companion/ChatCompanions';
+import { ChatCompanionActivity } from './companion/ChatCompanionActivity';
 import { ActivityDock } from './ActivityDock';
 import { ViewTogglesProvider } from '../contexts/ViewTogglesContext';
 import { useViewToggles } from '../contexts/viewToggles';
@@ -31,7 +31,7 @@ function LayoutInner() {
         <Outlet />
       </main>
       <BottomNav />
-      {onChat && <ChatCompanions />}
+      {onChat && <ChatCompanionActivity />}
       <ActivityDock />
       <CommandPalette />
     </div>

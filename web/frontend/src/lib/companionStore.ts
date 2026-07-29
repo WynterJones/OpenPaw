@@ -3,8 +3,8 @@
  *
  * Lightweight external store (no zustand in this app) for the PixelLab companion
  * feature: the character library plus live runtime state — the current mood,
- * derived from chat activity, and which agent is currently active (so a pinned
- * companion assigned to that agent can react while others rest).
+ * derived from chat activity, and which agent is currently active so the
+ * matching assistant avatar can react.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -75,21 +75,12 @@ interface CompanionState {
   mood: CompanionMood;
   activeAgentSlug: string | null;
   /**
-   * Whether a chat thread is actually open on screen.
-   *
-   * Companions are mounted once in Layout so they survive navigation, which
-   * also meant they hovered over Settings, the Scheduler and every other page
-   * with nothing to react to. Chat publishes this so they appear only where
-   * their whole purpose — reacting to a conversation — applies.
-   */
-  chatOpen: boolean;
-  /**
    * The whole library, unfiltered by workspace.
    *
-   * Separate from `characters` because the two views want opposite things: the
-   * floating sprites must respect the active workspace, while the management
-   * list must show a companion scoped elsewhere — otherwise scoping one to
-   * another workspace would make it vanish with no way to change it back.
+   * Separate from `characters` because chat avatars must respect the active
+   * workspace, while the management list must show a companion scoped elsewhere
+   * — otherwise scoping one to another workspace would make it vanish with no
+   * way to change it back.
    */
   library: PixelLabCharacter[];
 }
@@ -98,7 +89,6 @@ let state: CompanionState = {
   characters: [],
   mood: 'idle',
   activeAgentSlug: null,
-  chatOpen: false,
   library: [],
 };
 
@@ -128,14 +118,11 @@ export const companionStore = {
   setActiveAgent(slug: string | null) {
     if (state.activeAgentSlug !== slug) set({ activeAgentSlug: slug });
   },
-  setChatOpen(open: boolean) {
-    if (state.chatOpen !== open) set({ chatOpen: open });
-  },
   setCharacters(characters: PixelLabCharacter[]) {
     set({ characters });
   },
 
-  /** Companions visible in the active workspace — what actually gets pinned. */
+  /** Companions available as chat avatars in the active workspace. */
   async load(): Promise<PixelLabCharacter[]> {
     const characters = await api.get<PixelLabCharacter[]>('/pixellab/characters');
     set({ characters });

@@ -3,12 +3,12 @@
  *
  * Modal wizard for creating a pixel-art companion via PixelLab:
  *   apikey -> describe -> pick -> animate (4 emotes) -> manage.
- * The finished character is saved to the server and can be pinned as a floating
- * chat companion, assigned to an agent, or extended with more emotes.
+ * The finished character is saved to the server and can become an animated
+ * agent chat avatar or be extended with more emotes.
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, Sparkles, Pin, PinOff, Plus, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, Plus, Check, ExternalLink, RefreshCw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input, Textarea, Select } from '../Input';
@@ -290,7 +290,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     }
   };
 
-  const togglePin = async () => {
+  const toggleChatAvatar = async () => {
     if (!saved) return;
     await api.put(`/pixellab/characters/${saved.id}`, { pinned: !saved.pinned });
     await refreshSaved();
@@ -483,8 +483,12 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
                   Rename
                 </Button>
               </div>
-              <Button variant={saved.pinned ? 'secondary' : 'primary'} onClick={togglePin} icon={saved.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}>
-                {saved.pinned ? 'Unpin' : 'Pin to chat'}
+              <Button
+                variant={saved.pinned ? 'secondary' : 'primary'}
+                onClick={toggleChatAvatar}
+                icon={saved.pinned ? <Check className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+              >
+                {saved.pinned ? 'Disable in chat' : 'Use in chat'}
               </Button>
             </div>
 
@@ -508,11 +512,11 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
             </div>
 
             <Select
-              label="React as agent (optional)"
+              label="Chat avatar for"
               value={saved.agent_slug}
               onChange={(e) => assignAgent(e.target.value)}
               options={[
-                { value: '', label: 'Any agent (global)' },
+                { value: '', label: 'Any agent (fallback)' },
                 ...agentRoles.map((a) => ({ value: a.slug, label: a.name })),
               ]}
             />

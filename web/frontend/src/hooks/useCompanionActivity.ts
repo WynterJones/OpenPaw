@@ -1,7 +1,7 @@
 /**
  * useCompanionActivity
  *
- * Drives the pinned companions' live "mood" from chat activity by subscribing to
+ * Drives the active companion avatar's live "mood" from chat activity by subscribing to
  * the shared WebSocket (the same stream Chat uses). It maps:
  *   - agent_status (routing / analyzing / thinking / spawning / compacting) and
  *     gateway_thinking  -> "thinking"
@@ -12,7 +12,8 @@
  * It also tracks which agent is active (from the routing status' agent_role_slug)
  * so a companion assigned to that agent can react while the others rest.
  *
- * Mood settles back to idle after a short quiet period.
+ * Mood settles back to idle only when the turn completes. A long think or tool
+ * call should not stop reacting merely because no event arrived for 1.5 seconds.
  */
 
 import { useEffect, useRef } from 'react';
@@ -48,8 +49,11 @@ export function useCompanionActivity(enabled: boolean): void {
   };
 
   const bump = (mood: CompanionMood) => {
+    if (idleTimer.current) {
+      clearTimeout(idleTimer.current);
+      idleTimer.current = null;
+    }
     companionStore.setMood(mood);
-    scheduleIdle();
   };
 
   useWebSocket({

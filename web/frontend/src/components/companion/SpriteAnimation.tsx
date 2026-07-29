@@ -26,12 +26,22 @@ export function SpriteAnimation({
   paused = false,
 }: SpriteAnimationProps) {
   const [index, setIndex] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
   useEffect(() => {
-    if (paused || frames.length <= 1 || fps <= 0) return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = (event: MediaQueryListEvent) => setReduceMotion(event.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (paused || reduceMotion || frames.length <= 1 || fps <= 0) return;
     const interval = setInterval(() => setIndex((i) => (i + 1) % frames.length), 1000 / fps);
     return () => clearInterval(interval);
-  }, [frames, fps, paused]);
+  }, [frames, fps, paused, reduceMotion]);
 
   if (frames.length === 0) return null;
 

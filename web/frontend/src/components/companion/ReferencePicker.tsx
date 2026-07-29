@@ -5,7 +5,7 @@
  * "make me a pixel version of this" becomes possible instead of describing a
  * look in words and hoping. Two sources, because they answer different needs:
  * an upload for arbitrary art, and the agent's own avatar for the common case
- * of wanting a sprite that matches the agent it will be pinned to.
+ * of wanting a sprite that will become that agent's animated chat avatar.
  *
  * Strength is exposed because the useful range is wide: low values treat the
  * reference as a hint, high values reproduce it closely in pixel form, and
