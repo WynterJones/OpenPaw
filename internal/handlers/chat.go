@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	maxThreadTitleLength   = 50
-	threadHistoryLimit     = 10
-	gatewayHistoryLimit    = 4
+	maxThreadTitleLength = 50
+	threadHistoryLimit   = 10
+	gatewayHistoryLimit  = 4
 )
 
 // MemoryReflector reviews a finished exchange and saves what is worth
@@ -67,6 +67,25 @@ func truncateStr(s string, max int, ellipsis bool) string {
 func NewChatHandler(db *database.DB, agentManager *agents.Manager, toolsDir, dataDir string) *ChatHandler {
 	dashboardsDir := filepath.Join(dataDir, "..", "dashboards")
 	return &ChatHandler{db: db, agentManager: agentManager, toolsDir: toolsDir, dataDir: dataDir, dashboardsDir: dashboardsDir}
+}
+
+// parseAggregatedTimestamp handles timestamps returned by SQLite expressions
+// such as MAX(scanned_at). Unlike a direct TIMESTAMP column, an aggregate has
+// no declared type, so mattn/go-sqlite3 returns it as text instead of time.Time.
+func parseAggregatedTimestamp(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	layouts := []string{
+		"2006-01-02 15:04:05.999999999-07:00",
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported timestamp %q", value)
 }
 
 func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
@@ -114,14 +133,21 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	threads := []models.ChatThread{}
 	for rows.Next() {
 		var t models.ChatThread
-		var dreamedAt sql.NullTime
+		var dreamedAt sql.NullString
 		if err := rows.Scan(&t.ID, &t.Title, &t.TotalCostUSD, &t.Pinned, &t.CreatedAt, &t.UpdatedAt, &dreamedAt); err != nil {
+			logger.Error("Failed to scan chat thread: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to scan thread")
 			return
 		}
 		if dreamedAt.Valid {
-			at := dreamedAt.Time
-			t.Dreamed, t.DreamedAt = true, &at
+			t.Dreamed = true
+			if at, err := parseAggregatedTimestamp(dreamedAt.String); err == nil {
+				t.DreamedAt = &at
+			} else {
+				// A damaged scan marker must never hide an otherwise healthy
+				// conversation. Keep the dreamed badge and omit only its time.
+				logger.Warn("Chat %s has an unreadable dream timestamp: %v", t.ID, err)
+			}
 		}
 		threads = append(threads, t)
 	}
