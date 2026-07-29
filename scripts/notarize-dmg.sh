@@ -13,10 +13,12 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DMG_PATH="${1:-}"
 if [[ -z "$DMG_PATH" ]]; then
-    DMG_PATH="$(find "$PROJECT_ROOT/desktop/src-tauri/target/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+    RELEASE_VERSION="$(tr -d '[:space:]' < "$PROJECT_ROOT/VERSION")"
+    DMG_PATH="$(find "$PROJECT_ROOT/desktop/src-tauri/target/release/bundle/dmg" \
+        -maxdepth 1 -type f -name "*_${RELEASE_VERSION}_*.dmg" -print -quit)"
 fi
 if [[ -z "$DMG_PATH" || ! -f "$DMG_PATH" ]]; then
-    echo "No release DMG found to notarize" >&2
+    echo "No DMG for OpenPaw $(cat "$PROJECT_ROOT/VERSION") found to notarize" >&2
     exit 1
 fi
 

@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
-import { ChevronRight, Copy, Check } from 'lucide-react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { ChevronRight, Copy, Check, CircleAlert } from 'lucide-react';
+import { copyText } from '../../lib/clipboard';
 
 interface CollapsibleCodeProps {
   language?: string;
@@ -40,10 +41,15 @@ function getJsonPreview(raw: string): string {
 
 export function CollapsibleCode({ language, children, raw }: CollapsibleCodeProps) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isJson = language === 'json' || (!language && isJsonContent(raw));
   const isLong = raw.split('\n').length > 6;
+
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
 
   if (!isJson && !isLong) {
     return (
@@ -53,34 +59,60 @@ export function CollapsibleCode({ language, children, raw }: CollapsibleCodeProp
     );
   }
 
-  const handleCopy = async (e: React.MouseEvent) => {
+  const handleCopy = async (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    await navigator.clipboard.writeText(raw);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await copyText(raw);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    resetTimer.current = setTimeout(() => setCopyState('idle'), 1500);
   };
 
   const preview = isJson ? getJsonPreview(raw) : `${raw.split('\n').length} lines`;
+  const copyLabel = copyState === 'copied'
+    ? 'Copied to clipboard'
+    : copyState === 'failed'
+      ? 'Copy failed'
+      : 'Copy code';
 
   return (
     <div className="rounded-lg border border-border-1 bg-surface-2/30 overflow-hidden my-1">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer hover:bg-surface-2/50 transition-colors"
-      >
-        <ChevronRight className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-90' : ''}`} />
-        <span className="text-[11px] font-mono text-text-3 truncate flex-1">
-          {language && <span className="text-accent-primary mr-1.5">{language}</span>}
-          {preview}
-        </span>
+      <div className="flex items-center hover:bg-surface-2/50 transition-colors">
         <button
-          onClick={handleCopy}
-          className="p-1 rounded hover:bg-surface-3 text-text-3 hover:text-text-1 transition-colors flex-shrink-0 cursor-pointer"
-          title="Copy"
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="min-w-0 flex flex-1 items-center gap-2 px-3 py-1.5 text-left cursor-pointer"
+          aria-expanded={expanded}
         >
-          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          <ChevronRight className={`w-3 h-3 text-text-3 transition-transform flex-shrink-0 ${expanded ? 'rotate-90' : ''}`} />
+          <span className="text-[11px] font-mono text-text-3 truncate flex-1">
+            {language && <span className="text-accent-primary mr-1.5">{language}</span>}
+            {preview}
+          </span>
         </button>
-      </button>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="mr-2 inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-text-3 hover:bg-surface-3 hover:text-text-1 transition-colors flex-shrink-0 cursor-pointer"
+          title={copyLabel}
+          aria-label={copyLabel}
+        >
+          {copyState === 'copied' ? (
+            <Check className="w-3 h-3 text-emerald-400" />
+          ) : copyState === 'failed' ? (
+            <CircleAlert className="w-3 h-3 text-danger" />
+          ) : (
+            <Copy className="w-3 h-3" />
+          )}
+          {copyState !== 'idle' && <span>{copyState === 'copied' ? 'Copied' : 'Failed'}</span>}
+        </button>
+        <span className="sr-only" role="status" aria-live="polite">
+          {copyState === 'idle' ? '' : copyLabel}
+        </span>
+      </div>
       {expanded && (
         <div className="border-t border-border-1">
           <pre className="op-code-raw p-3 overflow-x-auto text-xs max-h-80 overflow-y-auto">

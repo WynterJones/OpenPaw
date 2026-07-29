@@ -85,6 +85,19 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 | `OPENPAW_NO_OPEN` | unset | Set to `1` to prevent auto-opening browser on startup |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key for AI agents (can also be set in Settings) |
 
+## What's New in 1.3.0
+
+OpenPaw 1.3.0 adds a faster, more structured way to work with workspace knowledge:
+
+- **Workspace Databases** — Create Airtable-inspired databases with multiple tables, typed columns, searchable rows, inline cell editing, and quick database switching. Databases are isolated to the active workspace.
+- **Database-aware agents and automations** — Agents can create, read, search, update, and delete database structures and rows. Scheduled work can save reports or collected data directly into a database.
+- **Database-powered dashboards** — Dashboard widgets and custom dashboards can query live workspace database tables, with workspace boundaries enforced server-side.
+- **Workspace Command Palette** — Press `Ctrl+P` by default to jump to any OpenPaw screen. Type `!` to search files and folders in the active workspace and its attached directories.
+- **Path insertion** — In file-search mode, press `Enter` to open a result or `Shift+Enter` to insert its absolute path into the chat composer, terminal, or active Context editor.
+- **Custom app shortcuts** — Change the app-wide super key, edit every navigation binding, enable or disable shortcuts, and show or hide shortcut badges from **Settings → Keyboard**.
+- **Agent-managed Inbox** — Agents and the Gateway can search, create, update, archive, restore, mark, and delete workspace Inbox posts. This supports workflows such as summarizing recent reports and archiving them when finished.
+- **Polished reading and copying** — Inbox cards now show useful two-line previews, inline chat code has click-to-copy feedback, and secret copying uses a permission-safe fallback for desktop and restricted browser contexts.
+
 ## Getting Started
 
 <p>
@@ -102,6 +115,7 @@ After setup, you're redirected to log in. On your first conversation, the gatewa
 The **Workspaces** switcher (above Dashboards in the sidebar) keeps separate projects fully isolated:
 
 - Each workspace scopes its own **chats, dashboards, context, terminals, and tasks**
+- Each workspace also owns its own **databases and Inbox posts**, so structured records and unattended reports never leak between projects
 - Every workspace has a **real on-disk files directory**, browsable from the **Directory tab** on the Context page
 - **Attach existing folders** (e.g. cloned repos) to a workspace so agents — especially Claude Code — can read and work in them
 - Give each workspace an **image** (upload or AI-generate via OpenRouter) shown in the switcher
@@ -122,6 +136,7 @@ The **Gateway Agent** (Sonnet by default) analyzes your request and decides the 
 Chat features include:
 - **Threaded conversations** with automatic titles
 - **@mentions** to direct messages to specific agents (`@agent-name`)
+- **Clickable inline code** with a tooltip and visible copied/failed feedback
 - **Work orders** for tool and dashboard builds with confirm/reject workflow
 - **Any agent can start a build** — the agent you are talking to files the service or dashboard itself, with the spec it just worked out with you, instead of sending you off to ask the Gateway
 - **Agents keep services running** — an agent can check a service's health, restart or recompile it, and read back its log when it will not start
@@ -507,6 +522,26 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/context/about-you` | Get "About You" text |
 | PUT | `/api/v1/context/about-you` | Update "About You" text |
 
+#### Workspace Databases
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/databases` | List databases in the active workspace |
+| POST | `/api/v1/databases` | Create a database |
+| GET | `/api/v1/databases/{id}` | Get a database with its tables and columns |
+| PUT | `/api/v1/databases/{id}` | Update database metadata |
+| DELETE | `/api/v1/databases/{id}` | Delete a database |
+| POST | `/api/v1/databases/{id}/tables` | Create a table |
+| PUT | `/api/v1/databases/tables/{tableId}` | Rename a table |
+| DELETE | `/api/v1/databases/tables/{tableId}` | Delete a table |
+| POST | `/api/v1/databases/tables/{tableId}/columns` | Add a typed column |
+| PUT | `/api/v1/databases/columns/{columnId}` | Update a column |
+| DELETE | `/api/v1/databases/columns/{columnId}` | Delete a column |
+| GET | `/api/v1/databases/tables/{tableId}/rows` | List table rows |
+| GET | `/api/v1/databases/tables/{tableId}/query` | Search and page through table rows |
+| POST | `/api/v1/databases/tables/{tableId}/rows` | Create a row |
+| PUT | `/api/v1/databases/rows/{rowId}` | Update row values |
+| DELETE | `/api/v1/databases/rows/{rowId}` | Delete a row |
+
 #### Agents (Running Processes)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -520,8 +555,11 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/notifications` | List notifications |
 | GET | `/api/v1/notifications/count` | Get unread count |
 | PUT | `/api/v1/notifications/{id}/read` | Mark as read |
+| PUT | `/api/v1/notifications/{id}/unread` | Mark as unread |
 | PUT | `/api/v1/notifications/read-all` | Mark all as read |
 | DELETE | `/api/v1/notifications/{id}` | Dismiss a notification |
+| PUT | `/api/v1/notifications/{id}/restore` | Restore an archived notification |
+| POST | `/api/v1/notifications/{id}/open-chat` | Open a report as a chat |
 | DELETE | `/api/v1/notifications` | Dismiss all notifications |
 
 #### Heartbeat
@@ -666,6 +704,7 @@ OpenPaw uses [just](https://github.com/casey/just) as a command runner. Run `jus
 | `just desktop-sidecar` | Build Go sidecar for Tauri |
 | `just desktop-dev` | Run Tauri in dev mode |
 | `just desktop-build` | Build production desktop app |
+| `just desktop-release` | Build, Developer ID sign, notarize, and staple the macOS app and DMG |
 | `just desktop-clean` | Clean desktop build artifacts |
 | `just desktop-icons` | Regenerate app icons |
 

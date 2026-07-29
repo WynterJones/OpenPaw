@@ -447,6 +447,32 @@ export function Databases() {
                       </button>
                     ))}
                   </div>
+                  {database && (
+                    <div className="grid grid-cols-2 border-t border-border-0 sm:hidden">
+                      <button
+                        onClick={() => {
+                          setSwitcherOpen(false);
+                          setDatabaseName(database.name);
+                          setDatabaseDescription(database.description);
+                          setDatabaseModal('edit');
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-text-2 hover:bg-surface-2 hover:text-text-0 cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSwitcherOpen(false);
+                          setDeleteTarget('database');
+                        }}
+                        className="flex items-center justify-center gap-1.5 border-l border-border-0 px-3 py-2 text-xs text-text-2 hover:bg-danger/10 hover:text-danger cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={() => {
                       setSwitcherOpen(false);
@@ -469,7 +495,7 @@ export function Databases() {
                     setDatabaseDescription(database.description);
                     setDatabaseModal('edit');
                   }}
-                  className="p-2 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 cursor-pointer"
+                  className="hidden sm:inline-flex p-2 rounded-lg text-text-2 hover:text-text-1 hover:bg-surface-2 cursor-pointer"
                   title="Edit database"
                   aria-label="Edit database"
                 >
@@ -477,7 +503,7 @@ export function Databases() {
                 </button>
                 <button
                   onClick={() => setDeleteTarget('database')}
-                  className="p-2 rounded-lg text-text-2 hover:text-danger hover:bg-danger/10 cursor-pointer"
+                  className="hidden sm:inline-flex p-2 rounded-lg text-text-2 hover:text-danger hover:bg-danger/10 cursor-pointer"
                   title="Delete database"
                   aria-label="Delete database"
                 >
