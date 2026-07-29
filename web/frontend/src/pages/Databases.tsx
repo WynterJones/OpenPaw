@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   Database as DatabaseIcon,
+  ExternalLink,
   Hash,
   Link as LinkIcon,
   Mail,
@@ -27,6 +28,9 @@ import { useWebSocket } from '../lib/useWebSocket';
 
 const LAST_DATABASE_KEY = 'openpaw-last-database';
 const ROW_LIMIT = 200;
+const DEFAULT_COLUMN_WIDTH = 240;
+const MIN_COLUMN_WIDTH = 140;
+const MAX_COLUMN_WIDTH = 640;
 
 const COLUMN_TYPES: { value: UserDatabaseColumnType; label: string; icon: typeof Type }[] = [
   { value: 'text', label: 'Text', icon: Type },
@@ -53,6 +57,18 @@ function normalizeCellValue(column: UserDatabaseColumn, raw: string): unknown {
   return raw.trim() === '' ? null : raw;
 }
 
+function cellLink(column: UserDatabaseColumn, value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (column.type === 'email') return `mailto:${trimmed}`;
+  if (column.type !== 'url') return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^(www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:[/?#].*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return null;
+}
+
 function CellEditor({
   column,
   value,
@@ -64,10 +80,7 @@ function CellEditor({
 }) {
   const shown = value === null || value === undefined ? '' : String(value);
   const [draft, setDraft] = useState(shown);
-
-  useEffect(() => {
-    setDraft(shown);
-  }, [shown]);
+  const [editingLink, setEditingLink] = useState(false);
 
   if (column.type === 'checkbox') {
     return (
@@ -101,24 +114,69 @@ function CellEditor({
   const commit = () => {
     const next = normalizeCellValue(column, draft);
     if (next !== value && String(next ?? '') !== shown) onSave(next);
+    setEditingLink(false);
   };
 
+  const href = cellLink(column, shown);
+  const showPreview = shown.length > 48 || shown.includes('\n');
+  const preview = showPreview && (
+    <div
+      role="tooltip"
+      className="hidden group-hover/cell:block group-focus-within/cell:block absolute z-50 left-2 top-[calc(100%-2px)] w-[min(28rem,calc(100vw-3rem))] h-28 overflow-y-auto rounded-lg border border-border-1 bg-surface-2 px-3 py-2 text-xs leading-relaxed text-text-1 whitespace-pre-wrap break-words shadow-xl"
+    >
+      {shown}
+    </div>
+  );
+
+  if (href && !editingLink) {
+    const external = column.type === 'url';
+    return (
+      <div className="group/cell relative flex items-center gap-1 min-h-9 px-2.5">
+        <a
+          href={href}
+          target={external ? '_blank' : undefined}
+          rel={external ? 'noopener noreferrer' : undefined}
+          className="min-w-0 flex-1 inline-flex items-center gap-1.5 text-accent-text hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-primary rounded"
+          title={shown}
+        >
+          <span className="truncate">{shown}</span>
+          {external && <ExternalLink className="w-3 h-3 flex-shrink-0" aria-hidden="true" />}
+        </a>
+        <button
+          type="button"
+          onClick={() => setEditingLink(true)}
+          className="p-1 rounded text-text-3 opacity-0 group-hover/cell:opacity-100 group-focus-within/cell:opacity-100 hover:text-text-1 hover:bg-surface-2 transition-opacity cursor-pointer"
+          title={`Edit ${column.name}`}
+          aria-label={`Edit ${column.name}`}
+        >
+          <Pencil className="w-3 h-3" aria-hidden="true" />
+        </button>
+        {preview}
+      </div>
+    );
+  }
+
   return (
-    <input
-      type={column.type === 'date' ? 'date' : column.type === 'number' ? 'number' : column.type === 'email' ? 'email' : column.type === 'url' ? 'url' : 'text'}
-      value={draft}
-      onChange={event => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={event => {
-        if (event.key === 'Enter') event.currentTarget.blur();
-        if (event.key === 'Escape') {
-          setDraft(shown);
-          event.currentTarget.blur();
-        }
-      }}
-      className="w-full h-9 px-2.5 bg-transparent text-sm text-text-1 outline-none focus:bg-accent-primary/5"
-      aria-label={column.name}
-    />
+    <div className="group/cell relative min-h-9">
+      <input
+        autoFocus={editingLink}
+        type={column.type === 'date' ? 'date' : column.type === 'number' ? 'number' : column.type === 'email' ? 'email' : column.type === 'url' ? 'url' : 'text'}
+        value={draft}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={event => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            setDraft(shown);
+            setEditingLink(false);
+            event.currentTarget.blur();
+          }
+        }}
+        className="w-full h-9 px-2.5 bg-transparent text-sm text-text-1 outline-none focus:bg-accent-primary/5"
+        aria-label={column.name}
+      />
+      {preview}
+    </div>
   );
 }
 
@@ -148,11 +206,55 @@ export function Databases() {
   const [columnChoices, setColumnChoices] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<'database' | 'table' | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
   const selectedTable = useMemo(
     () => database?.tables?.find(table => table.id === tableId) ?? null,
     [database, tableId],
   );
+
+  useEffect(() => {
+    if (!selectedTable) {
+      setColumnWidths({});
+      return;
+    }
+    const key = `openpaw-database-column-widths:${selectedTable.id}`;
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, number>;
+      setColumnWidths(Object.fromEntries(
+        selectedTable.columns.map(column => [
+          column.id,
+          Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Number(stored[column.id]) || DEFAULT_COLUMN_WIDTH)),
+        ]),
+      ));
+    } catch {
+      setColumnWidths(Object.fromEntries(selectedTable.columns.map(column => [column.id, DEFAULT_COLUMN_WIDTH])));
+    }
+  }, [selectedTable]);
+
+  useEffect(() => {
+    if (!selectedTable || Object.keys(columnWidths).length === 0) return;
+    localStorage.setItem(`openpaw-database-column-widths:${selectedTable.id}`, JSON.stringify(columnWidths));
+  }, [columnWidths, selectedTable]);
+
+  const startColumnResize = (event: React.PointerEvent, columnId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[columnId] || DEFAULT_COLUMN_WIDTH;
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, startWidth + moveEvent.clientX - startX));
+      setColumnWidths(current => ({ ...current, [columnId]: next }));
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+  };
 
   const loadDatabases = useCallback(async (preferredId?: string | null) => {
     const items = await api.get<UserDatabase[]>('/databases');
@@ -274,7 +376,7 @@ export function Databases() {
   };
 
   const saveTable = async () => {
-    if (!tableName.trim() || !database) return;
+    if (saving || !tableName.trim() || !database) return;
     setSaving(true);
     try {
       if (tableModal === 'create') {
@@ -283,8 +385,11 @@ export function Databases() {
         setTableId(created.id);
         toast('success', 'Table created');
       } else if (selectedTable) {
-        await api.put(`/databases/tables/${selectedTable.id}`, { name: tableName.trim() });
-        await reloadCurrent();
+        const updated = await api.put<UserDatabaseTable>(`/databases/tables/${selectedTable.id}`, { name: tableName.trim() });
+        setDatabase(current => current ? {
+          ...current,
+          tables: (current.tables || []).map(table => table.id === updated.id ? { ...table, ...updated } : table),
+        } : current);
         toast('success', 'Table renamed');
       }
       setTableModal(null);
@@ -622,15 +727,23 @@ export function Databases() {
                 <table className="border-separate border-spacing-0 min-w-full w-max text-sm">
                   <thead className="sticky top-0 z-20">
                     <tr>
-                      <th className="sticky left-0 z-30 w-12 min-w-12 h-10 border-r border-b border-border-1 bg-surface-2 text-[10px] font-medium text-text-3 text-center">
+                      <th className="sticky left-0 z-30 w-12 min-w-12 h-10 border-r border-b border-border-0/60 bg-surface-2 text-[10px] font-medium text-text-3 text-center">
                         #
                       </th>
                       {selectedTable.columns.map(column => (
-                        <th key={column.id} className="group min-w-[180px] max-w-[280px] h-10 border-r border-b border-border-1 bg-surface-2 text-left font-medium text-text-1">
+                        <th
+                          key={column.id}
+                          style={{
+                            width: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                            minWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                            maxWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                          }}
+                          className="group/header relative h-10 border-r border-b border-border-0/60 bg-surface-2 text-left font-medium text-text-1"
+                        >
                           <div className="flex items-center gap-2 px-2.5">
                             <ColumnTypeIcon type={column.type} />
                             <span className="flex-1 truncate">{column.name}</span>
-                            <span className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 flex items-center gap-0.5">
+                            <span className="opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 flex items-center gap-0.5">
                               <button
                                 onClick={() => openColumnModal(column)}
                                 className="p-1 rounded text-text-3 hover:text-text-1 hover:bg-surface-3 cursor-pointer"
@@ -649,9 +762,16 @@ export function Databases() {
                               </button>
                             </span>
                           </div>
+                          <button
+                            type="button"
+                            onPointerDown={event => startColumnResize(event, column.id)}
+                            className="absolute right-0 inset-y-0 z-10 w-1.5 translate-x-1/2 cursor-col-resize touch-none hover:bg-accent-primary/50 focus-visible:bg-accent-primary/50 focus-visible:outline-none"
+                            title={`Resize ${column.name}`}
+                            aria-label={`Resize ${column.name} column`}
+                          />
                         </th>
                       ))}
-                      <th className="sticky right-0 z-30 w-12 min-w-12 h-10 border-b border-border-1 bg-surface-2">
+                      <th className="sticky right-0 z-30 w-12 min-w-12 h-10 border-b border-border-0/60 bg-surface-2">
                         <button
                           onClick={() => openColumnModal()}
                           className="w-full h-full flex items-center justify-center text-text-3 hover:text-accent-text hover:bg-surface-3 cursor-pointer"
@@ -666,7 +786,7 @@ export function Databases() {
                   <tbody>
                     {rows.map((row, rowIndex) => (
                       <tr key={row.id} className="group/row">
-                        <td className="sticky left-0 z-10 h-10 border-r border-b border-border-0 bg-surface-1 text-[11px] text-text-3 text-center">
+                        <td className="database-grid-cell sticky left-0 z-10 h-10 border-r border-border-0/50 bg-surface-1 text-[11px] text-text-3 text-center">
                           <span className="group-hover/row:hidden">{rowIndex + 1}</span>
                           <button
                             onClick={() => deleteRow(row.id)}
@@ -678,22 +798,31 @@ export function Databases() {
                           </button>
                         </td>
                         {selectedTable.columns.map(column => (
-                          <td key={column.id} className="h-10 border-r border-b border-border-0 bg-surface-0 hover:bg-surface-1/70 focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent-primary">
+                          <td
+                            key={column.id}
+                            style={{
+                              width: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                              minWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                              maxWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
+                            }}
+                            className="database-grid-cell h-10 bg-surface-0 hover:bg-surface-1/70 focus-within:ring-1 focus-within:ring-inset focus-within:ring-accent-primary"
+                          >
                             <CellEditor
+                              key={`${row.id}:${column.id}:${String(row.values[column.id] ?? '')}`}
                               column={column}
                               value={row.values[column.id]}
                               onSave={value => updateCell(row.id, column.id, value)}
                             />
                           </td>
                         ))}
-                        <td className="sticky right-0 border-b border-border-0 bg-surface-1" />
+                        <td className="database-grid-cell sticky right-0 bg-surface-1" />
                       </tr>
                     ))}
                     <tr>
-                      <td className="sticky left-0 z-10 h-10 border-r border-b border-border-0 bg-surface-1 text-center">
+                      <td className="database-grid-cell sticky left-0 z-10 h-10 border-r border-border-0/50 bg-surface-1 text-center">
                         <Plus className="w-3.5 h-3.5 text-text-3 mx-auto" />
                       </td>
-                      <td colSpan={Math.max(1, selectedTable.columns.length + 1)} className="h-10 border-b border-border-0">
+                      <td colSpan={Math.max(1, selectedTable.columns.length + 1)} className="database-grid-cell h-10">
                         <button
                           onClick={addRow}
                           className="w-full h-full px-3 text-left text-xs text-text-3 hover:text-accent-text hover:bg-surface-1/60 cursor-pointer"
@@ -704,8 +833,8 @@ export function Databases() {
                     </tr>
                     {rows.length < rowTotal && (
                       <tr>
-                        <td className="sticky left-0 z-10 h-10 border-r border-b border-border-0 bg-surface-1" />
-                        <td colSpan={Math.max(1, selectedTable.columns.length + 1)} className="h-10 border-b border-border-0 text-center">
+                        <td className="database-grid-cell sticky left-0 z-10 h-10 border-r border-border-0/50 bg-surface-1" />
+                        <td colSpan={Math.max(1, selectedTable.columns.length + 1)} className="database-grid-cell h-10 text-center">
                           <button
                             onClick={() => loadRows(selectedTable.id, search, rows.length, true)}
                             disabled={rowsLoading}
@@ -762,10 +891,19 @@ export function Databases() {
         <div className="space-y-4">
           <label className="block">
             <span className="block text-xs font-medium text-text-2 mb-1.5">Table name</span>
-            <input autoFocus value={tableName} onChange={event => setTableName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveTable(); }} className="w-full px-3 py-2 rounded-lg border border-border-1 bg-surface-2 text-sm text-text-0 outline-none focus:border-accent-primary" placeholder="Projects" />
+            <input
+              autoFocus
+              value={tableName}
+              onChange={event => setTableName(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing && !saving) saveTable();
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-border-1 bg-surface-2 text-sm text-text-0 outline-none focus:border-accent-primary"
+              placeholder="Projects"
+            />
           </label>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setTableModal(null)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setTableModal(null)} disabled={saving}>Cancel</Button>
             <Button onClick={saveTable} loading={saving} disabled={!tableName.trim()}>{tableModal === 'create' ? 'Create' : 'Save'}</Button>
           </div>
         </div>

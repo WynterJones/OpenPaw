@@ -51,6 +51,23 @@ func TestDatabaseCRUDAndWorkspaceIsolation(t *testing.T) {
 		t.Fatal("database was readable from another workspace")
 	}
 
+	tableName := "Products"
+	renamedTable, err := store.UpdateTable(firstWorkspace, created.Tables[0].ID, &tableName)
+	if err != nil || renamedTable.Name != tableName {
+		t.Fatalf("renamed table = %+v, %v", renamedTable, err)
+	}
+	refreshed, err := store.GetDatabase(firstWorkspace, created.ID)
+	if err != nil {
+		t.Fatalf("refresh renamed table: %v", err)
+	}
+	if len(refreshed.Tables) != 1 || refreshed.Tables[0].ID != created.Tables[0].ID ||
+		refreshed.Tables[0].Name != tableName || len(refreshed.Tables[0].Columns) != 1 {
+		t.Fatalf("renaming table changed its structure: %+v", refreshed.Tables)
+	}
+	if _, err := store.UpdateTable(secondWorkspace, created.Tables[0].ID, &tableName); err == nil {
+		t.Fatal("table was writable from another workspace")
+	}
+
 	renamed := "Client Projects"
 	updated, err := store.UpdateDatabase(firstWorkspace, created.ID, &renamed, nil)
 	if err != nil || updated.Name != renamed {

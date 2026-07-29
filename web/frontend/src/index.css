@@ -85,6 +85,10 @@ html[data-desktop] [data-tauri-drag-region] :is(button, a, input, select, textar
   --op-space-8: 2rem;
 }
 
+.database-grid-cell {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--op-border-0) 58%, transparent);
+}
+
 html {
   font-size: calc(var(--op-font-scale, 100) * 1%);
   height: 100%;

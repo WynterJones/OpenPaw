@@ -23,6 +23,7 @@ import {
   Mail,
   MailOpen,
   AlertTriangle,
+  BrainCircuit,
   Clock,
   Heart,
   RefreshCw,
@@ -52,6 +53,7 @@ const SOURCES: { key: string; label: string; icon: typeof Clock | null }[] = [
   { key: '', label: 'Everything', icon: null },
   { key: 'schedule', label: 'Scheduled', icon: Clock },
   { key: 'heartbeat', label: 'Heartbeat', icon: Heart },
+  { key: 'dream', label: 'Dreaming', icon: BrainCircuit },
 ];
 
 function timeAgo(dateStr: string): string {
@@ -215,7 +217,7 @@ export function Inbox() {
     setBusy(true);
     try {
       await notificationsApi.dismiss(n.id);
-      clearSelection();
+      if (selectedId === n.id) clearSelection();
       await load();
     } finally {
       setBusy(false);
@@ -226,7 +228,7 @@ export function Inbox() {
     setBusy(true);
     try {
       await notificationsApi.restore(n.id);
-      clearSelection();
+      if (selectedId === n.id) clearSelection();
       await load();
     } finally {
       setBusy(false);
@@ -283,7 +285,7 @@ export function Inbox() {
           className={`${selected ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-[360px] lg:w-[420px] md:border-r border-border-0 min-h-0`}
         >
           <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2 border-b border-border-0">
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {FOLDERS.map(f => (
                 <button
                   key={f.key}
@@ -336,7 +338,7 @@ export function Inbox() {
                   description={
                     folder === 'archived'
                       ? 'Reports you archive are kept here.'
-                      : 'Scheduled runs and heartbeat activity report back here.'
+                      : 'Scheduled runs, heartbeat activity, and dreaming reports appear here.'
                   }
                 />
               </div>
@@ -347,58 +349,71 @@ export function Inbox() {
                 const active = n.id === selectedId;
                 const unread = !n.read;
                 return (
-                  <button
-                    key={n.id}
-                    onClick={() => select(n)}
-                    // Unread carries three signals at once — an accent rail, a
-                    // dot, and heavier type — because the tint alone was doing
-                    // all the work and, at 5% of the accent, was easy to miss.
-                    // The rail is a transparent border when read, so nothing
-                    // shifts sideways as items are opened. Selection keeps the
-                    // filled background to itself; the two states have to stay
-                    // tellable apart when a read item is selected.
-                    className={`w-full text-left flex items-start gap-3 pl-2.5 pr-3 py-3.5 border-b border-border-0 border-l-2 transition-colors cursor-pointer ${
-                      unread ? 'border-l-accent-primary' : 'border-l-transparent'
-                    } ${
-                      active
-                        ? 'bg-accent-muted'
-                        : unread
-                          ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
-                          : 'hover:bg-surface-2/40'
-                    }`}
-                  >
-                    <Avatar src={s.avatar} initial={s.initial} size="w-8 h-8 text-xs" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p
-                          className={`min-w-0 flex-1 text-sm leading-snug truncate flex items-center gap-1.5 ${
-                            unread ? 'text-text-0 font-semibold' : 'text-text-1'
-                          }`}
-                        >
-                          {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
-                          <span className="truncate">{stripSenderPrefix(n.title, s.name)}</span>
-                          {/* The sender is conveyed by the avatar, which is
-                              decorative to a screen reader. Name it here so a
-                              row still says who it is from. */}
-                          <span className="sr-only">— from {s.name}</span>
-                          {unread && <span className="sr-only">— unread</span>}
-                        </p>
-                        <span className="flex items-center gap-1.5 flex-shrink-0">
-                          {unread && (
-                            <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
-                          )}
-                          <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
-                        </span>
+                  <div key={n.id} className="group/item relative border-b border-border-0">
+                    <button
+                      onClick={() => select(n)}
+                      // Unread carries three signals at once — an accent rail, a
+                      // dot, and heavier type — because the tint alone was doing
+                      // all the work and, at 5% of the accent, was easy to miss.
+                      // The rail is a transparent border when read, so nothing
+                      // shifts sideways as items are opened. Selection keeps the
+                      // filled background to itself; the two states have to stay
+                      // tellable apart when a read item is selected.
+                      className={`w-full text-left flex items-start gap-3 pl-2.5 pr-11 py-3.5 border-l-2 transition-colors cursor-pointer ${
+                        unread ? 'border-l-accent-primary' : 'border-l-transparent'
+                      } ${
+                        active
+                          ? 'bg-accent-muted'
+                          : unread
+                            ? 'bg-accent-primary/5 hover:bg-accent-primary/10'
+                            : 'hover:bg-surface-2/40'
+                      }`}
+                    >
+                      <Avatar src={s.avatar} initial={s.initial} size="w-8 h-8 text-xs" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`min-w-0 flex-1 text-sm leading-snug truncate flex items-center gap-1.5 ${
+                              unread ? 'text-text-0 font-semibold' : 'text-text-1'
+                            }`}
+                          >
+                            {failed && <AlertTriangle className="w-3.5 h-3.5 text-danger flex-shrink-0" aria-hidden="true" />}
+                            <span className="truncate">{stripSenderPrefix(n.title, s.name)}</span>
+                            {/* The sender is conveyed by the avatar, which is
+                                decorative to a screen reader. Name it here so a
+                                row still says who it is from. */}
+                            <span className="sr-only">— from {s.name}</span>
+                            {unread && <span className="sr-only">— unread</span>}
+                          </p>
+                          <span className="flex items-center gap-1.5 flex-shrink-0">
+                            {unread && (
+                              <span className="w-2 h-2 rounded-full bg-accent-primary" aria-hidden="true" />
+                            )}
+                            <span className="text-[10px] text-text-3">{timeAgo(n.created_at)}</span>
+                          </span>
+                        </div>
+                        {n.body && (
+                          <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${
+                            unread ? 'text-text-2' : 'text-text-3'
+                          }`}>
+                            {n.body}
+                          </p>
+                        )}
                       </div>
-                      {n.body && (
-                        <p className={`mt-1 text-xs leading-relaxed line-clamp-2 ${
-                          unread ? 'text-text-2' : 'text-text-3'
-                        }`}>
-                          {n.body}
-                        </p>
-                      )}
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => folder === 'archived' ? restore(n) : archive(n)}
+                      disabled={busy}
+                      className="absolute right-2.5 bottom-2.5 p-1.5 rounded-md border border-border-0 bg-surface-2/95 text-text-3 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 hover:text-text-1 hover:border-border-1 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary disabled:opacity-40 transition-all cursor-pointer"
+                      title={folder === 'archived' ? 'Restore' : 'Archive'}
+                      aria-label={`${folder === 'archived' ? 'Restore' : 'Archive'} ${stripSenderPrefix(n.title, s.name)}`}
+                    >
+                      {folder === 'archived'
+                        ? <ArchiveRestore className="w-3.5 h-3.5" aria-hidden="true" />
+                        : <Archive className="w-3.5 h-3.5" aria-hidden="true" />}
+                    </button>
+                  </div>
                 );
               })
             )}

@@ -243,22 +243,37 @@ func (s *Store) listTables(workspaceID, databaseID string) ([]Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	tables := []Table{}
 	for rows.Next() {
 		var t Table
 		if err := rows.Scan(&t.ID, &t.DatabaseID, &t.Name, &t.SortOrder, &t.CreatedAt, &t.UpdatedAt, &t.RowCount); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		tables = append(tables, t)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	// Read all table rows and release the query connection before loading
+	// columns. A database refresh may run concurrently with a websocket refresh;
+	// keeping both table cursors open while ListColumns asks for another
+	// connection can exhaust SQLite's small pool and deadlock both requests.
+	for index := range tables {
+		t := &tables[index]
 		columns, err := s.ListColumns(workspaceID, t.ID)
 		if err != nil {
 			return nil, err
 		}
 		t.Columns = columns
-		tables = append(tables, t)
 	}
-	return tables, rows.Err()
+	return tables, nil
 }
 
 func (s *Store) CreateTable(workspaceID, databaseID, name string) (Table, error) {
