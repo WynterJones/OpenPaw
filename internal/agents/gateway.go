@@ -845,14 +845,19 @@ func (m *Manager) SendScheduledPrompt(ctx context.Context, agentSlug, prompt, th
 	// creating further schedules above all — drop to read-only.
 	ctx = WithUnattended(ctx)
 
-	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
+	var systemPrompt, model, agentProvider, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	err = m.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, provider, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
+	).Scan(&systemPrompt, &model, &agentProvider, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
 	if err != nil {
 		return "", "", fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
+	}
+	// A schedule-level engine is an explicit one-run override. Otherwise the
+	// selected agent keeps its own engine, just as it does in interactive chat.
+	if provider == "" {
+		ctx = WithProvider(ctx, agentProvider)
 	}
 
 	now := time.Now().UTC()

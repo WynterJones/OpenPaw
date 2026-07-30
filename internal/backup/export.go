@@ -299,7 +299,7 @@ func exportAgentRoles(db *database.DB, dataDir, destDir string) ([]string, error
 	}
 
 	rows, err := db.Query(
-		`SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, heartbeat_enabled, identity_initialized, library_slug, library_version, folder, created_at, updated_at
+		`SELECT id, slug, name, description, system_prompt, model, provider, avatar_path, avatar_description, enabled, sort_order, is_preset, heartbeat_enabled, identity_initialized, library_slug, library_version, folder, created_at, updated_at
 		 FROM agent_roles ORDER BY sort_order`)
 	if err != nil {
 		return nil, err
@@ -308,18 +308,18 @@ func exportAgentRoles(db *database.DB, dataDir, destDir string) ([]string, error
 
 	for rows.Next() {
 		var (
-			id, slug, name, desc, prompt, model, avatar, avatarDesc string
-			librarySlug, libraryVersion, folder                     string
-			enabled, sortOrder, isPreset, hbEnabled, identityInit   int
-			createdAt, updatedAt                                    time.Time
+			id, slug, name, desc, prompt, model, provider, avatar, avatarDesc string
+			librarySlug, libraryVersion, folder                               string
+			enabled, sortOrder, isPreset, hbEnabled, identityInit             int
+			createdAt, updatedAt                                              time.Time
 		)
-		if rows.Scan(&id, &slug, &name, &desc, &prompt, &model, &avatar, &avatarDesc, &enabled, &sortOrder, &isPreset, &hbEnabled, &identityInit, &librarySlug, &libraryVersion, &folder, &createdAt, &updatedAt) != nil {
+		if rows.Scan(&id, &slug, &name, &desc, &prompt, &model, &provider, &avatar, &avatarDesc, &enabled, &sortOrder, &isPreset, &hbEnabled, &identityInit, &librarySlug, &libraryVersion, &folder, &createdAt, &updatedAt) != nil {
 			continue
 		}
 
 		role := map[string]interface{}{
 			"id": id, "slug": slug, "name": name, "description": desc,
-			"system_prompt": prompt, "model": model, "avatar_path": avatar,
+			"system_prompt": prompt, "model": model, "provider": provider, "avatar_path": avatar,
 			"avatar_description": avatarDesc,
 			"enabled":            enabled == 1, "sort_order": sortOrder,
 			"is_preset": isPreset == 1, "heartbeat_enabled": hbEnabled == 1,
@@ -867,7 +867,10 @@ func exportChatHistory(db *database.DB, dataDir, destDir string) ([]string, erro
 	var files []string
 
 	// Threads
-	rows, err := db.Query("SELECT id, title, workspace_id, created_at, updated_at FROM chat_threads ORDER BY created_at")
+	rows, err := db.Query(
+		`SELECT id, title, workspace_id, parent_thread_id, root_message_id, created_at, updated_at
+		 FROM chat_threads ORDER BY created_at`,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -877,13 +880,14 @@ func exportChatHistory(db *database.DB, dataDir, destDir string) ([]string, erro
 	var threadIDs []string
 	for rows.Next() {
 		var id, title string
-		var workspaceID sql.NullString
+		var workspaceID, parentThreadID, rootMessageID sql.NullString
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &title, &workspaceID, &createdAt, &updatedAt) != nil {
+		if rows.Scan(&id, &title, &workspaceID, &parentThreadID, &rootMessageID, &createdAt, &updatedAt) != nil {
 			continue
 		}
 		threads = append(threads, map[string]interface{}{
 			"id": id, "title": title, "workspace_id": nullStr(workspaceID),
+			"parent_thread_id": nullStr(parentThreadID), "root_message_id": nullStr(rootMessageID),
 			"created_at": createdAt, "updated_at": updatedAt,
 		})
 		threadIDs = append(threadIDs, id)

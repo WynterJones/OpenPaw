@@ -38,10 +38,23 @@ func NewAgentRolesHandler(db *database.DB, dataDir string, llmClient *llm.Client
 
 var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
+func (h *AgentRolesHandler) validateProvider(provider string) error {
+	if provider == "" {
+		return nil
+	}
+	if h.agentMgr == nil || h.agentMgr.Providers == nil || h.agentMgr.Providers.Get(provider) == nil {
+		return fmt.Errorf("unknown AI provider: %s", provider)
+	}
+	if !h.agentMgr.Providers.Get(provider).IsConfigured() {
+		return fmt.Errorf("%s is not installed, logged in, or configured", provider)
+	}
+	return nil
+}
+
 func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
 
-	query := "SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles"
+	query := "SELECT id, slug, name, description, system_prompt, model, provider, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles"
 	var args []interface{}
 	var conditions []string
 	if enabledOnly {
@@ -69,7 +82,7 @@ func (h *AgentRolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var role models.AgentRole
 		var workspaceID sql.NullString
-		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.Provider, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan agent role")
 			return
 		}
@@ -88,9 +101,9 @@ func (h *AgentRolesHandler) Get(w http.ResponseWriter, r *http.Request) {
 	var role models.AgentRole
 	var workspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, provider, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt)
+	).Scan(&role.ID, &role.Slug, &role.Name, &role.Description, &role.SystemPrompt, &role.Model, &role.Provider, &role.AvatarPath, &role.AvatarDescription, &role.Enabled, &role.SortOrder, &role.IsPreset, &role.IdentityInitialized, &role.HeartbeatEnabled, &role.HeartbeatIntervalSec, &role.HeartbeatMaxTurns, &role.HeartbeatTimeoutSec, &role.LibrarySlug, &role.LibraryVersion, &role.Folder, &workspaceID, &role.CreatedAt, &role.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -109,6 +122,7 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Description       string  `json:"description"`
 		SystemPrompt      string  `json:"system_prompt"`
 		Model             string  `json:"model"`
+		Provider          string  `json:"provider"`
 		AvatarPath        string  `json:"avatar_path"`
 		AvatarDescription string  `json:"avatar_description"`
 		WorkspaceID       *string `json:"workspace_id"`
@@ -135,6 +149,10 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.WorkspaceID != nil && *req.WorkspaceID == "" {
 		req.WorkspaceID = nil
 	}
+	if err := h.validateProvider(req.Provider); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	// Check for duplicate slug
 	var exists string
@@ -152,9 +170,9 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	_, err = h.db.Exec(
-		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, workspace_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?, ?)`,
-		id, req.Slug, req.Name, req.Description, req.SystemPrompt, req.Model,
+		`INSERT INTO agent_roles (id, slug, name, description, system_prompt, model, provider, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, workspace_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 1, ?, ?, ?)`,
+		id, req.Slug, req.Name, req.Description, req.SystemPrompt, req.Model, req.Provider,
 		req.AvatarPath, req.AvatarDescription, maxSort+1, req.WorkspaceID, now, now,
 	)
 	if err != nil {
@@ -174,6 +192,7 @@ func (h *AgentRolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Description:         req.Description,
 		SystemPrompt:        req.SystemPrompt,
 		Model:               req.Model,
+		Provider:            req.Provider,
 		AvatarPath:          req.AvatarPath,
 		AvatarDescription:   req.AvatarDescription,
 		Enabled:             true,
@@ -194,9 +213,9 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var existing models.AgentRole
 	var existingWorkspaceID sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, description, system_prompt, model, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
+		"SELECT id, slug, name, description, system_prompt, model, provider, avatar_path, avatar_description, enabled, sort_order, is_preset, identity_initialized, heartbeat_enabled, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec, library_slug, library_version, folder, workspace_id, created_at, updated_at FROM agent_roles WHERE slug = ?",
 		slug,
-	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.HeartbeatIntervalSec, &existing.HeartbeatMaxTurns, &existing.HeartbeatTimeoutSec, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existingWorkspaceID, &existing.CreatedAt, &existing.UpdatedAt)
+	).Scan(&existing.ID, &existing.Slug, &existing.Name, &existing.Description, &existing.SystemPrompt, &existing.Model, &existing.Provider, &existing.AvatarPath, &existing.AvatarDescription, &existing.Enabled, &existing.SortOrder, &existing.IsPreset, &existing.IdentityInitialized, &existing.HeartbeatEnabled, &existing.HeartbeatIntervalSec, &existing.HeartbeatMaxTurns, &existing.HeartbeatTimeoutSec, &existing.LibrarySlug, &existing.LibraryVersion, &existing.Folder, &existingWorkspaceID, &existing.CreatedAt, &existing.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "agent role not found")
 		return
@@ -211,6 +230,7 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Description       *string `json:"description"`
 		SystemPrompt      *string `json:"system_prompt"`
 		Model             *string `json:"model"`
+		Provider          *string `json:"provider"`
 		AvatarPath        *string `json:"avatar_path"`
 		AvatarDescription *string `json:"avatar_description"`
 		HeartbeatEnabled  *bool   `json:"heartbeat_enabled"`
@@ -238,6 +258,15 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Model != nil {
 		existing.Model = *req.Model
+	}
+	if req.Provider != nil {
+		if *req.Provider != existing.Provider {
+			if err := h.validateProvider(*req.Provider); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		existing.Provider = *req.Provider
 	}
 	if req.AvatarPath != nil {
 		existing.AvatarPath = *req.AvatarPath
@@ -274,11 +303,10 @@ func (h *AgentRolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name cannot be empty")
 		return
 	}
-
 	now := time.Now().UTC()
 	_, err = h.db.Exec(
-		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, heartbeat_interval_sec = ?, heartbeat_max_turns = ?, heartbeat_timeout_sec = ?, folder = ?, workspace_id = ?, updated_at = ? WHERE slug = ?`,
-		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.HeartbeatIntervalSec, existing.HeartbeatMaxTurns, existing.HeartbeatTimeoutSec, existing.Folder, existing.WorkspaceID, now, slug,
+		`UPDATE agent_roles SET name = ?, description = ?, system_prompt = ?, model = ?, provider = ?, avatar_path = ?, avatar_description = ?, heartbeat_enabled = ?, heartbeat_interval_sec = ?, heartbeat_max_turns = ?, heartbeat_timeout_sec = ?, folder = ?, workspace_id = ?, updated_at = ? WHERE slug = ?`,
+		existing.Name, existing.Description, existing.SystemPrompt, existing.Model, existing.Provider, existing.AvatarPath, existing.AvatarDescription, existing.HeartbeatEnabled, existing.HeartbeatIntervalSec, existing.HeartbeatMaxTurns, existing.HeartbeatTimeoutSec, existing.Folder, existing.WorkspaceID, now, slug,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent role")

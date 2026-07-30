@@ -57,27 +57,27 @@ type Secret struct {
 }
 
 type Schedule struct {
-	ID                  string     `json:"id"`
-	Name                string     `json:"name"`
-	Description         string     `json:"description"`
-	CronExpr            string     `json:"cron_expr"`
-	ToolID              string     `json:"tool_id"`
-	Action              string     `json:"action"`
-	Payload             string     `json:"payload"`
-	Enabled             bool       `json:"enabled"`
-	Type                string     `json:"type"`
-	AgentRoleSlug       string     `json:"agent_role_slug"`
-	PromptContent       string     `json:"prompt_content"`
-	ThreadID            string     `json:"thread_id"`
-	DashboardID         string     `json:"dashboard_id"`
-	WidgetID            string     `json:"widget_id"`
-	WorkspaceID         *string    `json:"workspace_id,omitempty"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Description   string  `json:"description"`
+	CronExpr      string  `json:"cron_expr"`
+	ToolID        string  `json:"tool_id"`
+	Action        string  `json:"action"`
+	Payload       string  `json:"payload"`
+	Enabled       bool    `json:"enabled"`
+	Type          string  `json:"type"`
+	AgentRoleSlug string  `json:"agent_role_slug"`
+	PromptContent string  `json:"prompt_content"`
+	ThreadID      string  `json:"thread_id"`
+	DashboardID   string  `json:"dashboard_id"`
+	WidgetID      string  `json:"widget_id"`
+	WorkspaceID   *string `json:"workspace_id,omitempty"`
 	// Provider pins the engine this routine runs on ("" = whatever is active).
-	Provider            string     `json:"provider"`
-	LastRunAt           *time.Time `json:"last_run_at,omitempty"`
-	NextRunAt           *time.Time `json:"next_run_at,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	Provider  string     `json:"provider"`
+	LastRunAt *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt *time.Time `json:"next_run_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type ScheduleExecution struct {
@@ -133,11 +133,13 @@ type AuditLog struct {
 }
 
 type ChatThread struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	TotalCostUSD float64   `json:"total_cost_usd"`
-	Pinned       bool      `json:"pinned"`
-	PinSummary   string    `json:"pin_summary,omitempty"`
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	ParentThreadID string  `json:"parent_thread_id,omitempty"`
+	RootMessageID  string  `json:"root_message_id,omitempty"`
+	TotalCostUSD   float64 `json:"total_cost_usd"`
+	Pinned         bool    `json:"pinned"`
+	PinSummary     string  `json:"pin_summary,omitempty"`
 	// Dreamed reports that an agent has read this conversation for memory during
 	// a dream. Surfaced in the chat list so "has this been mined yet?" is
 	// visible rather than something only the scan ledger knows.
@@ -160,6 +162,11 @@ type ChatMessage struct {
 	ImageURL      *string         `json:"image_url,omitempty"`
 	ToolCalls     json.RawMessage `json:"tool_calls,omitempty"`
 	Reactions     []Reaction      `json:"reactions,omitempty"`
+	// Focused message threads are separate context windows anchored to a message.
+	// These fields let the transcript show the Slack-style reply affordance
+	// without loading every child thread.
+	ThreadReplyCount int    `json:"thread_reply_count,omitempty"`
+	ChildThreadID    string `json:"child_thread_id,omitempty"`
 	// Stopped marks a reply the user interrupted mid-stream. The content is
 	// whatever had been written by then, not a complete answer.
 	Stopped   bool      `json:"stopped,omitempty"`
@@ -195,19 +202,22 @@ type Agent struct {
 }
 
 type AgentRole struct {
-	ID                   string    `json:"id"`
-	Slug                 string    `json:"slug"`
-	Name                 string    `json:"name"`
-	Description          string    `json:"description"`
-	SystemPrompt         string    `json:"system_prompt"`
-	Model                string    `json:"model"`
-	AvatarPath           string    `json:"avatar_path"`
-	AvatarDescription    string    `json:"avatar_description"`
-	Enabled              bool      `json:"enabled"`
-	SortOrder            int       `json:"sort_order"`
-	IsPreset             bool      `json:"is_preset"`
-	IdentityInitialized  bool      `json:"identity_initialized"`
-	HeartbeatEnabled     bool      `json:"heartbeat_enabled"`
+	ID           string `json:"id"`
+	Slug         string `json:"slug"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	SystemPrompt string `json:"system_prompt"`
+	Model        string `json:"model"`
+	// Provider pins this agent to an inference engine. Blank inherits the
+	// app-wide active provider for backwards compatibility.
+	Provider            string `json:"provider"`
+	AvatarPath          string `json:"avatar_path"`
+	AvatarDescription   string `json:"avatar_description"`
+	Enabled             bool   `json:"enabled"`
+	SortOrder           int    `json:"sort_order"`
+	IsPreset            bool   `json:"is_preset"`
+	IdentityInitialized bool   `json:"identity_initialized"`
+	HeartbeatEnabled    bool   `json:"heartbeat_enabled"`
 	// Heartbeat overrides. 0 means "inherit the global heartbeat setting".
 	HeartbeatIntervalSec int       `json:"heartbeat_interval_sec"`
 	HeartbeatMaxTurns    int       `json:"heartbeat_max_turns"`
@@ -230,11 +240,11 @@ type Notification struct {
 	Detail string `json:"detail"`
 	// Prompt is the instruction that produced the report, kept so the report can
 	// be opened as a chat later without depending on the schedule still existing.
-	Prompt          string    `json:"prompt"`
-	WorkspaceID     string    `json:"workspace_id"`
-	Priority        string    `json:"priority"`
-	SourceAgentSlug string    `json:"source_agent_slug"`
-	SourceType      string    `json:"source_type"`
+	Prompt          string `json:"prompt"`
+	WorkspaceID     string `json:"workspace_id"`
+	Priority        string `json:"priority"`
+	SourceAgentSlug string `json:"source_agent_slug"`
+	SourceType      string `json:"source_type"`
 	// SourceID identifies the run that produced this — a schedule_executions id
 	// for scheduled reports.
 	SourceID string `json:"source_id"`

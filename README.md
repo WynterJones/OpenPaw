@@ -91,6 +91,9 @@ OpenPaw 1.3.2 rounds out the workspace knowledge release with:
 
 - **Better database tables** — Sort by any column, resize columns, rename or export tables, import CSV files as new databases, adjust table text size, and page through 10, 50, 100, or a custom number of rows.
 - **Companions in chat** — Companion animations now live directly in active AI message avatars, while completed messages stay still. Avatars are tightly cropped, larger, and borderless.
+- **Focused message threads** — Start a Slack-style thread from any chat message for a separate context window. Agent-to-agent mentions branch into one focused thread automatically, and mentions made inside it stay in that same thread.
+- **Per-agent AI providers** — Configure each agent to inherit the app default or use its own OpenRouter, Claude Code, or Codex provider. Interactive chat, delegation, schedules, and heartbeat runs honor the agent selection.
+- **Distinct companion states** — New companions use purpose-built Idle, Thinking, Working, and Talking animations with more expressive, state-specific motion. Existing companion clips remain compatible.
 - **More reliable desktop sessions** — Workspace services recover automatically after reopening OpenPaw, custom dashboards can explicitly refresh their latest saved version, and terminal backgrounds blend cleanly with workspace artwork.
 - **Safer knowledge workflows** — Dreaming keeps chats and pins intact, dreamed posts have a dedicated Inbox view, and workspace-scoped agent access covers databases, Inbox posts, dashboards, and related services.
 
@@ -144,7 +147,9 @@ The **Gateway Agent** (Sonnet by default) analyzes your request and decides the 
 
 Chat features include:
 - **Threaded conversations** with automatic titles
+- **Focused message threads** on individual messages, with an independent context window and reply count
 - **@mentions** to direct messages to specific agents (`@agent-name`)
+- **Agent-to-agent branching** — an agent mention creates one focused thread from the response; further mentions stay in that thread rather than nesting
 - **Clickable inline code** with a tooltip and visible copied/failed feedback
 - **Work orders** for tool and dashboard builds with confirm/reject workflow
 - **Any agent can start a build** — the agent you are talking to files the service or dashboard itself, with the spec it just worked out with you, instead of sending you off to ask the Gateway
@@ -161,6 +166,7 @@ Chat features include:
 The **Agents** page lets you create and configure specialist AI agents:
 
 - Create custom agents with unique personalities, expertise areas, and models
+- Choose an AI provider per agent — inherit the chat default or pin OpenRouter, Claude Code, or Codex
 - Each agent has an **identity file system** with editable files:
   - `SOUL.md` — personality and core identity
   - `USER.md` — what the agent knows about you
@@ -505,6 +511,8 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 | GET | `/api/v1/chat/threads/{id}/stats` | Get thread stats (cost, tokens) |
 | GET | `/api/v1/chat/threads/{id}/messages` | Get thread messages |
 | POST | `/api/v1/chat/threads/{id}/messages` | Send a message |
+| GET | `/api/v1/chat/messages/{messageId}/thread` | Get the focused thread for a message |
+| POST | `/api/v1/chat/messages/{messageId}/thread` | Create or return the focused thread for a message |
 | POST | `/api/v1/chat/threads/{id}/compact` | Compact/summarize thread |
 | POST | `/api/v1/chat/threads/{id}/confirm` | Confirm a work order |
 | POST | `/api/v1/chat/threads/{id}/reject` | Reject a work order |

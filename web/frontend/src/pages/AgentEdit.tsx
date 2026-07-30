@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search, FolderOpen, GripVertical, Clock, AlertCircle, CheckCircle2, Circle, ChevronRight, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Sparkles, Plus, Trash2, BookOpen, ArrowUpFromLine, Wrench, Search, FolderOpen, GripVertical, Clock, AlertCircle, CheckCircle2, Circle, ChevronRight, ChevronDown, Cpu } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
@@ -16,6 +16,29 @@ import { api, agentFiles, agentMemories, agentSkills, agentTasks, skills as skil
 
 interface AgentTool extends Tool {
   access_type: 'owned' | 'granted';
+}
+
+interface ProviderStatus {
+  configured?: boolean;
+  available?: boolean;
+}
+
+interface ProviderInfo {
+  active: string;
+  providers: Record<string, ProviderStatus>;
+}
+
+const PROVIDER_OPTIONS = [
+  { value: '', label: 'Use chat default' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+];
+
+function providerUsable(name: string, status?: ProviderStatus) {
+  if (name === '') return true;
+  if (name === 'openrouter') return Boolean(status?.configured);
+  return Boolean(status?.available ?? status?.configured);
 }
 
 import { PRESET_AVATARS } from '../lib/avatars';
@@ -74,6 +97,8 @@ export function AgentEdit() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [model, setModel] = useState('anthropic/claude-sonnet-5');
+  const [provider, setProvider] = useState('');
+  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [folder, setFolder] = useState('');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -175,10 +200,23 @@ export function AgentEdit() {
   }, []);
 
   useEffect(() => {
-    api.get<{ id: string; name: string }[]>('/settings/available-models')
-      .then(setAvailableModels)
-      .catch((e) => { console.warn('loadAvailableModels failed:', e); });
+    api.get<ProviderInfo>('/settings/llm-provider')
+      .then(setProviderInfo)
+      .catch((e) => { console.warn('loadProviderInfo failed:', e); });
   }, []);
+
+  // The model catalog belongs to the engine this agent will actually use.
+  // Reading another provider's catalog does not switch the app-wide provider.
+  useEffect(() => {
+    if (!providerInfo) return;
+    const target = provider || providerInfo.active;
+    api.get<{ id: string; name: string }[]>(`/settings/available-models?provider=${encodeURIComponent(target)}`)
+      .then(setAvailableModels)
+      .catch((e) => {
+        console.warn('loadAvailableModels failed:', e);
+        setAvailableModels([]);
+      });
+  }, [provider, providerInfo]);
 
   // The global interval, so the per-agent fields can show what "inherit"
   // actually resolves to rather than just saying "global".
@@ -215,6 +253,7 @@ export function AgentEdit() {
         setName(data.name);
         setDescription(data.description);
         setModel(data.model);
+        setProvider(data.provider || '');
         setSystemPrompt(data.system_prompt);
         setAvatarPath(data.avatar_path);
         setAvatarDescription(data.avatar_description || '');
@@ -310,6 +349,7 @@ export function AgentEdit() {
         description: description.trim(),
         system_prompt: systemPrompt,
         model,
+        provider,
         avatar_path: avatarPath,
         avatar_description: avatarDescription.trim(),
         folder,
@@ -552,6 +592,7 @@ export function AgentEdit() {
     name !== role.name ||
     description !== role.description ||
     model !== role.model ||
+    provider !== (role.provider || '') ||
     systemPrompt !== role.system_prompt ||
     avatarPath !== role.avatar_path ||
     avatarDescription !== (role.avatar_description || '') ||
@@ -766,6 +807,33 @@ export function AgentEdit() {
                     Folder
                   </label>
                   <FolderAssign value={folder} folders={allFolders} onChange={handleFolderChange} />
+                </div>
+                <div>
+                  <label htmlFor="agent-provider" className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-2">
+                    <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+                    AI provider
+                  </label>
+                  <select
+                    id="agent-provider"
+                    value={provider}
+                    onChange={(event) => setProvider(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-border-1 bg-surface-0 px-3 text-sm text-text-1 outline-none transition-colors focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20"
+                  >
+                    {PROVIDER_OPTIONS.map((option) => {
+                      const available = providerUsable(option.value, providerInfo?.providers?.[option.value]);
+                      const suffix = option.value === ''
+                        ? ` (${PROVIDER_OPTIONS.find((item) => item.value === providerInfo?.active)?.label || 'current'})`
+                        : available ? '' : ' — unavailable';
+                      return (
+                        <option key={option.value || 'default'} value={option.value} disabled={!available}>
+                          {option.label}{suffix}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-text-3">
+                    This agent keeps its provider in chats, threads, delegation, schedules, and heartbeats.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-text-2 mb-1.5">Model</label>

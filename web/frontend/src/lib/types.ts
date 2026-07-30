@@ -90,6 +90,9 @@ export interface Secret {
 export interface ChatThread {
   id: string;
   title: string;
+  /** Present only for a Slack-style focused thread opened from a message. */
+  parent_thread_id?: string;
+  root_message_id?: string;
   agent: string;
   total_cost_usd: number;
   /** Pinned threads are archived: read-only, with a long-form summary. */
@@ -128,6 +131,9 @@ export interface ChatMessage {
   image_url?: string;
   tool_calls?: ToolCallResult[];
   reactions?: Reaction[];
+  /** Number of messages in the focused child thread anchored here. */
+  thread_reply_count?: number;
+  child_thread_id?: string;
   /** The user interrupted this reply mid-stream — content is partial. */
   stopped?: boolean;
   created_at: string;
@@ -160,6 +166,8 @@ export interface AgentRole {
   description: string;
   system_prompt: string;
   model: string;
+  /** Blank inherits the app-wide provider; otherwise this agent is pinned. */
+  provider: string;
   avatar_path: string;
   avatar_description: string;
   enabled: boolean;

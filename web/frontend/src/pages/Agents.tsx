@@ -29,6 +29,33 @@ const MODEL_OPTIONS = [
   { id: "anthropic/claude-fable-5", label: "Fable 5" },
 ];
 
+const PROVIDER_LABELS: Record<string, string> = {
+  "": "Chat default",
+  openrouter: "OpenRouter",
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
+
+interface ProviderStatus {
+  configured?: boolean;
+  available?: boolean;
+}
+
+interface ProviderInfo {
+  active: string;
+  providers: Record<string, ProviderStatus>;
+}
+
+function providerUsable(name: string, status?: ProviderStatus) {
+  if (name === "") return true;
+  if (name === "openrouter") return Boolean(status?.configured);
+  return Boolean(status?.available ?? status?.configured);
+}
+
+function formatProviderName(provider: string): string {
+  return PROVIDER_LABELS[provider] || provider;
+}
+
 function formatModelName(model: string): string {
   const known: Record<string, string> = {
     "anthropic/claude-haiku-4.5": "Haiku 4.5",
@@ -63,9 +90,18 @@ function CreateAgentModal({
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [model, setModel] = useState("anthropic/claude-sonnet-5");
+  const [provider, setProvider] = useState("");
+  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
   const [avatarPath, setAvatarPath] = useState(PRESET_AVATARS[0]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || providerInfo) return;
+    api.get<ProviderInfo>("/settings/llm-provider")
+      .then(setProviderInfo)
+      .catch((error) => console.warn("loadProviderInfo failed:", error));
+  }, [open, providerInfo]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,6 +147,7 @@ function CreateAgentModal({
         description: description.trim(),
         system_prompt: systemPrompt.trim(),
         model,
+        provider,
         avatar_path: avatarPath,
       });
       onCreated(role);
@@ -119,6 +156,7 @@ function CreateAgentModal({
       setDescription("");
       setSystemPrompt("");
       setModel("anthropic/claude-sonnet-5");
+      setProvider("");
       setAvatarPath(PRESET_AVATARS[0]);
       toast("success", "Agent created");
     } catch (err) {
@@ -209,8 +247,35 @@ function CreateAgentModal({
         />
 
         <div>
+          <label htmlFor="new-agent-provider" className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-1">
+            <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+            AI provider
+          </label>
+          <select
+            id="new-agent-provider"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value)}
+            className="h-10 w-full rounded-lg border border-border-1 bg-surface-0 px-3 text-sm text-text-1 outline-none transition-colors focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20"
+          >
+            {["", "openrouter", "claude-code", "codex"].map((name) => {
+              const usable = providerUsable(name, providerInfo?.providers?.[name]);
+              const activeLabel = formatProviderName(providerInfo?.active || "openrouter");
+              return (
+                <option key={name || "default"} value={name} disabled={!usable}>
+                  {formatProviderName(name)}
+                  {name === "" ? ` (${activeLabel})` : usable ? "" : " — unavailable"}
+                </option>
+              );
+            })}
+          </select>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-text-3">
+            Pinned agents keep this engine even when the chat default changes.
+          </p>
+        </div>
+
+        <div>
           <label className="block text-xs font-medium text-text-1 mb-2">
-            Model
+            Model tier
           </label>
           <div className="flex gap-2">
             {MODEL_OPTIONS.map((opt) => (
@@ -354,7 +419,7 @@ export function Agents() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1 text-[10px] text-text-3 font-medium">
               <Cpu className="w-3 h-3" />
-              {formatModelName(role.model)}
+              {formatProviderName(role.provider || "")} · {formatModelName(role.model)}
             </span>
             {role.workspace_id && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2 text-text-3" title="Only available in this workspace">
@@ -389,7 +454,7 @@ export function Agents() {
               <p className="text-xs text-text-3 truncate">{role.description}</p>
             </div>
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-text-3 text-[10px] font-medium flex-shrink-0">
-              <Cpu className="w-2.5 h-2.5" />{formatModelName(role.model)}
+              <Cpu className="w-2.5 h-2.5" />{formatProviderName(role.provider || "")} · {formatModelName(role.model)}
             </span>
             {(taskCounts[role.slug] || 0) > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px] font-medium flex-shrink-0">

@@ -159,6 +159,19 @@ func (m *Manager) Provider() llm.Provider {
 	return m.client
 }
 
+// ProviderFor returns an agent's configured engine when it is usable, otherwise
+// the active app engine. It is safe for concurrent agents because selecting a
+// provider here never mutates ProviderRouter.Active().
+func (m *Manager) ProviderFor(name string) llm.Provider {
+	if name != "" && m.Providers != nil {
+		if provider := m.Providers.Get(name); provider != nil && provider.IsConfigured() {
+			return provider
+		}
+		logger.Warn("agent engine %q is not available — running on the active engine instead", name)
+	}
+	return m.Provider()
+}
+
 // GatewayName returns the configured gateway name from the builder role, falling back to "Gateway".
 func (m *Manager) GatewayName() string {
 	var name string

@@ -29,6 +29,9 @@ func (h *ChatHandler) addThreadMember(threadID, agentRoleSlug string) {
 	var name, avatarPath string
 	h.db.QueryRow("SELECT name, avatar_path FROM agent_roles WHERE slug = ?", agentRoleSlug).Scan(&name, &avatarPath)
 	h.db.LogAudit("system", "thread_member_joined", "chat", "chat_thread", threadID, agentRoleSlug)
+	if h.agentManager == nil {
+		return
+	}
 	h.agentManager.Broadcast("thread_member_joined", map[string]interface{}{
 		"thread_id":       threadID,
 		"agent_role_slug": agentRoleSlug,
@@ -113,7 +116,30 @@ func (h *ChatHandler) buildThreadMemberContext(threadID, currentAgentSlug string
 		"\nYou can @mention another agent if they should help with this conversation."
 }
 
-func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, currentAgentSlug, mentionedSlug, agentResponse string, depth int) {
+func (h *ChatHandler) agentMentionThread(threadID, responseMessageID, agentResponse string) (string, error) {
+	var parentThreadID, workspaceID string
+	if err := h.db.QueryRow(
+		"SELECT COALESCE(parent_thread_id, ''), workspace_id FROM chat_threads WHERE id = ?",
+		threadID,
+	).Scan(&parentThreadID, &workspaceID); err != nil {
+		return "", err
+	}
+	if parentThreadID != "" {
+		return threadID, nil
+	}
+	child, created, err := h.ensureMessageThread(
+		threadID, responseMessageID, agentResponse, workspaceID,
+	)
+	if err != nil {
+		return "", err
+	}
+	if created {
+		h.db.LogAudit("system", "agent_message_thread_created", "chat", "chat_thread", child.ID, threadID)
+	}
+	return child.ID, nil
+}
+
+func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, responseMessageID, currentAgentSlug, mentionedSlug, agentResponse string, depth int) {
 	// Build a compact evaluation prompt for the gateway
 	evalMessage := fmt.Sprintf("[AGENT_MENTION_EVALUATION]\nAgent @%s mentioned @%s in their response.\n\nAgent response (excerpt):\n%s",
 		currentAgentSlug, mentionedSlug, truncateStr(agentResponse, 500, true))
@@ -138,21 +164,35 @@ func (h *ChatHandler) evaluateAgentMention(ctx context.Context, threadID, curren
 		gatewayOutTok = int(usage.OutputTokens)
 	}
 
+	shouldRespond := resp.WorkOrder != nil || resp.AssignedAgent == mentionedSlug
+	if !shouldRespond {
+		return
+	}
+
+	// A mention in a top-level chat branches under the message that made it.
+	// Once inside a focused thread, further agent mentions stay in that same
+	// thread instead of creating nested threads.
+	responseThreadID, createErr := h.agentMentionThread(threadID, responseMessageID, agentResponse)
+	if createErr != nil {
+		return
+	}
+	h.addThreadMember(responseThreadID, currentAgentSlug)
+
 	// If the gateway wants to BUILD/FIX something (tool, dashboard, agent, skill)
 	// — e.g. an agent mentioned @builder to repair an erroring tool — run the
 	// full gateway action so the builder actually does the work. Without this the
 	// builder was only ever routed as a chat agent and never built anything.
 	if resp.WorkOrder != nil {
-		h.handleGatewayAction(ctx, threadID, agentResponse, "system", resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
+		h.handleGatewayAction(ctx, responseThreadID, agentResponse, "system", resp, gatewayCostUSD, gatewayInTok, gatewayOutTok)
 		return
 	}
 
 	// Otherwise, if the gateway decided the mentioned agent should respond, hand off.
 	if resp.AssignedAgent == mentionedSlug {
-		h.addThreadMember(threadID, mentionedSlug)
-		h.broadcastRoutingIndicator(threadID, mentionedSlug)
-		h.broadcastStatus(threadID, "thinking", "Thinking...")
-		h.handleRoleChatWithDepth(ctx, threadID, agentResponse, mentionedSlug, depth+1, nil, gatewayCostUSD)
+		h.addThreadMember(responseThreadID, mentionedSlug)
+		h.broadcastRoutingIndicator(responseThreadID, mentionedSlug)
+		h.broadcastStatus(responseThreadID, "thinking", "Thinking...")
+		h.handleRoleChatWithDepth(ctx, responseThreadID, agentResponse, mentionedSlug, depth+1, nil, gatewayCostUSD)
 	}
 }
 

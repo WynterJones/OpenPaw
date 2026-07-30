@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { DollarSign, Zap, Download, Wrench, Minimize2, OctagonX } from 'lucide-react';
+import { DollarSign, Zap, Download, Wrench, Minimize2, OctagonX, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
@@ -34,6 +34,29 @@ function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[];
       <EmojiPicker onSelect={onReact} />
       {trailing}
     </div>
+  );
+}
+
+function ThreadAction({ count = 0, onOpen }: { count?: number; onOpen?: () => void }) {
+  if (!onOpen) return null;
+  const label = count > 0
+    ? `Open thread with ${count} ${count === 1 ? 'reply' : 'replies'}`
+    : 'Reply in thread';
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={label}
+      title={label}
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors active:translate-y-px ${
+        count > 0
+          ? 'border-accent-primary/30 bg-accent-muted text-accent-primary hover:bg-accent-primary/20'
+          : 'border-transparent text-text-3 hover:border-border-1 hover:bg-surface-2 hover:text-text-1'
+      }`}
+    >
+      <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+      {count > 0 && <span className="tabular-nums">{count}</span>}
+    </button>
   );
 }
 
@@ -193,7 +216,7 @@ function localFileSrc(path: string) {
   return `/api/v1/openclaw/file?path=${encodeURIComponent(path)}`;
 }
 
-function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void }) {
+function UserMessageBubble({ message, roles, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -238,7 +261,11 @@ function UserMessageBubble({ message, roles, onReact }: { message: ChatMessage; 
             </button>
           )}
         </div>
-        <ReactionBar reactions={message.reactions} onReact={(emoji) => onReact?.(message.id, emoji)} />
+        <ReactionBar
+          reactions={message.reactions}
+          onReact={(emoji) => onReact?.(message.id, emoji)}
+          trailing={<ThreadAction count={message.thread_reply_count} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />}
+        />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3 justify-end">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
@@ -279,13 +306,13 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
   );
 }
 
-export function MessageBubble({ message, roles, onRefresh, onReact }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void }) {
+export function MessageBubble({ message, roles, onRefresh, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
   const isUser = message.role === 'user';
   const role = resolveMessageRole(roles, message.agent_role_slug);
 
   const [toolsOpen, setToolsOpen] = useState(false);
 
-  if (isUser) return <UserMessageBubble message={message} roles={roles} onReact={onReact} />;
+  if (isUser) return <UserMessageBubble message={message} roles={roles} onReact={onReact} onOpenThread={onOpenThread} />;
   if (message.role === 'system') return <ChatSummaryBubble message={message} roles={roles} />;
 
   const confirmation = parseConfirmation(message.content);
@@ -355,23 +382,28 @@ export function MessageBubble({ message, roles, onRefresh, onReact }: { message:
         <ReactionBar
           reactions={message.reactions}
           onReact={(emoji) => onReact?.(message.id, emoji)}
-          trailing={hasTools ? (
-            <button
-              type="button"
-              onClick={() => setToolsOpen((o) => !o)}
-              aria-expanded={toolsOpen}
-              aria-label={toolsOpen ? 'Hide tool calls' : 'Show tool calls'}
-              title={`${toolCalls.length} tool call${toolCalls.length !== 1 ? 's' : ''}`}
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-sm border cursor-pointer transition-colors ${
-                toolsOpen
-                  ? 'bg-surface-2 border-border-1 text-text-1'
-                  : 'border-transparent text-text-3 hover:text-text-1 hover:bg-surface-2'
-              }`}
-            >
-              <Wrench className="w-3.5 h-3.5" />
-              {toolCalls.length > 1 && <span className="text-xs">{toolCalls.length}</span>}
-            </button>
-          ) : undefined}
+          trailing={
+            <>
+              {hasTools && (
+                <button
+                  type="button"
+                  onClick={() => setToolsOpen((o) => !o)}
+                  aria-expanded={toolsOpen}
+                  aria-label={toolsOpen ? 'Hide tool calls' : 'Show tool calls'}
+                  title={`${toolCalls.length} tool call${toolCalls.length !== 1 ? 's' : ''}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-sm border cursor-pointer transition-colors ${
+                    toolsOpen
+                      ? 'bg-surface-2 border-border-1 text-text-1'
+                      : 'border-transparent text-text-3 hover:text-text-1 hover:bg-surface-2'
+                  }`}
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  {toolCalls.length > 1 && <span className="text-xs">{toolCalls.length}</span>}
+                </button>
+              )}
+              <ThreadAction count={message.thread_reply_count} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />
+            </>
+          }
         />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

@@ -10,32 +10,41 @@
 import { useSyncExternalStore } from 'react';
 import { api } from './api';
 
-export type CompanionMood = 'idle' | 'thinking' | 'toolcall' | 'responding';
+export type CanonicalCompanionMood = 'idle' | 'thinking' | 'working' | 'talking';
+/** Legacy mood names remain accepted so older callers do not break. */
+export type CompanionMood = CanonicalCompanionMood | 'toolcall' | 'responding';
 
-/** The four default emotes generated when a character is created. */
-export const DEFAULT_EMOTES = ['idle', 'thinking', 'wave', 'cheer'] as const;
+/** Agent-specific states generated for every new character. */
+export const DEFAULT_EMOTES = ['idle', 'thinking', 'working', 'talking'] as const;
 
 /**
  * What PixelLab is asked to animate for each clip.
  *
  * Split from the clip name because the two answer different questions: the clip
  * name says when OpenPaw plays it, while PixelLab needs a physical action it
- * can actually draw. "thinking" is a mood — asking PixelLab to animate it gets
- * you nothing useful — so the thinking clip is still drawn as a walk.
+ * can actually draw. Each prompt therefore describes a distinct pose and
+ * movement while explicitly excluding the gestures owned by the other states.
  */
-export const EMOTE_ACTIONS: Record<string, string> = {
-  idle: 'idle breathing',
-  thinking: 'walk',
-  wave: 'wave',
-  cheer: 'cheer',
+const EMOTE_ACTIONS: Record<string, string> = {
+  idle: 'Seamless calm idle loop. The character stands planted in place, breathes subtly, shifts weight once, and blinks once. Keep the silhouette steady; no walking, waving, speaking, jumping, or large gestures.',
+  thinking: 'Seamless thoughtful loop. The character pauses, tilts their head slightly, looks upward, and brings one hand to their chin before returning to neutral. Deliberate and contemplative; no walking, typing, waving, cheering, or speaking.',
+  working: 'Seamless focused work loop. The character leans forward with concentration and performs quick purposeful hand motions as if typing on a small invisible keyboard or operating controls, then briefly checks the result. Energetic but contained; no waving, cheering, walking, or talking.',
+  talking: 'Seamless conversational speaking loop. The character faces forward, moves their mouth clearly, and uses one natural open-hand explanatory gesture before settling. Friendly and expressive; no jumping, cheering, typing, walking, or waving.',
+  // Old stored clip names regenerate into the new behavior rather than their
+  // former generic actions.
+  walk: 'Seamless thoughtful loop. The character pauses, tilts their head slightly, looks upward, and brings one hand to their chin before returning to neutral. Do not walk.',
+  wave: 'Seamless focused work loop. The character leans forward and performs quick purposeful hand motions as if typing or operating controls. Do not wave.',
+  cheer: 'Seamless conversational speaking loop. The character faces forward, moves their mouth clearly, and makes one natural explanatory hand gesture. Do not jump or cheer.',
 };
 
 /** Map a live mood to the animation clip that should play. */
 export const MOOD_TO_CLIP: Record<CompanionMood, string> = {
   idle: 'idle',
   thinking: 'thinking',
-  toolcall: 'wave',
-  responding: 'cheer',
+  working: 'working',
+  talking: 'talking',
+  toolcall: 'working',
+  responding: 'talking',
 };
 
 /**
@@ -47,7 +56,43 @@ export const MOOD_TO_CLIP: Record<CompanionMood, string> = {
  */
 const CLIP_ALIASES: Record<string, string[]> = {
   thinking: ['walk'],
+  working: ['wave', 'toolcall'],
+  talking: ['cheer', 'responding'],
 };
+
+const ANIMATION_LABELS: Record<string, string> = {
+  idle: 'Idle',
+  thinking: 'Thinking',
+  working: 'Working',
+  talking: 'Talking',
+  walk: 'Thinking',
+  wave: 'Working',
+  cheer: 'Talking',
+  toolcall: 'Working',
+  responding: 'Talking',
+};
+
+export function animationLabelFor(name: string): string {
+  return ANIMATION_LABELS[name] || name.replace(/[-_]/g, ' ');
+}
+
+export function animationPromptFor(name: string): string {
+  return EMOTE_ACTIONS[name] || `Create a seamless, readable pixel-art loop of this agent performing this distinct action: ${name}. Keep the character centered and return cleanly to the starting pose.`;
+}
+
+export function animationFpsFor(name: string): number {
+  return name === 'idle' ? 4 : name === 'thinking' || name === 'walk' ? 5 : 7;
+}
+
+export function animationFrameCountFor(name: string): number {
+  return name === 'idle' ? 4 : 6;
+}
+
+function canonicalMood(mood: CompanionMood): CanonicalCompanionMood {
+  if (mood === 'toolcall') return 'working';
+  if (mood === 'responding') return 'talking';
+  return mood;
+}
 
 export interface AnimationClip {
   id: string;
@@ -72,7 +117,7 @@ export interface PixelLabCharacter {
 
 interface CompanionState {
   characters: PixelLabCharacter[];
-  mood: CompanionMood;
+  mood: CanonicalCompanionMood;
   activeAgentSlug: string | null;
   /**
    * The whole library, unfiltered by workspace.
@@ -113,7 +158,8 @@ export const companionStore = {
   getState: () => state,
 
   setMood(mood: CompanionMood) {
-    if (state.mood !== mood) set({ mood });
+    const next = canonicalMood(mood);
+    if (state.mood !== next) set({ mood: next });
   },
   setActiveAgent(slug: string | null) {
     if (state.activeAgentSlug !== slug) set({ activeAgentSlug: slug });

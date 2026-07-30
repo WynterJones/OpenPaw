@@ -5,8 +5,8 @@
  * the shared WebSocket (the same stream Chat uses). It maps:
  *   - agent_status (routing / analyzing / thinking / spawning / compacting) and
  *     gateway_thinking  -> "thinking"
- *   - agent_stream tool_start                                       -> "toolcall"
- *   - agent_stream text_delta                                       -> "responding"
+ *   - agent_stream tool_start                                       -> "working"
+ *   - agent_stream text_delta                                       -> "talking"
  *   - agent_completed / status "done" / stream result              -> decay to "idle"
  *
  * It also tracks which agent is active (from the routing status' agent_role_slug)
@@ -77,9 +77,9 @@ export function useCompanionActivity(enabled: boolean): void {
         case 'agent_stream': {
           const evt = msg.payload?.event;
           if (!evt) break;
-          if (evt.type === 'tool_start') bump('toolcall');
-          else if (evt.type === 'tool_end') bump('toolcall');
-          else if (evt.type === 'text_delta') bump('responding');
+          if (evt.type === 'tool_start') bump('working');
+          else if (evt.type === 'tool_end') bump('working');
+          else if (evt.type === 'text_delta') bump('talking');
           else if (evt.type === 'result') scheduleIdle();
           break;
         }

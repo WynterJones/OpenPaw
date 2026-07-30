@@ -27,6 +27,7 @@ import { useWebSocket } from '../lib/useWebSocket';
 import { detectBestWidget } from '../components/widgets/detectWidget';
 import { timeAgo, getToolDetail, resolveMessageRole } from '../lib/chatUtils';
 import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbles';
+import { MessageThreadPanel } from '../components/chat/MessageThreadPanel';
 import { TmuxSessionCard } from '../components/chat/TmuxSessionCard';
 import { CanvasPanel } from '../components/chat/CanvasPanel';
 import { SplitDivider } from '../components/workbench/SplitDivider';
@@ -149,6 +150,7 @@ export function Chat() {
   } = useAutocomplete();
   const [activeThread, setActiveThread] = useState<string | null>(() => localStorage.getItem('openpaw_active_thread'));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [threadRoot, setThreadRoot] = useState<ChatMessage | null>(null);
   const [input, setInput] = useState('');
   const [agent] = useState('');
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
@@ -722,6 +724,20 @@ export function Chat() {
       }
     }
 
+    if (msg.type === 'message_thread_updated') {
+      const rootMessageId = payload?.root_message_id as string;
+      const childThreadId = payload?.child_thread_id as string;
+      const replyCount = Number(payload?.reply_count || 0);
+      if (rootMessageId) {
+        setMessages(prev => prev.map(message => message.id === rootMessageId
+          ? { ...message, child_thread_id: childThreadId, thread_reply_count: replyCount }
+          : message));
+        setThreadRoot(current => current?.id === rootMessageId
+          ? { ...current, child_thread_id: childThreadId, thread_reply_count: replyCount }
+          : current);
+      }
+    }
+
     // Live-update todo lists when agents modify them
     if (msg.type === 'todo_updated') {
       loadTodoLists();
@@ -1002,6 +1018,7 @@ export function Chat() {
 
     setRoutingIndicator(null);
     setActiveAgentSlug(null);
+    setThreadRoot(null);
 
     if (activeThread) {
       // Clear unread indicator when switching to a thread
@@ -1833,7 +1850,17 @@ export function Chat() {
                   );
                 })()}
                 {(!activePin?.pinned || transcriptOpen) &&
-                  messages.map(msg => <MessageBubble key={msg.id} message={msg} roles={roles} onRefresh={() => activeThread && loadMessages(activeThread)} userAvatarPath={user?.avatar_path} onReact={handleReaction} />)}
+                  messages.map(msg => (
+                    <MessageBubble
+                      key={msg.id}
+                      message={msg}
+                      roles={roles}
+                      onRefresh={() => activeThread && loadMessages(activeThread)}
+                      userAvatarPath={user?.avatar_path}
+                      onReact={handleReaction}
+                      onOpenThread={setThreadRoot}
+                    />
+                  ))}
                 {isStreaming && (
                   <StreamingMessage
                     text={streamingText}
@@ -2219,15 +2246,27 @@ export function Chat() {
                         },
                       });
                     }}
-                    placeholder="Ask anything... (@ agents, # services, !! context, @@ media)"
+                    placeholder="Ask anything…"
                     aria-label="Type a message"
                     aria-keyshortcuts="Enter"
                     /* Never disabled: typing ahead is the point of the queue,
                        and Enter during a turn queues rather than double-sends. */
                     rows={2}
-                    className="w-full resize-none bg-transparent text-text-0 text-base placeholder:text-text-3 px-4 pt-3 pb-1 focus:outline-none focus:ring-0 focus:border-transparent border-none shadow-none min-h-[56px]"
+                    className="w-full resize-none bg-transparent text-text-0 text-base font-medium placeholder:font-normal placeholder:text-text-3 px-4 pt-3 pb-1 focus:outline-none focus:ring-0 focus:border-transparent border-none shadow-none min-h-[56px]"
                     style={{ maxHeight: '350px' }}
                   />
+                  <div
+                    className="px-4 pb-0.5 text-[10px] leading-4 text-text-3"
+                    aria-label="Message shortcuts"
+                  >
+                    <span className="font-medium text-text-2">@</span> agents
+                    <span aria-hidden="true"> · </span>
+                    <span className="font-medium text-text-2">#</span> services
+                    <span aria-hidden="true"> · </span>
+                    <span className="font-medium text-text-2">!!</span> context
+                    <span aria-hidden="true"> · </span>
+                    <span className="font-medium text-text-2">@@</span> media
+                  </div>
                   <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
                     <div className="flex items-center gap-1">
                       <label className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer" title="Attach file" aria-label="Attach file">
@@ -2314,7 +2353,25 @@ export function Chat() {
             </div>
           )}
         </div>
-        {activeThread && showRightPanel && (
+        {threadRoot && (
+          <MessageThreadPanel
+            rootMessage={threadRoot}
+            roles={roles}
+            onClose={() => setThreadRoot(null)}
+            onError={(message) => toast('error', message)}
+            onReplyCountChange={(messageId, count, childThreadId) => {
+              setMessages((current) => current.map((message) => (
+                message.id === messageId
+                  ? { ...message, thread_reply_count: count, child_thread_id: childThreadId }
+                  : message
+              )));
+              setThreadRoot((current) => current?.id === messageId
+                ? { ...current, thread_reply_count: count, child_thread_id: childThreadId }
+                : current);
+            }}
+          />
+        )}
+        {activeThread && showRightPanel && !threadRoot && (
           <>
             {!rightPanelCollapsed && <div className="md:hidden fixed inset-0 bg-black/40 z-20" onClick={() => setShowRightPanel(false)} />}
             <div className={`absolute md:relative right-0 z-30 h-full flex flex-col border-l border-border-0 bg-surface-1 transition-all duration-200 ${
@@ -2532,7 +2589,7 @@ export function Chat() {
             </div>
           </>
         )}
-        {canvas && (
+        {canvas && !threadRoot && (
           <>
             {/* Only on a wide screen is this a split. On a phone the canvas
                 covers the conversation instead — half of each would be too

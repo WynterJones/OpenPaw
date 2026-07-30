@@ -251,12 +251,12 @@ type subAgentResult struct {
 // roleChatSubAgent runs a constrained agent loop for a delegated sub-task.
 func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadID, parentSlug, subAgentID string) (*subAgentResult, error) {
 	// Look up agent role
-	var systemPrompt, model string
+	var systemPrompt, model, providerName string
 	var identityInitialized bool
 	err := m.db.QueryRow(
-		"SELECT system_prompt, model, identity_initialized FROM agent_roles WHERE slug = ? AND enabled = 1",
+		"SELECT system_prompt, model, provider, identity_initialized FROM agent_roles WHERE slug = ? AND enabled = 1",
 		agentSlug,
-	).Scan(&systemPrompt, &model, &identityInitialized)
+	).Scan(&systemPrompt, &model, &providerName, &identityInitialized)
 	if err != nil {
 		return nil, fmt.Errorf("agent role %q not found or disabled: %w", agentSlug, err)
 	}
@@ -279,8 +279,9 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 	subCtx, cancel := context.WithTimeout(ctx, time.Duration(subAgentTimeoutMin)*time.Minute)
 	defer cancel()
 
+	provider := m.ProviderFor(providerName)
 	cfg := llm.AgentConfig{
-		Model:    m.Provider().ResolveModel(model, llm.ModelSonnet),
+		Model:    provider.ResolveModel(model, llm.ModelSonnet),
 		System:   systemPrompt,
 		MaxTurns: subAgentMaxTurns,
 		OnEvent: func(ev StreamEvent) {
@@ -310,7 +311,7 @@ func (m *Manager) roleChatSubAgent(ctx context.Context, agentSlug, task, threadI
 		}
 	}
 
-	result, err := m.Provider().RunAgentLoop(subCtx, cfg, task)
+	result, err := provider.RunAgentLoop(subCtx, cfg, task)
 	if err != nil {
 		return nil, fmt.Errorf("sub-agent %s failed: %w", agentSlug, err)
 	}

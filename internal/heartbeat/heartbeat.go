@@ -335,7 +335,7 @@ func (m *Manager) runCycleInternal(forced bool) {
 
 	// Get enabled agents with heartbeat enabled
 	rows, err := m.db.Query(
-		`SELECT slug, model, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec
+		`SELECT slug, model, provider, heartbeat_interval_sec, heartbeat_max_turns, heartbeat_timeout_sec
 		 FROM agent_roles WHERE enabled = 1 AND heartbeat_enabled = 1 ORDER BY sort_order ASC`,
 	)
 	if err != nil {
@@ -347,7 +347,7 @@ func (m *Manager) runCycleInternal(forced bool) {
 	var agentList []agentSettings
 	for rows.Next() {
 		var a agentSettings
-		if err := rows.Scan(&a.slug, &a.model, &a.intervalSec, &a.maxTurns, &a.timeoutSec); err != nil {
+		if err := rows.Scan(&a.slug, &a.model, &a.provider, &a.intervalSec, &a.maxTurns, &a.timeoutSec); err != nil {
 			logger.Error("Heartbeat: failed to scan agent row: %v", err)
 			continue
 		}
@@ -392,10 +392,10 @@ func (m *Manager) runCycleInternal(forced bool) {
 // agentSettings is one agent's heartbeat configuration. The three override
 // fields are 0 when the agent inherits the global value.
 type agentSettings struct {
-	slug, model string
-	intervalSec int
-	maxTurns    int
-	timeoutSec  int
+	slug, model, provider string
+	intervalSec           int
+	maxTurns              int
+	timeoutSec            int
 }
 
 func (a agentSettings) interval(cfg Config) time.Duration {
@@ -915,8 +915,9 @@ Now read your heartbeat instructions below and take action.`, time.Now().Format(
 		extraHandlers[name] = handler
 	}
 
-	result, err := m.agentMgr.Provider().RunAgentLoop(ctx, llm.AgentConfig{
-		Model:         m.agentMgr.Provider().ResolveModel(model, llm.ModelSonnet),
+	provider := m.agentMgr.ProviderFor(a.provider)
+	result, err := provider.RunAgentLoop(ctx, llm.AgentConfig{
+		Model:         provider.ResolveModel(model, llm.ModelSonnet),
 		System:        systemPrompt,
 		MaxTurns:      a.turns(),
 		ExtraTools:    extraTools,

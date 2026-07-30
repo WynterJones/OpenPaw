@@ -444,6 +444,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Get("/threads/{id}/members", chatHandler.ListThreadMembers)
 				r.Delete("/threads/{id}/members/{slug}", chatHandler.RemoveThreadMember)
 				r.Post("/messages/{messageId}/reactions", chatHandler.ToggleReaction)
+				r.Get("/messages/{messageId}/thread", chatHandler.GetMessageThread)
+				r.Post("/messages/{messageId}/thread", chatHandler.CreateMessageThread)
 			})
 
 			// Chat canvas — serves local files into the preview iframe.

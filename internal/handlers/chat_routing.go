@@ -575,14 +575,14 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	}
 
 	// Look up the role from the database
-	var systemPrompt, model, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
+	var systemPrompt, model, providerOverride, agentName, avatarDescription, avatarPath, remoteProvider, remoteAgentID string
 	var identityInitialized bool
 	var err error
 	for i, slug := range candidates {
 		err = h.db.QueryRow(
-			"SELECT system_prompt, model, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
+			"SELECT system_prompt, model, provider, identity_initialized, name, avatar_description, avatar_path, remote_provider, remote_agent_id FROM agent_roles WHERE slug = ? AND enabled = 1",
 			slug,
-		).Scan(&systemPrompt, &model, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
+		).Scan(&systemPrompt, &model, &providerOverride, &identityInitialized, &agentName, &avatarDescription, &avatarPath, &remoteProvider, &remoteAgentID)
 		if err == nil {
 			if i > 0 {
 				logger.Warn("Agent %q is not available — answering with %q instead", agentRoleSlug, slug)
@@ -606,6 +606,10 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 		h.handleRemoteAgentChat(ctx, threadID, content, agentRoleSlug, remoteAgentID)
 		return
 	}
+	// Each specialist can use its own engine. The provider pin stays on this
+	// context through RoleChat and all of its tools/delegation without changing
+	// the app-wide provider used by the gateway or other concurrent agents.
+	ctx = agents.WithProvider(ctx, providerOverride)
 
 	// If identity system is initialized, assemble prompt from files
 	var agentDir string
@@ -694,7 +698,7 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	if len(extraCostUSD) > 0 {
 		costUSD += extraCostUSD[0]
 	}
-	h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL, toolCallsJSON)
+	responseMessageID := h.saveAssistantMessage(threadID, agentRoleSlug, response, costUSD, inTok, outTok, widgetJSON, imageURL, toolCallsJSON)
 
 	// Look over the exchange for anything worth remembering.
 	//
@@ -729,7 +733,7 @@ func (h *ChatHandler) handleRoleChatWithDepth(ctx context.Context, threadID, con
 	// Check for agent-to-agent @mentions in the response (with depth limit)
 	if depth < maxMentionDepth {
 		if mentionedSlug := h.extractMention(response); mentionedSlug != "" && mentionedSlug != agentRoleSlug {
-			h.evaluateAgentMention(ctx, threadID, agentRoleSlug, mentionedSlug, response, depth)
+			h.evaluateAgentMention(ctx, threadID, responseMessageID, agentRoleSlug, mentionedSlug, response, depth)
 		}
 	}
 }
@@ -1156,6 +1160,39 @@ func (h *ChatHandler) fetchThreadHistory(threadID string, limits ...int) []agent
 		).Scan(&id, &content); err == nil {
 			msgs = append([]agents.ThreadMessage{{ID: id, Role: "system", Content: content}}, msgs...)
 		}
+	}
+
+	// A focused message thread owns an independent context window. Its only
+	// inheritance is the exact message it was opened from; the rest of the
+	// parent chat is deliberately absent. Present the anchor as system context
+	// so an assistant-authored anchor never looks like a fresh assistant turn.
+	var rootID, rootRole, rootContent, rootAgent string
+	if err := h.db.QueryRow(
+		`SELECT root.id, root.role, root.content, root.agent_role_slug
+		 FROM chat_threads child
+		 JOIN chat_messages root ON root.id = child.root_message_id
+		 WHERE child.id = ? AND child.root_message_id != ''`,
+		threadID,
+	).Scan(&rootID, &rootRole, &rootContent, &rootAgent); err == nil {
+		anchor := agents.ThreadMessage{
+			ID:   "thread-anchor:" + rootID,
+			Role: "user",
+			Content: "This is a focused message thread with its own context window. " +
+				"The thread was opened from the following " + rootRole + " message; " +
+				"use it as the subject of this thread, without assuming access to the rest of the parent chat:\n\n" +
+				rootContent,
+			AgentSlug: rootAgent,
+		}
+		// RoleChat expects completed history turns (user → assistant) before the
+		// new user message. Pair the anchor with a terse acknowledgement so it
+		// survives that normalization instead of being mistaken for the current
+		// unpaired prompt and dropped.
+		ack := agents.ThreadMessage{
+			ID:      "thread-anchor-ack:" + rootID,
+			Role:    "assistant",
+			Content: "Understood. I will keep this focused thread limited to that original message and the replies here.",
+		}
+		msgs = append([]agents.ThreadMessage{anchor, ack}, msgs...)
 	}
 
 	return msgs

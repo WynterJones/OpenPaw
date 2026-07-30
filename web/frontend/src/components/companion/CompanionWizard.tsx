@@ -20,7 +20,10 @@ import { api } from '../../lib/api';
 import {
   companionStore,
   DEFAULT_EMOTES,
-  EMOTE_ACTIONS,
+  animationFpsFor,
+  animationFrameCountFor,
+  animationLabelFor,
+  animationPromptFor,
   type PixelLabCharacter,
 } from '../../lib/companionStore';
 import {
@@ -143,7 +146,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     try {
       const imgs = await createPixelImageOptions(
         {
-          description: `pixel art character, ${description.trim()}`,
+          description: `Full-body pixel-art AI agent avatar: ${description.trim()}. Centered, south-facing three-quarter or front view, transparent background, crisp readable silhouette, consistent proportions, face and hands clearly visible, neutral standing pose with room around the body for animation. No text, frame, scenery, shadow, or cropped limbs.`,
           initImage: reference.image ?? undefined,
           initImageStrength: reference.strength,
         },
@@ -168,7 +171,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
 
     try {
       const job = await createCharacter({
-        description: `pixel art character, ${description.trim()}`,
+        description: `Full-body pixel-art AI agent companion: ${description.trim()}. Keep the selected design exact and animation-ready: centered, transparent background, crisp silhouette, consistent proportions, visible face and hands, neutral standing pose.`,
         referenceImage: sprite,
       });
       await pollJob(job.jobId);
@@ -183,11 +186,12 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
         try {
           const frames = await animateAndCollect({
             characterId,
-            action: EMOTE_ACTIONS[emote] ?? emote,
+            action: animationPromptFor(emote),
+            frameCount: animationFrameCountFor(emote),
           });
           animations.push({
             name: emote,
-            fps: emote === 'idle' ? 4 : 6,
+            fps: animationFpsFor(emote),
             frames: frames.length > 0 ? frames : [sprite],
           });
           setEmoteProgress((prev) =>
@@ -235,10 +239,14 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     setError(null);
     setBusy(true);
     try {
-      const frames = await animateAndCollect({ characterId: saved.pixellab_id, action });
+      const frames = await animateAndCollect({
+        characterId: saved.pixellab_id,
+        action: animationPromptFor(action),
+        frameCount: 6,
+      });
       await api.post(`/pixellab/characters/${saved.id}/animations`, {
         name: action,
-        fps: 6,
+        fps: animationFpsFor(action),
         frames: frames.length > 0 ? frames : saved.base_url ? [saved.base_url] : [],
       });
       await refreshSaved();
@@ -257,15 +265,16 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
     try {
       const frames = await animateAndCollect({
         characterId: saved.pixellab_id,
-        action: action === 'idle' ? 'idle breathing' : action,
+        action: animationPromptFor(action),
+        frameCount: animationFrameCountFor(action),
       });
       await api.post(`/pixellab/characters/${saved.id}/animations`, {
         name: action,
-        fps: action === 'idle' ? 4 : 6,
+        fps: animationFpsFor(action),
         frames: frames.length > 0 ? frames : saved.base_url ? [saved.base_url] : [],
       });
       await refreshSaved();
-      toast('success', `Regenerated "${action}"`);
+      toast('success', `Regenerated ${animationLabelFor(action).toLowerCase()} state`);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -435,7 +444,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
             </div>
             <div className="flex items-center gap-2">
               <Button onClick={handleAnimate} loading={busy} disabled={selected === null} icon={<Sparkles className="w-4 h-4" />}>
-                Animate (4 emotes)
+                Animate agent states
               </Button>
               <Button variant="ghost" onClick={handleGenerate} disabled={busy}>
                 Regenerate
@@ -454,7 +463,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
                   {p.status === 'done' && <Check className="w-4 h-4 text-green-400" />}
                   {p.status === 'error' && <span className="w-4 h-4 text-red-400">!</span>}
                   {p.status === 'pending' && <span className="w-4 h-4 text-text-3">·</span>}
-                  <span className="capitalize">{p.name}</span>
+                  <span>{animationLabelFor(p.name)}</span>
                 </li>
               ))}
             </ul>
@@ -492,11 +501,11 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
               </Button>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {saved.animations.map((clip) => (
                 <div key={clip.id} className="flex flex-col items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 p-2">
                   <SpriteAnimation frames={clip.frames} fps={clip.fps} size={64} autoCrop />
-                  <span className="text-xs capitalize text-text-3">{clip.name}</span>
+                  <span className="text-xs capitalize text-text-3">{animationLabelFor(clip.name)}</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -527,7 +536,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
             />
 
             <div className="flex flex-col gap-2 border-t border-border-0 pt-3">
-              <label className="text-xs text-text-3">Add another emote</label>
+              <label className="text-xs text-text-3">Add another animation</label>
               <div className="flex items-center gap-2">
                 <Input
                   placeholder="dance, sit, facepalm…"

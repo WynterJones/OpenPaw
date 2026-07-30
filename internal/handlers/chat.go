@@ -120,7 +120,7 @@ func (h *ChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 		 FROM chat_threads t
 		 LEFT JOIN (SELECT thread_id, SUM(cost_usd) AS cost FROM chat_messages GROUP BY thread_id) c ON c.thread_id = t.id
 		 LEFT JOIN (SELECT thread_id, MAX(scanned_at) AS scanned_at FROM dream_scans GROUP BY thread_id) d ON d.thread_id = t.id
-		 WHERE t.workspace_id = ?`+pinnedFilter+`
+		 WHERE t.workspace_id = ? AND COALESCE(t.parent_thread_id, '') = ''`+pinnedFilter+`
 		 ORDER BY t.updated_at DESC LIMIT ? OFFSET ?`,
 		args...,
 	)
@@ -297,28 +297,51 @@ func archiveThreadCosts(db *database.DB, threadID string) {
 func (h *ChatHandler) DeleteThread(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// Archive cost/token stats before deletion
-	archiveThreadCosts(h.db, id)
+	// Focused child threads are hidden from the main chat list but still own
+	// messages, provider sessions, members, and spend. Delete them alongside
+	// their parent so no inaccessible conversation data is left behind.
+	threadIDs := []string{id}
+	childRows, err := h.db.Query("SELECT id FROM chat_threads WHERE parent_thread_id = ?", id)
+	if err == nil {
+		for childRows.Next() {
+			var childID string
+			if childRows.Scan(&childID) == nil {
+				threadIDs = append(threadIDs, childID)
+			}
+		}
+		childRows.Close()
+	}
 
-	// Delete reactions, members, messages, then the thread
-	if _, err := h.db.Exec("DELETE FROM chat_message_reactions WHERE message_id IN (SELECT id FROM chat_messages WHERE thread_id = ?)", id); err != nil {
-		logger.Error("Failed to delete thread reactions: %v", err)
+	for _, threadID := range threadIDs {
+		archiveThreadCosts(h.db, threadID)
+		if _, err := h.db.Exec("DELETE FROM chat_message_reactions WHERE message_id IN (SELECT id FROM chat_messages WHERE thread_id = ?)", threadID); err != nil {
+			logger.Error("Failed to delete thread reactions: %v", err)
+		}
+		if _, err := h.db.Exec("DELETE FROM thread_members WHERE thread_id = ?", threadID); err != nil {
+			logger.Error("Failed to delete thread members: %v", err)
+		}
+		if _, err := h.db.Exec("DELETE FROM chat_messages WHERE thread_id = ?", threadID); err != nil {
+			logger.Error("Failed to delete thread messages: %v", err)
+		}
+		h.db.DeleteThreadProviderSessions(threadID)
 	}
-	if _, err := h.db.Exec("DELETE FROM thread_members WHERE thread_id = ?", id); err != nil {
-		logger.Error("Failed to delete thread members: %v", err)
-	}
-	if _, err := h.db.Exec("DELETE FROM chat_messages WHERE thread_id = ?", id); err != nil {
-		logger.Error("Failed to delete thread messages: %v", err)
-	}
-	h.db.DeleteThreadProviderSessions(id)
 
+	// Children first. There is intentionally no parent FK in the migration so
+	// upgrades remain safe on existing SQLite files, but ordering still makes
+	// the ownership relationship explicit.
+	if len(threadIDs) > 1 {
+		if _, err := h.db.Exec("DELETE FROM chat_threads WHERE parent_thread_id = ?", id); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete message threads")
+			return
+		}
+	}
 	result, err := h.db.Exec("DELETE FROM chat_threads WHERE id = ?", id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete thread")
 		return
 	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
 		writeError(w, http.StatusNotFound, "thread not found")
 		return
 	}
@@ -479,14 +502,32 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	threadID := chi.URLParam(r, "id")
 
 	var exists string
-	err := h.db.QueryRow("SELECT id FROM chat_threads WHERE id = ?", threadID).Scan(&exists)
+	err := h.db.QueryRow(
+		"SELECT id FROM chat_threads WHERE id = ? AND workspace_id = ?",
+		threadID, activeWorkspaceID(h.db),
+	).Scan(&exists)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "thread not found")
 		return
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, thread_id, role, content, agent_role_slug, cost_usd, input_tokens, output_tokens, widget_data, image_url, tool_calls_json, stopped, created_at FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC",
+		`SELECT m.id, m.thread_id, m.role, m.content, m.agent_role_slug,
+		        m.cost_usd, m.input_tokens, m.output_tokens, m.widget_data,
+		        m.image_url, m.tool_calls_json, m.stopped, m.created_at,
+		        COALESCE((
+		            SELECT child.id FROM chat_threads child
+		            WHERE child.root_message_id = m.id
+		            LIMIT 1
+		        ), ''),
+		        COALESCE((
+		            SELECT COUNT(*) FROM chat_messages reply
+		            JOIN chat_threads child ON child.id = reply.thread_id
+		            WHERE child.root_message_id = m.id
+		        ), 0)
+		 FROM chat_messages m
+		 WHERE m.thread_id = ?
+		 ORDER BY m.created_at ASC`,
 		threadID,
 	)
 	if err != nil {
@@ -500,7 +541,12 @@ func (h *ChatHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var m models.ChatMessage
 		var tcJSON *string
-		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug, &m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData, &m.ImageURL, &tcJSON, &m.Stopped, &m.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&m.ID, &m.ThreadID, &m.Role, &m.Content, &m.AgentRoleSlug,
+			&m.CostUSD, &m.InputTokens, &m.OutputTokens, &m.WidgetData,
+			&m.ImageURL, &tcJSON, &m.Stopped, &m.CreatedAt,
+			&m.ChildThreadID, &m.ThreadReplyCount,
+		); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to scan message")
 			return
 		}
@@ -548,7 +594,10 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := chi.URLParam(r, "id")
 
 	var exists string
-	err := h.db.QueryRow("SELECT id FROM chat_threads WHERE id = ?", threadID).Scan(&exists)
+	err := h.db.QueryRow(
+		"SELECT id FROM chat_threads WHERE id = ? AND workspace_id = ?",
+		threadID, activeWorkspaceID(h.db),
+	).Scan(&exists)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "thread not found")
 		return
@@ -593,6 +642,7 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if _, err = h.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID); err != nil {
 		logger.Error("Failed to update thread timestamp: %v", err)
 	}
+	h.notifyMessageThreadUpdated(threadID)
 
 	userMsg := models.ChatMessage{
 		ID:            userMsgID,
@@ -1257,6 +1307,7 @@ func (h *ChatHandler) saveAssistantMessage(threadID, agentRoleSlug, content stri
 	if _, err := h.db.Exec("UPDATE chat_threads SET updated_at = ? WHERE id = ?", now, threadID); err != nil {
 		logger.Error("Failed to update thread timestamp: %v", err)
 	}
+	h.notifyMessageThreadUpdated(threadID)
 	// Increment running counters for LogStats
 	if costUSD > 0 || inputTokens > 0 || outputTokens > 0 {
 		h.db.Exec("UPDATE system_stats SET value = value + ? WHERE key = 'live_cost_usd'", costUSD)
