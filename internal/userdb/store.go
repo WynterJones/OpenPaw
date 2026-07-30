@@ -520,6 +520,13 @@ func (s *Store) DeleteColumn(workspaceID, columnID string) error {
 }
 
 func (s *Store) ListRows(workspaceID, tableID, search string, limit, offset int) (RowPage, error) {
+	return s.ListRowsSorted(workspaceID, tableID, search, limit, offset, "", "")
+}
+
+// ListRowsSorted returns one page of rows, optionally ordered by a column.
+// Column IDs and directions are validated before the direction is inserted
+// into SQL; the JSON path itself remains a bound parameter.
+func (s *Store) ListRowsSorted(workspaceID, tableID, search string, limit, offset int, sortColumnID, sortDirection string) (RowPage, error) {
 	if err := s.assertTable(workspaceID, tableID); err != nil {
 		return RowPage{}, err
 	}
@@ -539,15 +546,53 @@ func (s *Store) ListRows(workspaceID, tableID, search string, limit, offset int)
 		args = append(args, "%"+escapeLike(strings.ToLower(search))+"%")
 	}
 
+	orderBy := "sort_order, created_at"
+	orderArgs := []interface{}{}
+	if sortColumnID = strings.TrimSpace(sortColumnID); sortColumnID != "" {
+		var columnType string
+		if err := s.db.QueryRow(
+			"SELECT type FROM user_database_columns WHERE id = ? AND table_id = ?",
+			sortColumnID,
+			tableID,
+		).Scan(&columnType); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return RowPage{}, fmt.Errorf("unknown sort column %q", sortColumnID)
+			}
+			return RowPage{}, err
+		}
+
+		direction := strings.ToUpper(strings.TrimSpace(sortDirection))
+		if direction == "" {
+			direction = "ASC"
+		}
+		if direction != "ASC" && direction != "DESC" {
+			return RowPage{}, fmt.Errorf("invalid sort direction %q", sortDirection)
+		}
+
+		jsonPath := `$."` + strings.ReplaceAll(sortColumnID, `"`, `\"`) + `"`
+		valueExpression := "CAST(json_extract(data, ?) AS TEXT) COLLATE NOCASE"
+		if columnType == "number" || columnType == "checkbox" {
+			valueExpression = "CAST(json_extract(data, ?) AS REAL)"
+		}
+		// Keep empty cells at the bottom in both directions, then use the
+		// original row order as a stable tie-breaker.
+		orderBy = fmt.Sprintf(
+			"json_extract(data, ?) IS NULL ASC, %s %s, sort_order, created_at",
+			valueExpression,
+			direction,
+		)
+		orderArgs = append(orderArgs, jsonPath, jsonPath)
+	}
+
 	var total int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM user_database_rows WHERE "+where, args...).Scan(&total); err != nil {
 		return RowPage{}, err
 	}
-	queryArgs := append(append([]interface{}{}, args...), limit, offset)
+	queryArgs := append(append(append([]interface{}{}, args...), orderArgs...), limit, offset)
 	rows, err := s.db.Query(
 		`SELECT id, table_id, data, sort_order, created_at, updated_at
 		   FROM user_database_rows WHERE `+where+`
-		  ORDER BY sort_order, created_at LIMIT ? OFFSET ?`, queryArgs...)
+		  ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		return RowPage{}, err
 	}

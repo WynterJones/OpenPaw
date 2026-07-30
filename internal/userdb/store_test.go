@@ -142,6 +142,62 @@ func TestColumnsRowsSearchAndNamedProjection(t *testing.T) {
 	}
 }
 
+func TestListRowsSortedByTypedColumn(t *testing.T) {
+	store, db := newTestStore(t)
+	workspaceID := createWorkspace(t, db, "Sorted")
+	databaseItem, err := store.CreateDatabase(workspaceID, "Products", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := databaseItem.Tables[0]
+	nameColumn := table.Columns[0]
+	priceColumn, err := store.CreateColumn(workspaceID, table.ID, "Price", "number", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, values := range []map[string]interface{}{
+		{nameColumn.ID: "Zulu", priceColumn.ID: 10},
+		{nameColumn.ID: "alpha", priceColumn.ID: 2},
+		{nameColumn.ID: "Beta"},
+	} {
+		if _, err := store.CreateRow(workspaceID, table.ID, values); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ascending, err := store.ListRowsSorted(workspaceID, table.ID, "", 20, 0, priceColumn.ID, "asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []interface{}{
+		ascending.Rows[0].Values[priceColumn.ID],
+		ascending.Rows[1].Values[priceColumn.ID],
+		ascending.Rows[2].Values[priceColumn.ID],
+	}; got[0] != float64(2) || got[1] != float64(10) || got[2] != nil {
+		t.Fatalf("ascending prices = %#v, want [2 10 nil]", got)
+	}
+
+	descending, err := store.ListRowsSorted(workspaceID, table.ID, "", 20, 0, nameColumn.ID, "desc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []interface{}{
+		descending.Rows[0].Values[nameColumn.ID],
+		descending.Rows[1].Values[nameColumn.ID],
+		descending.Rows[2].Values[nameColumn.ID],
+	}; got[0] != "Zulu" || got[1] != "Beta" || got[2] != "alpha" {
+		t.Fatalf("descending names = %#v, want [Zulu Beta alpha]", got)
+	}
+
+	if _, err := store.ListRowsSorted(workspaceID, table.ID, "", 20, 0, priceColumn.ID, "sideways"); err == nil {
+		t.Fatal("invalid sort direction was accepted")
+	}
+	if _, err := store.ListRowsSorted(workspaceID, table.ID, "", 20, 0, "missing-column", "asc"); err == nil {
+		t.Fatal("unknown sort column was accepted")
+	}
+}
+
 func TestColumnNamesForAgentRows(t *testing.T) {
 	store, db := newTestStore(t)
 	workspaceID := createWorkspace(t, db, "Agent")

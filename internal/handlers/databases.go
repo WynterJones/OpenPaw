@@ -43,7 +43,8 @@ func writeDatabaseError(w http.ResponseWriter, err error) {
 		strings.Contains(message, "cannot be empty"),
 		strings.Contains(message, "already exists"),
 		strings.Contains(message, "unsupported column"),
-		strings.Contains(message, "unknown column"):
+		strings.Contains(message, "unknown column"),
+		strings.Contains(message, "invalid sort"):
 		writeError(w, http.StatusBadRequest, message)
 	default:
 		writeError(w, http.StatusInternalServerError, "database operation failed")
@@ -231,12 +232,14 @@ func (h *DatabasesHandler) DeleteColumn(w http.ResponseWriter, r *http.Request) 
 func (h *DatabasesHandler) ListRows(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	page, err := h.store.ListRows(
+	page, err := h.store.ListRowsSorted(
 		activeWorkspaceID(h.db),
 		chi.URLParam(r, "tableId"),
 		r.URL.Query().Get("search"),
 		limit,
 		offset,
+		r.URL.Query().Get("sort_column"),
+		r.URL.Query().Get("sort_direction"),
 	)
 	if err != nil {
 		writeDatabaseError(w, err)

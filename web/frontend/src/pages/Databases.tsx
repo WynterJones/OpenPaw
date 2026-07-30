@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import {
   Check,
   ChevronDown,
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
   Database as DatabaseIcon,
   ExternalLink,
   Hash,
@@ -33,6 +36,11 @@ const ROW_LIMIT = 200;
 const DEFAULT_COLUMN_WIDTH = 240;
 const MIN_COLUMN_WIDTH = 140;
 const MAX_COLUMN_WIDTH = 640;
+
+type TableSort = {
+  columnId: string;
+  direction: 'asc' | 'desc';
+};
 
 const COLUMN_TYPES: { value: UserDatabaseColumnType; label: string; icon: typeof Type }[] = [
   { value: 'text', label: 'Text', icon: Type },
@@ -328,11 +336,13 @@ export function Databases() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<'database' | 'table' | null>(null);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [tableSorts, setTableSorts] = useState<Record<string, TableSort>>({});
 
   const selectedTable = useMemo(
     () => database?.tables?.find(table => table.id === tableId) ?? null,
     [database, tableId],
   );
+  const activeSort = tableId ? tableSorts[tableId] ?? null : null;
 
   useEffect(() => {
     if (!selectedTable) {
@@ -399,11 +409,22 @@ export function Databases() {
     return nextTable;
   }, [tableId]);
 
-  const loadRows = useCallback(async (activeTableId: string, query = search, offset = 0, append = false) => {
+  const loadRows = useCallback(async (
+    activeTableId: string,
+    query = search,
+    offset = 0,
+    append = false,
+    sortOverride?: TableSort | null,
+  ) => {
     setRowsLoading(true);
     try {
       const params = new URLSearchParams({ limit: String(ROW_LIMIT), offset: String(offset) });
       if (query.trim()) params.set('search', query.trim());
+      const tableSort = sortOverride === undefined ? tableSorts[activeTableId] : sortOverride;
+      if (tableSort) {
+        params.set('sort_column', tableSort.columnId);
+        params.set('sort_direction', tableSort.direction);
+      }
       const page = await api.get<UserDatabaseRowPage>(`/databases/tables/${activeTableId}/rows?${params}`);
       const pageRows = Array.isArray(page.rows) ? page.rows : [];
       setRows(current => append ? [...current, ...pageRows] : pageRows);
@@ -411,7 +432,23 @@ export function Databases() {
     } finally {
       setRowsLoading(false);
     }
-  }, [search]);
+  }, [search, tableSorts]);
+
+  const toggleColumnSort = (columnId: string) => {
+    if (!selectedTable) return;
+    setTableSorts(current => {
+      const existing = current[selectedTable.id];
+      if (!existing || existing.columnId !== columnId) {
+        return { ...current, [selectedTable.id]: { columnId, direction: 'asc' } };
+      }
+      if (existing.direction === 'asc') {
+        return { ...current, [selectedTable.id]: { columnId, direction: 'desc' } };
+      }
+      const next = { ...current };
+      delete next[selectedTable.id];
+      return next;
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -446,12 +483,12 @@ export function Databases() {
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const reloadCurrent = useCallback(async () => {
+  const reloadCurrent = useCallback(async (sortOverride?: TableSort | null) => {
     if (!selectedId) return;
     const activeTable = await loadDatabase(selectedId, tableId);
     await loadDatabases(selectedId);
-    if (activeTable) await loadRows(activeTable);
-  }, [selectedId, tableId, loadDatabase, loadDatabases, loadRows]);
+    if (activeTable) await loadRows(activeTable, search, 0, false, sortOverride);
+  }, [selectedId, tableId, loadDatabase, loadDatabases, loadRows, search]);
 
   useWebSocket({
     onMessage: useCallback((message: WSMessage) => {
@@ -564,7 +601,17 @@ export function Databases() {
     if (!window.confirm(`Delete column "${column.name}" and its values?`)) return;
     try {
       await api.delete(`/databases/columns/${column.id}`);
-      await reloadCurrent();
+      const clearedActiveSort = Boolean(
+        selectedTable && tableSorts[selectedTable.id]?.columnId === column.id,
+      );
+      if (clearedActiveSort && selectedTable) {
+        setTableSorts(current => {
+          const next = { ...current };
+          delete next[selectedTable.id];
+          return next;
+        });
+      }
+      await reloadCurrent(clearedActiveSort ? null : undefined);
       toast('success', 'Column deleted');
     } catch (error) {
       toast('error', error instanceof Error ? error.message : 'Could not delete column');
@@ -591,6 +638,14 @@ export function Databases() {
     } catch (error) {
       setRows(previous);
       toast('error', error instanceof Error ? error.message : 'Could not update cell');
+      return;
+    }
+    if (selectedTable && tableSorts[selectedTable.id]?.columnId === columnId) {
+      try {
+        await loadRows(selectedTable.id);
+      } catch {
+        toast('error', 'Cell saved, but sorted rows could not be refreshed');
+      }
     }
   };
 
@@ -854,6 +909,9 @@ export function Databases() {
                       {selectedTable.columns.map(column => (
                         <th
                           key={column.id}
+                          aria-sort={activeSort?.columnId === column.id
+                            ? activeSort.direction === 'asc' ? 'ascending' : 'descending'
+                            : 'none'}
                           style={{
                             width: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
                             minWidth: columnWidths[column.id] || DEFAULT_COLUMN_WIDTH,
@@ -861,9 +919,34 @@ export function Databases() {
                           }}
                           className="group/header relative h-10 border-r border-b border-border-0/45 bg-surface-2 text-left font-medium text-text-1"
                         >
-                          <div className="flex items-center gap-2 px-2.5">
-                            <ColumnTypeIcon type={column.type} />
-                            <span className="flex-1 truncate">{column.name}</span>
+                          <div className="flex items-center gap-0.5 px-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleColumnSort(column.id)}
+                              className={`flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-primary/70 ${
+                                activeSort?.columnId === column.id
+                                  ? 'text-accent-text bg-accent-muted/60'
+                                  : 'text-text-1 hover:bg-surface-3'
+                              }`}
+                              title={activeSort?.columnId === column.id
+                                ? activeSort.direction === 'asc'
+                                  ? `Sort ${column.name} descending`
+                                  : `Clear ${column.name} sort`
+                                : `Sort ${column.name} ascending`}
+                              aria-label={activeSort?.columnId === column.id
+                                ? activeSort.direction === 'asc'
+                                  ? `Sort ${column.name} descending`
+                                  : `Clear ${column.name} sort`
+                                : `Sort ${column.name} ascending`}
+                            >
+                              <ColumnTypeIcon type={column.type} />
+                              <span className="min-w-0 flex-1 truncate">{column.name}</span>
+                              {activeSort?.columnId === column.id
+                                ? activeSort.direction === 'asc'
+                                  ? <ArrowUp className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                                  : <ArrowDown className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                                : <ChevronsUpDown className="h-3.5 w-3.5 flex-shrink-0 text-text-3" aria-hidden="true" />}
+                            </button>
                             <span className="opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 flex items-center gap-0.5">
                               <button
                                 onClick={() => openColumnModal(column)}
