@@ -3476,7 +3476,7 @@ function CompanionTab() {
           <div>
             <h3 className="text-sm font-semibold text-text-1">Companions</h3>
             <p className="text-xs text-text-3">
-              Use them as agent avatars — animated during live replies and still in chat history.
+              Use them during live AI replies while completed messages keep each agent's regular avatar.
             </p>
           </div>
           <Button onClick={() => { setEditChar(null); setWizardOpen(true); }} icon={<Plus className="w-4 h-4" />} disabled={!configured}>

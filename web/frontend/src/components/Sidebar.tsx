@@ -797,11 +797,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
             </div>
           </div>
         ))}
-        <div className="mx-3 my-2 border-b border-border-0" />
         <NavGroupNav label="Knowledge" icon={BookOpen} items={knowledgeItems} collapsed={collapsed} />
-        <div className="mx-3 my-2 border-b border-border-0" />
         <NavGroupNav label="System" icon={Cpu} items={systemItems} collapsed={collapsed} />
-        <div className="mx-3 my-2 border-b border-border-0" />
         <NavGroupNav label="More" icon={MoreHorizontal} items={moreItems} collapsed={collapsed} />
       </nav>
 

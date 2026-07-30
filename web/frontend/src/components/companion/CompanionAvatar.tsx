@@ -1,9 +1,9 @@
 /**
  * Companion-backed assistant avatar.
  *
- * Enabled companions replace the matching agent's normal chat avatar. The
- * current response plays mood-specific frames; completed responses render one
- * stable idle frame so a transcript never becomes a wall of looping sprites.
+ * Enabled companions replace the matching agent's normal avatar only while a
+ * response is active. Completed responses always return to the agent's regular
+ * avatar so transcript history stays visually stable and recognizable.
  */
 
 import { useMemo } from 'react';
@@ -44,6 +44,11 @@ export function CompanionAvatar({
   role: AgentRole | null;
   active?: boolean;
 }) {
+  if (!active) return <AgentAvatar role={role} />;
+  return <LiveCompanionAvatar role={role} />;
+}
+
+function LiveCompanionAvatar({ role }: { role: AgentRole | null }) {
   const { characters, mood, activeAgentSlug } = useCompanionStore();
   const agentSlug = role?.slug || activeAgentSlug || '';
   const companion = useMemo(
@@ -51,14 +56,14 @@ export function CompanionAvatar({
     [agentSlug, characters],
   );
 
-  const clipName = active ? MOOD_TO_CLIP[mood] : 'idle';
+  const clipName = MOOD_TO_CLIP[mood];
   const clip = companion ? clipForName(companion, clipName) : null;
   const sourceFrames = clip?.frames?.length
     ? clip.frames
     : companion?.base_url
       ? [companion.base_url]
       : [];
-  const frames = active ? sourceFrames : sourceFrames.slice(0, 1);
+  const frames = sourceFrames;
 
   if (companion && frames.length > 0) {
     return (
@@ -67,11 +72,10 @@ export function CompanionAvatar({
         aria-label={`${companion.name}, ${role?.name || 'AI'} companion`}
       >
         <SpriteAnimation
-          key={`${companion.id}:${clip?.id || 'base'}:${active ? 'active' : 'still'}`}
+          key={`${companion.id}:${clip?.id || 'base'}`}
           frames={frames}
           fps={clip?.fps ?? 6}
           size={48}
-          paused={!active}
           autoCrop={Boolean(clip)}
           alt=""
         />
@@ -79,6 +83,16 @@ export function CompanionAvatar({
     );
   }
 
+  return <AgentAvatar role={role} active />;
+}
+
+function AgentAvatar({
+  role,
+  active = false,
+}: {
+  role: AgentRole | null;
+  active?: boolean;
+}) {
   return (
     <div
       className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-2/90 ring-1 ring-border-1"

@@ -690,7 +690,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
         {/* ---- Left sidebar -------------------------------------------------- */}
         {view !== "about" && (
         <aside
-          className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[85vw] max-w-[280px] md:w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1 flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
+          className={`${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 absolute md:relative z-30 md:z-auto w-[85vw] max-w-[280px] md:w-[280px] h-full flex flex-col border-r border-border-0 bg-surface-1/80 backdrop-blur-sm flex-shrink-0 overflow-hidden transition-transform duration-200 ease-out`}
         >
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
             {loading ? (
@@ -780,7 +780,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
         )}
 
         {/* ---- Right panel --------------------------------------------------- */}
-        <main className="flex-1 flex flex-col min-w-0 bg-surface-0 overflow-hidden">
+        <main className="flex-1 flex flex-col min-w-0 bg-surface-0/60 backdrop-blur-sm overflow-hidden">
           {aboutYouMode ? (
             <>
               {/* About You header */}
@@ -1033,7 +1033,7 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                     />
                   </div>
                 ) : isImageMime(selectedFile.mime_type) ? (
-                  <div className="flex-1 flex items-center justify-center p-4 md:p-8 bg-surface-0 overflow-auto">
+                  <div className="flex-1 flex items-center justify-center p-4 md:p-8 bg-surface-0/60 overflow-auto">
                     <img
                       src={contextApi.rawFileUrl(selectedFile.id)}
                       alt={selectedFile.name}

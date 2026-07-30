@@ -308,7 +308,7 @@ function WorkspaceDirectoryPanel({
   };
 
   const toolbar = (
-    <div className="flex items-center justify-end gap-2 px-2 md:px-4 py-2 border-b border-border-0 flex-shrink-0">
+    <div className="flex items-center justify-end gap-2 px-2 md:px-4 py-2 border-b border-border-0 bg-surface-1/40 backdrop-blur-sm flex-shrink-0">
       <button
         onClick={addDirectory}
         disabled={!wsId || adding}
@@ -406,7 +406,7 @@ export function KnowledgeBase() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Context" />
-      <div className="flex items-center gap-1 md:gap-2 px-3 md:px-6 border-b border-border-0 op-scroll-x flex-shrink-0">
+      <div className="flex items-center gap-1 md:gap-2 px-3 md:px-6 border-b border-border-0 bg-surface-1/40 backdrop-blur-sm op-scroll-x flex-shrink-0">
         {knowledgeTabs.map(t => (
           <button
             key={t.key}

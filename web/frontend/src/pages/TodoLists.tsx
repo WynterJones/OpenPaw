@@ -519,7 +519,7 @@ export function TodoLists() {
       <div className="flex flex-1 min-h-0">
         {/* Left panel: list of lists */}
         <div
-          className={`w-full md:w-64 border-r border-border-0 flex flex-col bg-surface-0 ${
+          className={`w-full md:w-64 border-r border-border-0 flex flex-col bg-surface-0/60 backdrop-blur-sm ${
             selectedListId ? 'hidden md:flex' : 'flex'
           }`}
         >
@@ -592,7 +592,7 @@ export function TodoLists() {
 
         {/* Right panel: items */}
         <div
-          className={`flex-1 flex flex-col bg-surface-0 ${
+          className={`flex-1 flex flex-col bg-surface-0/60 backdrop-blur-sm ${
             selectedListId ? 'flex' : 'hidden md:flex'
           }`}
         >
