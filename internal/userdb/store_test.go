@@ -1,6 +1,9 @@
 package userdb
 
 import (
+	"bytes"
+	"encoding/csv"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,6 +18,78 @@ func newTestStore(t *testing.T) (*Store, *database.DB) {
 	}
 	t.Cleanup(func() { db.Close() })
 	return NewStore(db), db
+}
+
+func TestCSVImportCreatesDatabaseFromHeadersAndRows(t *testing.T) {
+	store, db := newTestStore(t)
+	workspaceID := createWorkspace(t, db, "CSV")
+	source := "\ufeffName,Website,Notes\nOpenPaw,https://openpaw.dev,\"Line one\nLine two\"\nNabu,,Agent\n"
+
+	result, err := store.ImportCSV(workspaceID, "Favorite Sites.csv", strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("import CSV: %v", err)
+	}
+	if result.Database.Name != "Favorite Sites" || result.ImportedRows != 2 {
+		t.Fatalf("import result = %+v", result)
+	}
+	if len(result.Database.Tables) != 1 || result.Database.Tables[0].Name != "Favorite Sites" {
+		t.Fatalf("imported tables = %+v", result.Database.Tables)
+	}
+	table := result.Database.Tables[0]
+	if got := []string{table.Columns[0].Name, table.Columns[1].Name, table.Columns[2].Name}; got[0] != "Name" || got[1] != "Website" || got[2] != "Notes" {
+		t.Fatalf("columns = %#v", got)
+	}
+
+	rows, err := store.NamedRows(workspaceID, table.ID, "", 10, 0)
+	if err != nil {
+		t.Fatalf("read imported rows: %v", err)
+	}
+	if len(rows.Records) != 2 || rows.Records[0]["Notes"] != "Line one\nLine two" || rows.Records[1]["Website"] != nil {
+		t.Fatalf("records = %#v", rows.Records)
+	}
+
+	second, err := store.ImportCSV(workspaceID, "Favorite Sites.csv", strings.NewReader("Name\nOther\n"))
+	if err != nil {
+		t.Fatalf("second import CSV: %v", err)
+	}
+	if second.Database.Name != "Favorite Sites 2" {
+		t.Fatalf("duplicate import name = %q", second.Database.Name)
+	}
+}
+
+func TestCSVImportNormalizesHeadersAndExportRoundTrips(t *testing.T) {
+	store, db := newTestStore(t)
+	workspaceID := createWorkspace(t, db, "CSV Round Trip")
+
+	result, err := store.ImportCSV(workspaceID, "data.csv", strings.NewReader("Name,name,,Value\nOne,Two,Three,4\n"))
+	if err != nil {
+		t.Fatalf("import CSV: %v", err)
+	}
+	table := result.Database.Tables[0]
+	gotHeaders := []string{table.Columns[0].Name, table.Columns[1].Name, table.Columns[2].Name, table.Columns[3].Name}
+	wantHeaders := []string{"Name", "name 2", "Column 3", "Value"}
+	for index := range wantHeaders {
+		if gotHeaders[index] != wantHeaders[index] {
+			t.Fatalf("headers = %#v, want %#v", gotHeaders, wantHeaders)
+		}
+	}
+
+	var output bytes.Buffer
+	count, err := store.ExportTableCSV(workspaceID, table.ID, &output)
+	if err != nil {
+		t.Fatalf("export CSV: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("exported rows = %d, want 1", count)
+	}
+	records, err := csv.NewReader(&output).ReadAll()
+	if err != nil {
+		t.Fatalf("parse export: %v", err)
+	}
+	if len(records) != 2 || strings.Join(records[0], "|") != strings.Join(wantHeaders, "|") ||
+		strings.Join(records[1], "|") != "One|Two|Three|4" {
+		t.Fatalf("exported records = %#v", records)
+	}
 }
 
 func createWorkspace(t *testing.T, db *database.DB, name string) string {
@@ -195,6 +270,39 @@ func TestListRowsSortedByTypedColumn(t *testing.T) {
 	}
 	if _, err := store.ListRowsSorted(workspaceID, table.ID, "", 20, 0, "missing-column", "asc"); err == nil {
 		t.Fatal("unknown sort column was accepted")
+	}
+}
+
+func TestListRowsPagination(t *testing.T) {
+	store, db := newTestStore(t)
+	workspaceID := createWorkspace(t, db, "Paged")
+	databaseItem, err := store.CreateDatabase(workspaceID, "People", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := databaseItem.Tables[0]
+	nameColumn := table.Columns[0]
+	for index := 1; index <= 23; index++ {
+		if _, err := store.CreateRow(workspaceID, table.ID, map[string]interface{}{
+			nameColumn.ID: index,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, err := store.ListRows(workspaceID, table.ID, "", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := store.ListRows(workspaceID, table.ID, "", 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Total != 23 || first.Limit != 10 || first.Offset != 0 || len(first.Rows) != 10 {
+		t.Fatalf("first page = %+v", first)
+	}
+	if third.Total != 23 || third.Limit != 10 || third.Offset != 20 || len(third.Rows) != 3 {
+		t.Fatalf("third page = %+v", third)
 	}
 }
 

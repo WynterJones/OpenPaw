@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -12,6 +15,8 @@ import (
 	"github.com/openpaw/openpaw/internal/middleware"
 	"github.com/openpaw/openpaw/internal/userdb"
 )
+
+const maxDatabaseCSVUpload = 25 << 20
 
 type DatabasesHandler struct {
 	db        *database.DB
@@ -42,6 +47,9 @@ func writeDatabaseError(w http.ResponseWriter, err error) {
 	case strings.Contains(message, "required"),
 		strings.Contains(message, "cannot be empty"),
 		strings.Contains(message, "already exists"),
+		strings.Contains(message, "invalid CSV"),
+		strings.Contains(message, "CSV must"),
+		strings.Contains(message, "CSV cannot"),
 		strings.Contains(message, "unsupported column"),
 		strings.Contains(message, "unknown column"),
 		strings.Contains(message, "invalid sort"):
@@ -117,6 +125,75 @@ func (h *DatabasesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAudit(middleware.GetUserID(r.Context()), "database_deleted", "database", "database", id, "")
 	h.changed(id, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DatabasesHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxDatabaseCSVUpload+(1<<20))
+	if err := r.ParseMultipartForm(maxDatabaseCSVUpload); err != nil {
+		writeError(w, http.StatusBadRequest, "CSV file is required and must be 25 MB or smaller")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "CSV file is required")
+		return
+	}
+	defer file.Close()
+	if header.Size > maxDatabaseCSVUpload {
+		writeError(w, http.StatusBadRequest, "CSV file must be 25 MB or smaller")
+		return
+	}
+	if ext := strings.ToLower(filepath.Ext(header.Filename)); ext != ".csv" {
+		writeError(w, http.StatusBadRequest, "file must be a CSV")
+		return
+	}
+
+	result, err := h.store.ImportCSV(activeWorkspaceID(h.db), header.Filename, file)
+	if err != nil {
+		writeDatabaseError(w, err)
+		return
+	}
+	h.db.LogAudit(
+		middleware.GetUserID(r.Context()),
+		"database_imported",
+		"database",
+		"database",
+		result.Database.ID,
+		result.Database.Name,
+	)
+	tableID := ""
+	if len(result.Database.Tables) > 0 {
+		tableID = result.Database.Tables[0].ID
+	}
+	h.changed(result.Database.ID, tableID)
+	writeJSON(w, http.StatusCreated, result)
+}
+
+func (h *DatabasesHandler) ExportTableCSV(w http.ResponseWriter, r *http.Request) {
+	workspaceID := activeWorkspaceID(h.db)
+	tableID := chi.URLParam(r, "tableId")
+	table, err := h.store.GetTable(workspaceID, tableID)
+	if err != nil {
+		writeDatabaseError(w, err)
+		return
+	}
+
+	var output bytes.Buffer
+	if _, err := h.store.ExportTableCSV(workspaceID, tableID, &output); err != nil {
+		writeDatabaseError(w, err)
+		return
+	}
+	filename := strings.TrimSpace(table.Name)
+	if filename == "" {
+		filename = "table"
+	}
+	filename = strings.NewReplacer("/", "-", "\\", "-", "\r", "", "\n", "").Replace(filename) + ".csv"
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(output.Bytes())
 }
 
 func (h *DatabasesHandler) CreateTable(w http.ResponseWriter, r *http.Request) {

@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom';
 import {
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ArrowDown,
   ArrowUp,
   ChevronsUpDown,
   Database as DatabaseIcon,
+  Download,
   ExternalLink,
   Hash,
   Link as LinkIcon,
@@ -21,18 +24,30 @@ import {
   Pencil,
   Trash2,
   Type,
+  Upload,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../components/Toast';
-import { api, type UserDatabase, type UserDatabaseColumn, type UserDatabaseColumnType, type UserDatabaseRow, type UserDatabaseRowPage, type UserDatabaseTable, type WSMessage } from '../lib/api';
+import { api, getCSRFToken, type UserDatabase, type UserDatabaseColumn, type UserDatabaseColumnType, type UserDatabaseRow, type UserDatabaseRowPage, type UserDatabaseTable, type WSMessage } from '../lib/api';
+import { downloadFile } from '../lib/download';
 import { handleExternalLinkClick } from '../lib/openExternal';
 import { useWebSocket } from '../lib/useWebSocket';
 
 const LAST_DATABASE_KEY = 'openpaw-last-database';
-const ROW_LIMIT = 200;
+const PAGE_SIZE_KEY = 'openpaw-database-page-size';
+const TEXT_SIZE_KEY = 'openpaw-database-text-size';
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 50, 100];
+const MIN_PAGE_SIZE = 1;
+const MAX_PAGE_SIZE = 500;
+const DEFAULT_TEXT_SIZE = 14;
+const MIN_TEXT_SIZE = 11;
+const MAX_TEXT_SIZE = 18;
 const DEFAULT_COLUMN_WIDTH = 240;
 const MIN_COLUMN_WIDTH = 140;
 const MAX_COLUMN_WIDTH = 640;
@@ -202,7 +217,7 @@ function CellEditor({
       <select
         value={shown}
         onChange={event => onSave(event.target.value || null)}
-        className="w-full h-9 border-0 px-2 bg-transparent text-sm text-text-1 outline-none ring-0 focus:border-0 focus:ring-0 cursor-pointer"
+        className="w-full h-9 border-0 px-2 bg-transparent text-[inherit] text-text-1 outline-none ring-0 focus:border-0 focus:ring-0 cursor-pointer"
         aria-label={column.name}
       >
         <option value="">—</option>
@@ -300,7 +315,7 @@ function CellEditor({
             event.currentTarget.blur();
           }
         }}
-        className="w-full h-9 border-0 px-2.5 bg-transparent text-sm text-text-1 outline-none ring-0 focus:border-0 focus:bg-accent-primary/5 focus:ring-0"
+        className="w-full h-9 border-0 px-2.5 bg-transparent text-[inherit] text-text-1 outline-none ring-0 focus:border-0 focus:bg-accent-primary/5 focus:ring-0"
         aria-label={column.name}
         aria-describedby={previewOpen ? previewId : undefined}
       />
@@ -322,6 +337,23 @@ export function Databases() {
   const [rowsLoading, setRowsLoading] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    const stored = Number(localStorage.getItem(PAGE_SIZE_KEY));
+    return Number.isInteger(stored) && stored >= MIN_PAGE_SIZE && stored <= MAX_PAGE_SIZE
+      ? stored
+      : DEFAULT_PAGE_SIZE;
+  });
+  const [pageSizeModal, setPageSizeModal] = useState(false);
+  const [customPageSize, setCustomPageSize] = useState(String(pageSize));
+  const [textSize, setTextSize] = useState(() => {
+    const stored = Number(localStorage.getItem(TEXT_SIZE_KEY));
+    return Number.isInteger(stored) && stored >= MIN_TEXT_SIZE && stored <= MAX_TEXT_SIZE
+      ? stored
+      : DEFAULT_TEXT_SIZE;
+  });
 
   const [databaseModal, setDatabaseModal] = useState<'create' | 'edit' | null>(null);
   const [databaseName, setDatabaseName] = useState('');
@@ -343,6 +375,9 @@ export function Databases() {
     [database, tableId],
   );
   const activeSort = tableId ? tableSorts[tableId] ?? null : null;
+  const totalPages = Math.max(1, Math.ceil(rowTotal / pageSize));
+  const firstVisibleRow = rowTotal === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastVisibleRow = Math.min(rowTotal, (page - 1) * pageSize + rows.length);
 
   useEffect(() => {
     if (!selectedTable) {
@@ -367,6 +402,14 @@ export function Databases() {
     if (!selectedTable || Object.keys(columnWidths).length === 0) return;
     localStorage.setItem(`openpaw-database-column-widths:${selectedTable.id}`, JSON.stringify(columnWidths));
   }, [columnWidths, selectedTable]);
+
+  useEffect(() => {
+    localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+  }, [pageSize]);
+
+  useEffect(() => {
+    localStorage.setItem(TEXT_SIZE_KEY, String(textSize));
+  }, [textSize]);
 
   const startColumnResize = (event: React.PointerEvent, columnId: string) => {
     event.preventDefault();
@@ -412,30 +455,30 @@ export function Databases() {
   const loadRows = useCallback(async (
     activeTableId: string,
     query = search,
-    offset = 0,
-    append = false,
+    pageNumber = page,
     sortOverride?: TableSort | null,
   ) => {
     setRowsLoading(true);
     try {
-      const params = new URLSearchParams({ limit: String(ROW_LIMIT), offset: String(offset) });
+      const offset = Math.max(0, pageNumber - 1) * pageSize;
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
       if (query.trim()) params.set('search', query.trim());
       const tableSort = sortOverride === undefined ? tableSorts[activeTableId] : sortOverride;
       if (tableSort) {
         params.set('sort_column', tableSort.columnId);
         params.set('sort_direction', tableSort.direction);
       }
-      const page = await api.get<UserDatabaseRowPage>(`/databases/tables/${activeTableId}/rows?${params}`);
-      const pageRows = Array.isArray(page.rows) ? page.rows : [];
-      setRows(current => append ? [...current, ...pageRows] : pageRows);
-      setRowTotal(page.total || 0);
+      const result = await api.get<UserDatabaseRowPage>(`/databases/tables/${activeTableId}/rows?${params}`);
+      setRows(Array.isArray(result.rows) ? result.rows : []);
+      setRowTotal(result.total || 0);
     } finally {
       setRowsLoading(false);
     }
-  }, [search, tableSorts]);
+  }, [page, pageSize, search, tableSorts]);
 
   const toggleColumnSort = (columnId: string) => {
     if (!selectedTable) return;
+    setPage(1);
     setTableSorts(current => {
       const existing = current[selectedTable.id];
       if (!existing || existing.columnId !== columnId) {
@@ -471,9 +514,13 @@ export function Databases() {
       setRowTotal(0);
       return;
     }
-    const timer = window.setTimeout(() => loadRows(tableId), 180);
+    const timer = window.setTimeout(() => loadRows(tableId, search, page), 180);
     return () => window.clearTimeout(timer);
-  }, [tableId, search, loadRows]);
+  }, [tableId, search, page, loadRows]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -483,12 +530,12 @@ export function Databases() {
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const reloadCurrent = useCallback(async (sortOverride?: TableSort | null) => {
+  const reloadCurrent = useCallback(async (sortOverride?: TableSort | null, pageOverride = page) => {
     if (!selectedId) return;
     const activeTable = await loadDatabase(selectedId, tableId);
     await loadDatabases(selectedId);
-    if (activeTable) await loadRows(activeTable, search, 0, false, sortOverride);
-  }, [selectedId, tableId, loadDatabase, loadDatabases, loadRows, search]);
+    if (activeTable) await loadRows(activeTable, search, pageOverride, sortOverride);
+  }, [selectedId, tableId, loadDatabase, loadDatabases, loadRows, page, search]);
 
   useWebSocket({
     onMessage: useCallback((message: WSMessage) => {
@@ -500,8 +547,63 @@ export function Databases() {
     setSwitcherOpen(false);
     setSelectedId(id);
     setSearch('');
+    setPage(1);
     localStorage.setItem(LAST_DATABASE_KEY, id);
     await loadDatabase(id, null);
+  };
+
+  const importCSV = async (file: File) => {
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const headers: Record<string, string> = {};
+      const csrf = getCSRFToken();
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+      const response = await fetch('/api/v1/databases/import', {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'same-origin',
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        let message = `Import failed: ${response.status}`;
+        try {
+          const parsed = JSON.parse(body) as { error?: string; message?: string };
+          message = parsed.error || parsed.message || message;
+        } catch {
+          if (body) message = body;
+        }
+        throw new Error(message);
+      }
+      const result = await response.json() as { database: UserDatabase; imported_rows: number };
+      setSearch('');
+      setPage(1);
+      setSelectedId(result.database.id);
+      localStorage.setItem(LAST_DATABASE_KEY, result.database.id);
+      await loadDatabases(result.database.id);
+      await loadDatabase(result.database.id, result.database.tables?.[0]?.id);
+      toast('success', `Imported ${result.imported_rows} ${result.imported_rows === 1 ? 'row' : 'rows'} from CSV`);
+    } catch (error) {
+      toast('error', error instanceof Error ? error.message : 'Could not import CSV');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  const applyPageSize = (next: number) => {
+    if (!Number.isFinite(next)) return;
+    const bounded = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, Math.round(next)));
+    setPageSize(bounded);
+    setPage(1);
+    setCustomPageSize(String(bounded));
+    setPageSizeModal(false);
+  };
+
+  const changeTextSize = (delta: number) => {
+    setTextSize(current => Math.min(MAX_TEXT_SIZE, Math.max(MIN_TEXT_SIZE, current + delta)));
   };
 
   const saveDatabase = async () => {
@@ -515,6 +617,7 @@ export function Databases() {
         });
         await loadDatabases(created.id);
         setSelectedId(created.id);
+        setPage(1);
         await loadDatabase(created.id);
         toast('success', 'Database created');
       } else if (database) {
@@ -539,6 +642,7 @@ export function Databases() {
     try {
       if (tableModal === 'create') {
         const created = await api.post<UserDatabaseTable>(`/databases/${database.id}/tables`, { name: tableName.trim() });
+        setPage(1);
         await loadDatabase(database.id, created.id);
         setTableId(created.id);
         toast('success', 'Table created');
@@ -622,7 +726,11 @@ export function Databases() {
     if (!selectedTable) return;
     try {
       await api.post<UserDatabaseRow>(`/databases/tables/${selectedTable.id}/rows`, { values: {} });
-      await loadRows(selectedTable.id);
+      const targetPage = !search.trim() && !activeSort
+        ? Math.max(1, Math.ceil((rowTotal + 1) / pageSize))
+        : page;
+      if (targetPage !== page) setPage(targetPage);
+      else await loadRows(selectedTable.id, search, targetPage);
     } catch (error) {
       toast('error', error instanceof Error ? error.message : 'Could not add row');
     }
@@ -642,7 +750,7 @@ export function Databases() {
     }
     if (selectedTable && tableSorts[selectedTable.id]?.columnId === columnId) {
       try {
-        await loadRows(selectedTable.id);
+        await loadRows(selectedTable.id, search, page);
       } catch {
         toast('error', 'Cell saved, but sorted rows could not be refreshed');
       }
@@ -652,8 +760,11 @@ export function Databases() {
   const deleteRow = async (rowId: string) => {
     try {
       await api.delete(`/databases/rows/${rowId}`);
-      setRows(current => current.filter(row => row.id !== rowId));
-      setRowTotal(total => Math.max(0, total - 1));
+      const nextTotal = Math.max(0, rowTotal - 1);
+      const targetPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / pageSize)));
+      setRowTotal(nextTotal);
+      if (targetPage !== page) setPage(targetPage);
+      else if (selectedTable) await loadRows(selectedTable.id, search, targetPage);
     } catch (error) {
       toast('error', error instanceof Error ? error.message : 'Could not delete row');
     }
@@ -666,11 +777,13 @@ export function Databases() {
       if (deleteTarget === 'database' && database) {
         await api.delete(`/databases/${database.id}`);
         setDatabase(null);
+        setPage(1);
         const next = await loadDatabases(null);
         if (next) await loadDatabase(next);
         toast('success', 'Database deleted');
       } else if (deleteTarget === 'table' && selectedTable && database) {
         await api.delete(`/databases/tables/${selectedTable.id}`);
+        setPage(1);
         await loadDatabase(database.id, null);
         toast('success', 'Table deleted');
       }
@@ -700,6 +813,16 @@ export function Databases() {
         hideTitleOnMobile
         actions={
           <div className="flex items-center gap-2">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={event => {
+                const file = event.target.files?.[0];
+                if (file) importCSV(file);
+              }}
+            />
             <div ref={switcherRef} className="relative">
               <button
                 onClick={() => setSwitcherOpen(open => !open)}
@@ -794,6 +917,15 @@ export function Databases() {
             )}
             <Button
               size="sm"
+              variant="secondary"
+              icon={<Upload className="w-4 h-4" />}
+              loading={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              <span className="hidden lg:inline">Import CSV</span>
+            </Button>
+            <Button
+              size="sm"
               icon={<Plus className="w-4 h-4" />}
               onClick={() => {
                 setDatabaseName('');
@@ -834,7 +966,8 @@ export function Databases() {
               {(database.tables || []).map(table => (
                 <button
                   key={table.id}
-                  onClick={() => { setTableId(table.id); setSearch(''); }}
+                  type="button"
+                  onClick={() => { setTableId(table.id); setSearch(''); setPage(1); }}
                   onDoubleClick={() => {
                     setTableName(table.name);
                     setTableModal('edit');
@@ -868,26 +1001,69 @@ export function Databases() {
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-3" />
                   <input
                     value={search}
-                    onChange={event => setSearch(event.target.value)}
+                    onChange={event => { setSearch(event.target.value); setPage(1); }}
                     placeholder={`Search ${selectedTable.name}…`}
                     className="w-full h-8 pl-8 pr-3 rounded-lg border border-border-0 bg-surface-1 text-sm text-text-1 placeholder:text-text-3 outline-none focus:border-accent-primary"
                   />
                 </div>
                 <span className="text-xs text-text-3">
-                  {rows.length < rowTotal ? `${rows.length} of ` : ''}{rowTotal} {rowTotal === 1 ? 'row' : 'rows'}
+                  {rowTotal} {rowTotal === 1 ? 'row' : 'rows'}
                 </span>
-                <div className="ml-auto flex items-center gap-1">
-                  <button
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+                  <div className="flex h-8 items-center rounded-lg border border-border-0 bg-surface-1" aria-label="Table text size">
+                    <button
+                      type="button"
+                      onClick={() => changeTextSize(-1)}
+                      disabled={textSize <= MIN_TEXT_SIZE}
+                      className="flex h-full w-8 items-center justify-center rounded-l-lg text-text-2 hover:bg-surface-2 hover:text-text-0 disabled:cursor-not-allowed disabled:opacity-35"
+                      title="Decrease table text size"
+                      aria-label="Decrease table text size"
+                    >
+                      <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTextSize(DEFAULT_TEXT_SIZE)}
+                      className="h-full min-w-12 border-x border-border-0 px-1.5 text-[11px] font-medium text-text-2 hover:bg-surface-2 hover:text-text-0"
+                      title="Reset table text size"
+                      aria-label={`Table text size ${Math.round(textSize / DEFAULT_TEXT_SIZE * 100)} percent. Reset`}
+                    >
+                      {Math.round(textSize / DEFAULT_TEXT_SIZE * 100)}%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => changeTextSize(1)}
+                      disabled={textSize >= MAX_TEXT_SIZE}
+                      className="flex h-full w-8 items-center justify-center rounded-r-lg text-text-2 hover:bg-surface-2 hover:text-text-0 disabled:cursor-not-allowed disabled:opacity-35"
+                      title="Increase table text size"
+                      aria-label="Increase table text size"
+                    >
+                      <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Pencil className="w-3.5 h-3.5" />}
                     onClick={() => { setTableName(selectedTable.name); setTableModal('edit'); }}
-                    className="p-1.5 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 cursor-pointer"
-                    title="Rename table"
-                    aria-label="Rename table"
                   >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
+                    <span className="hidden xl:inline">Rename</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Download className="w-3.5 h-3.5" />}
+                    onClick={() => downloadFile(
+                      `/api/v1/databases/tables/${selectedTable.id}/export`,
+                      `${selectedTable.name}.csv`,
+                    )}
+                  >
+                    <span className="hidden xl:inline">Export CSV</span>
+                  </Button>
                   <button
+                    type="button"
                     onClick={() => setDeleteTarget('table')}
-                    className="p-1.5 rounded-md text-text-3 hover:text-danger hover:bg-danger/10 cursor-pointer"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-0 bg-surface-1 text-text-3 hover:border-danger/40 hover:bg-danger/10 hover:text-danger cursor-pointer"
                     title="Delete table"
                     aria-label="Delete table"
                   >
@@ -900,7 +1076,10 @@ export function Databases() {
               </div>
 
               <div className="relative flex-1 min-h-0 overflow-auto bg-surface-0">
-                <table className="border-separate border-spacing-0 min-w-full w-max text-sm">
+                <table
+                  className="border-separate border-spacing-0 min-w-full w-max"
+                  style={{ fontSize: `${textSize}px` }}
+                >
                   <thead className="sticky top-0 z-20">
                     <tr>
                       <th className="sticky left-0 z-30 w-12 min-w-12 h-10 border-r border-b border-border-0/45 bg-surface-2 text-[10px] font-medium text-text-3 text-center">
@@ -991,12 +1170,12 @@ export function Databases() {
                     {rows.map((row, rowIndex) => (
                       <tr key={row.id} className="database-grid-row group/row">
                         <td className="database-grid-cell sticky left-0 z-10 h-10 text-[11px] text-text-3 text-center">
-                          <span className="group-hover/row:hidden">{rowIndex + 1}</span>
+                          <span className="group-hover/row:hidden">{(page - 1) * pageSize + rowIndex + 1}</span>
                           <button
                             onClick={() => deleteRow(row.id)}
                             className="hidden group-hover/row:inline-flex p-1 rounded text-text-3 hover:text-danger hover:bg-danger/10 cursor-pointer"
                             title="Delete row"
-                            aria-label={`Delete row ${rowIndex + 1}`}
+                            aria-label={`Delete row ${(page - 1) * pageSize + rowIndex + 1}`}
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -1035,20 +1214,6 @@ export function Databases() {
                         </button>
                       </td>
                     </tr>
-                    {rows.length < rowTotal && (
-                      <tr>
-                        <td className="database-grid-cell sticky left-0 z-10 h-10 border-r border-border-0/50 bg-surface-1" />
-                        <td colSpan={Math.max(1, selectedTable.columns.length + 1)} className="database-grid-cell h-10 text-center">
-                          <button
-                            onClick={() => loadRows(selectedTable.id, search, rows.length, true)}
-                            disabled={rowsLoading}
-                            className="px-4 py-1.5 rounded-md text-xs font-medium text-accent-text hover:bg-accent-muted disabled:opacity-50 cursor-pointer"
-                          >
-                            Load more rows
-                          </button>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
                 {rowsLoading && (
@@ -1059,6 +1224,57 @@ export function Databases() {
                 {!rowsLoading && rows.length === 0 && search && (
                   <div className="p-8 text-center text-sm text-text-3">No rows match “{search}”.</div>
                 )}
+              </div>
+              <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border-0 bg-surface-1/85 px-3 py-2 text-xs text-text-2 backdrop-blur-md">
+                <span className="tabular-nums text-text-3">
+                  {rowTotal === 0 ? 'No rows' : `${firstVisibleRow}–${lastVisibleRow} of ${rowTotal}`}
+                </span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <label className="flex items-center gap-2">
+                    <span className="hidden sm:inline text-text-3">Rows per page</span>
+                    <select
+                      value={PAGE_SIZE_OPTIONS.includes(pageSize) ? String(pageSize) : 'custom'}
+                      onChange={event => {
+                        if (event.target.value === 'custom') {
+                          setCustomPageSize(String(pageSize));
+                          setPageSizeModal(true);
+                        } else {
+                          applyPageSize(Number(event.target.value));
+                        }
+                      }}
+                      className="h-8 rounded-lg border border-border-0 bg-surface-2 px-2 text-xs text-text-1 outline-none focus:border-accent-primary"
+                      aria-label="Rows per page"
+                    >
+                      {PAGE_SIZE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                      <option value="custom">Custom…</option>
+                    </select>
+                  </label>
+                  <span className="min-w-20 text-center tabular-nums text-text-2">
+                    Page {page} of {totalPages}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage(current => Math.max(1, current - 1))}
+                      disabled={page <= 1 || rowsLoading}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-0 bg-surface-2 text-text-2 hover:border-border-1 hover:text-text-0 disabled:cursor-not-allowed disabled:opacity-35"
+                      title="Previous page"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+                      disabled={page >= totalPages || rowsLoading}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-0 bg-surface-2 text-text-2 hover:border-border-1 hover:text-text-0 disabled:cursor-not-allowed disabled:opacity-35"
+                      title="Next page"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -1135,6 +1351,40 @@ export function Databases() {
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setColumnModal(null)}>Cancel</Button>
             <Button onClick={saveColumn} loading={saving} disabled={!columnName.trim()}>{columnModal === 'create' ? 'Add column' : 'Save'}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={pageSizeModal} onClose={() => setPageSizeModal(false)} title="Rows Per Page" size="sm">
+        <div className="space-y-4">
+          <label className="block">
+            <span className="block text-xs font-medium text-text-2 mb-1.5">
+              Number of rows
+            </span>
+            <input
+              autoFocus
+              type="number"
+              min={MIN_PAGE_SIZE}
+              max={MAX_PAGE_SIZE}
+              value={customPageSize}
+              onChange={event => setCustomPageSize(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') applyPageSize(Number(customPageSize));
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-border-1 bg-surface-2 text-sm text-text-0 outline-none focus:border-accent-primary"
+            />
+            <span className="mt-1.5 block text-[11px] text-text-3">
+              Choose between {MIN_PAGE_SIZE} and {MAX_PAGE_SIZE} rows.
+            </span>
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setPageSizeModal(false)}>Cancel</Button>
+            <Button
+              onClick={() => applyPageSize(Number(customPageSize))}
+              disabled={!Number.isFinite(Number(customPageSize)) || Number(customPageSize) < MIN_PAGE_SIZE || Number(customPageSize) > MAX_PAGE_SIZE}
+            >
+              Apply
+            </Button>
           </div>
         </div>
       </Modal>

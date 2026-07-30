@@ -18,7 +18,7 @@ import (
 func BuildDatabaseToolDefs() []llm.ToolDef {
 	return []llm.ToolDef{
 		databaseToolDef("list_databases",
-			"List the databases, tables, columns, and row counts in this workspace. Use this before querying or changing stored structured data.",
+			"List the databases in this workspace with every table name, table ID, column name/type/ID, and row count. Use this before querying or changing stored structured data.",
 			map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		databaseToolDef("query_database",
 			"Read and search rows in one database table. Returns both a table-shaped columns/rows result and records keyed by column name. Use this to answer questions from saved structured data.",
@@ -65,7 +65,7 @@ func BuildDatabaseToolDefs() []llm.ToolDef {
 				"required": []string{"name"},
 			}),
 		databaseToolDef("alter_database",
-			"Change database structure or metadata. Supports update/delete database, create/update/delete table, and add/update/delete column.",
+			"Change database structure or metadata. Supports update/delete database, create/update/delete table, and add/update/delete column. Use update_table with table_id and name to rename a table.",
 			map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

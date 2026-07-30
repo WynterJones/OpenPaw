@@ -89,7 +89,7 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 
 OpenPaw 1.3.2 rounds out the workspace knowledge release with:
 
-- **Better database tables** — Sort by any column, resize columns, open formatted links in the default browser, and inspect long values in responsive previews with softer borders and subtle zebra rows.
+- **Better database tables** — Sort by any column, resize columns, rename or export tables, import CSV files as new databases, adjust table text size, and page through 10, 50, 100, or a custom number of rows.
 - **Companions in chat** — Companion animations now live directly in active AI message avatars, while completed messages stay still. Avatars are tightly cropped, larger, and borderless.
 - **More reliable desktop sessions** — Workspace services recover automatically after reopening OpenPaw, custom dashboards can explicitly refresh their latest saved version, and terminal backgrounds blend cleanly with workspace artwork.
 - **Safer knowledge workflows** — Dreaming keeps chats and pins intact, dreamed posts have a dedicated Inbox view, and workspace-scoped agent access covers databases, Inbox posts, dashboards, and related services.
@@ -536,12 +536,14 @@ All endpoints live under `/api/v1/`. Authentication uses JWT tokens stored in Ht
 |--------|----------|-------------|
 | GET | `/api/v1/databases` | List databases in the active workspace |
 | POST | `/api/v1/databases` | Create a database |
+| POST | `/api/v1/databases/import` | Import a CSV as a new database |
 | GET | `/api/v1/databases/{id}` | Get a database with its tables and columns |
 | PUT | `/api/v1/databases/{id}` | Update database metadata |
 | DELETE | `/api/v1/databases/{id}` | Delete a database |
 | POST | `/api/v1/databases/{id}/tables` | Create a table |
 | PUT | `/api/v1/databases/tables/{tableId}` | Rename a table |
 | DELETE | `/api/v1/databases/tables/{tableId}` | Delete a table |
+| GET | `/api/v1/databases/tables/{tableId}/export` | Export a table as CSV |
 | POST | `/api/v1/databases/tables/{tableId}/columns` | Add a typed column |
 | PUT | `/api/v1/databases/columns/{columnId}` | Update a column |
 | DELETE | `/api/v1/databases/columns/{columnId}` | Delete a column |

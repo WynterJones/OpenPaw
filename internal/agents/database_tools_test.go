@@ -61,7 +61,8 @@ func TestDatabaseToolsCreateQueryAndMutateRows(t *testing.T) {
 	var databaseItem struct {
 		ID     string `json:"id"`
 		Tables []struct {
-			ID string `json:"id"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
 		} `json:"tables"`
 	}
 	if err := json.Unmarshal([]byte(created.Output), &databaseItem); err != nil {
@@ -71,6 +72,55 @@ func TestDatabaseToolsCreateQueryAndMutateRows(t *testing.T) {
 		t.Fatalf("created database = %s", created.Output)
 	}
 	tableID := databaseItem.Tables[0].ID
+	if databaseItem.Tables[0].Name != "Projects" {
+		t.Fatalf("agent did not receive table name: %s", created.Output)
+	}
+
+	listWithSchema := callDatabaseTool(t, handlers, "list_databases", `{}`)
+	if listWithSchema.IsError || !strings.Contains(listWithSchema.Output, `"name": "Projects"`) ||
+		!strings.Contains(listWithSchema.Output, `"id": "`+tableID+`"`) {
+		t.Fatalf("list did not expose table names and IDs: %s", listWithSchema.Output)
+	}
+
+	renamedTable := callDatabaseTool(t, handlers, "alter_database", `{
+		"action":"update_table",
+		"table_id":"`+tableID+`",
+		"name":"Roadmap"
+	}`)
+	if renamedTable.IsError || !strings.Contains(renamedTable.Output, `"name": "Roadmap"`) {
+		t.Fatalf("table rename failed: %s", renamedTable.Output)
+	}
+
+	addedColumn := callDatabaseTool(t, handlers, "alter_database", `{
+		"action":"add_column",
+		"table_id":"`+tableID+`",
+		"name":"Owner",
+		"column_type":"text"
+	}`)
+	if addedColumn.IsError {
+		t.Fatalf("column create failed: %s", addedColumn.Output)
+	}
+	var column struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(addedColumn.Output), &column); err != nil || column.ID == "" {
+		t.Fatalf("decode created column: %v (%s)", err, addedColumn.Output)
+	}
+	updatedColumn := callDatabaseTool(t, handlers, "alter_database", `{
+		"action":"update_column",
+		"column_id":"`+column.ID+`",
+		"name":"Lead"
+	}`)
+	if updatedColumn.IsError || !strings.Contains(updatedColumn.Output, `"name": "Lead"`) {
+		t.Fatalf("column update failed: %s", updatedColumn.Output)
+	}
+	deletedColumn := callDatabaseTool(t, handlers, "alter_database", `{
+		"action":"delete_column",
+		"column_id":"`+column.ID+`"
+	}`)
+	if deletedColumn.IsError {
+		t.Fatalf("column delete failed: %s", deletedColumn.Output)
+	}
 
 	added := callDatabaseTool(t, handlers, "database_rows", `{
 		"action":"create",
