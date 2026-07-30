@@ -21,6 +21,7 @@ type Session struct {
 	ID          string
 	Title       string
 	Shell       string
+	Cwd         string
 	Cols        uint16
 	Rows        uint16
 	Color       string
@@ -48,8 +49,8 @@ type Manager struct {
 	workDir  string
 }
 
-// NewManager creates a new terminal session manager. It cleans up any stale
-// sessions left in the database from a previous run.
+// NewManager creates a new terminal session manager and recreates the shells
+// represented by terminal rows saved during the previous shutdown.
 func NewManager(db *database.DB, workDir string) *Manager {
 	m := &Manager{
 		sessions: make(map[string]*Session),
@@ -57,11 +58,7 @@ func NewManager(db *database.DB, workDir string) *Manager {
 		workDir:  workDir,
 	}
 
-	// Clean stale DB rows from previous runs
-	_, err := m.db.Exec("DELETE FROM terminal_sessions")
-	if err != nil {
-		logger.Warn("Failed to clean stale terminal sessions: %v", err)
-	}
+	m.restoreSessions()
 
 	return m
 }
@@ -78,13 +75,21 @@ func detectShell() string {
 	return "/bin/sh"
 }
 
+type sessionSpec struct {
+	ID          string
+	Title       string
+	Shell       string
+	Cwd         string
+	Cols        uint16
+	Rows        uint16
+	Color       string
+	WorkbenchID string
+	CreatedAt   time.Time
+}
+
 // CreateSession spawns a new PTY session with the given title, dimensions, color, and workbench.
 // Optional cwd overrides the working directory. Optional initialCommand is sent to the PTY after startup.
 func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenchID, cwd, initialCommand string) (*Session, error) {
-	id := uuid.New().String()
-	shell := detectShell()
-	now := time.Now().UTC()
-
 	if cols == 0 {
 		cols = 80
 	}
@@ -97,57 +102,105 @@ func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenc
 		workDir = cwd
 	}
 
+	spec := sessionSpec{
+		ID:          uuid.New().String(),
+		Title:       title,
+		Shell:       detectShell(),
+		Cwd:         workDir,
+		Cols:        cols,
+		Rows:        rows,
+		Color:       color,
+		WorkbenchID: workbenchID,
+		CreatedAt:   time.Now().UTC(),
+	}
+	return m.startSession(spec, initialCommand, true)
+}
+
+// startSession starts one shell. New sessions are inserted into the database;
+// restored sessions retain their existing row and stable id so the frontend's
+// saved split/tab layout still points at the right terminal.
+func (m *Manager) startSession(spec sessionSpec, initialCommand string, insert bool) (*Session, error) {
+	if spec.Title == "" {
+		spec.Title = "Terminal"
+	}
+	if spec.Shell == "" {
+		spec.Shell = detectShell()
+	}
+	if _, err := os.Stat(spec.Shell); err != nil {
+		spec.Shell = detectShell()
+	}
+	if spec.Cols == 0 {
+		spec.Cols = 80
+	}
+	if spec.Rows == 0 {
+		spec.Rows = 24
+	}
+	if spec.Cwd == "" {
+		spec.Cwd = m.workDir
+	}
+	if info, err := os.Stat(spec.Cwd); err != nil || !info.IsDir() {
+		spec.Cwd = m.workDir
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cmd := exec.CommandContext(ctx, shell)
-	cmd.Dir = workDir
+	cmd := exec.CommandContext(ctx, spec.Shell)
+	cmd.Dir = spec.Cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: spec.Rows, Cols: spec.Cols})
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("start pty: %w", err)
 	}
 
 	s := &Session{
-		ID:          id,
-		Title:       title,
-		Shell:       shell,
-		Cols:        cols,
-		Rows:        rows,
-		Color:       color,
-		WorkbenchID: workbenchID,
+		ID:          spec.ID,
+		Title:       spec.Title,
+		Shell:       spec.Shell,
+		Cwd:         spec.Cwd,
+		Cols:        spec.Cols,
+		Rows:        spec.Rows,
+		Color:       spec.Color,
+		WorkbenchID: spec.WorkbenchID,
 		cmd:         cmd,
 		Ptmx:        ptmx,
 		cancel:      cancel,
-		CreatedAt:   now,
+		CreatedAt:   spec.CreatedAt,
 	}
 
-	// Save to database
-	_, err = m.db.Exec(
-		"INSERT INTO terminal_sessions (id, title, shell, cols, rows, color, workbench_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		s.ID, s.Title, s.Shell, s.Cols, s.Rows, s.Color, s.WorkbenchID, s.CreatedAt,
-	)
-	if err != nil {
-		// Clean up on DB failure
-		cancel()
-		ptmx.Close()
-		cmd.Process.Kill()
-		return nil, fmt.Errorf("insert session: %w", err)
+	if insert {
+		_, err = m.db.Exec(
+			"INSERT INTO terminal_sessions (id, title, shell, cwd, cols, rows, color, workbench_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			s.ID, s.Title, s.Shell, s.Cwd, s.Cols, s.Rows, s.Color, s.WorkbenchID, s.CreatedAt,
+		)
+		if err != nil {
+			cancel()
+			ptmx.Close()
+			cmd.Process.Kill()
+			return nil, fmt.Errorf("insert session: %w", err)
+		}
+	} else {
+		// Repair fallbacks (for example a directory that was moved while the
+		// app was closed) so the next restart uses the working values.
+		_, _ = m.db.Exec(
+			"UPDATE terminal_sessions SET shell = ?, cwd = ?, cols = ?, rows = ? WHERE id = ?",
+			s.Shell, s.Cwd, s.Cols, s.Rows, s.ID,
+		)
 	}
 
 	m.mu.Lock()
-	m.sessions[id] = s
+	m.sessions[s.ID] = s
 	m.mu.Unlock()
 
 	// Watch for process exit to clean up
 	go func() {
 		_ = cmd.Wait()
 		m.mu.Lock()
-		if _, exists := m.sessions[id]; exists {
-			delete(m.sessions, id)
-			m.db.Exec("DELETE FROM terminal_sessions WHERE id = ?", id)
-			logger.Info("Terminal session %s exited naturally", id)
+		if _, exists := m.sessions[s.ID]; exists {
+			delete(m.sessions, s.ID)
+			m.db.Exec("DELETE FROM terminal_sessions WHERE id = ?", s.ID)
+			logger.Info("Terminal session %s exited naturally", s.ID)
 		}
 		m.mu.Unlock()
 	}()
@@ -157,7 +210,7 @@ func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenc
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			m.mu.Lock()
-			sess, exists := m.sessions[id]
+			sess, exists := m.sessions[s.ID]
 			m.mu.Unlock()
 			if exists && sess.Ptmx != nil {
 				sess.Ptmx.Write([]byte(initialCommand + "\n"))
@@ -165,8 +218,61 @@ func (m *Manager) CreateSession(title string, cols, rows uint16, color, workbenc
 		}()
 	}
 
-	logger.Success("Created terminal session %s (%s) using %s", id, title, shell)
+	logger.Success("Created terminal session %s (%s) using %s", s.ID, s.Title, s.Shell)
 	return s, nil
+}
+
+// restoreSessions recreates fresh shell processes for terminal tabs that were
+// still open when OpenPaw last shut down. Commands are intentionally not
+// replayed: restoration returns the user to a safe prompt in the same starting
+// directory instead of repeating a potentially destructive action.
+func (m *Manager) restoreSessions() {
+	rows, err := m.db.Query(
+		"SELECT id, title, shell, cwd, cols, rows, color, workbench_id, created_at FROM terminal_sessions ORDER BY created_at",
+	)
+	if err != nil {
+		logger.Warn("Failed to load saved terminal sessions: %v", err)
+		return
+	}
+
+	var saved []sessionSpec
+	for rows.Next() {
+		var spec sessionSpec
+		if err := rows.Scan(
+			&spec.ID,
+			&spec.Title,
+			&spec.Shell,
+			&spec.Cwd,
+			&spec.Cols,
+			&spec.Rows,
+			&spec.Color,
+			&spec.WorkbenchID,
+			&spec.CreatedAt,
+		); err != nil {
+			logger.Warn("Failed to read saved terminal session: %v", err)
+			continue
+		}
+		saved = append(saved, spec)
+	}
+	if err := rows.Close(); err != nil {
+		logger.Warn("Failed to close saved terminal query: %v", err)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Warn("Failed while loading saved terminal sessions: %v", err)
+	}
+
+	restored := 0
+	for _, spec := range saved {
+		if _, err := m.startSession(spec, "", false); err != nil {
+			logger.Warn("Failed to restore terminal session %s: %v", spec.ID, err)
+			_, _ = m.db.Exec("DELETE FROM terminal_sessions WHERE id = ?", spec.ID)
+			continue
+		}
+		restored++
+	}
+	if restored > 0 {
+		logger.Success("Restored %d terminal session(s)", restored)
+	}
 }
 
 // GetSession returns the session with the given ID, or nil if not found.
@@ -256,20 +362,29 @@ func (m *Manager) DestroySession(id string) error {
 	return nil
 }
 
-// Shutdown destroys all active sessions.
+// Shutdown stops active PTY processes while retaining their database rows.
+// Those rows represent open tabs and are recreated by NewManager next launch.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		sessions = append(sessions, session)
 	}
+	// Remove them from the live map before killing the processes. Their watcher
+	// goroutines will then know this is app shutdown, not a natural shell exit,
+	// and will leave the saved rows alone.
+	m.sessions = make(map[string]*Session)
 	m.mu.Unlock()
 
-	for _, id := range ids {
-		m.DestroySession(id)
+	for _, session := range sessions {
+		session.cancel()
+		if session.cmd.Process != nil {
+			_ = session.cmd.Process.Kill()
+		}
+		_ = session.Ptmx.Close()
 	}
 
-	logger.Info("Terminal manager shut down")
+	logger.Info("Terminal manager shut down with %d session(s) saved", len(sessions))
 }
 
 // ListWorkbenches returns all workbenches ordered by sort_order then created_at.
