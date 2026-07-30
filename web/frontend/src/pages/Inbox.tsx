@@ -331,7 +331,7 @@ export function Inbox() {
                 <LoadingSpinner />
               </div>
             ) : items.length === 0 ? (
-              <div className="p-6">
+              <div className="px-10 py-6 sm:px-12">
                 <EmptyState
                   icon={<InboxIcon className="w-10 h-10" />}
                   title={folder === 'archived' ? 'Nothing archived' : 'Inbox zero'}
