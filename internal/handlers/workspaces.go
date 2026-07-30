@@ -748,6 +748,33 @@ func (h *WorkspacesHandler) SearchFiles(w http.ResponseWriter, r *http.Request) 
 		if info, statErr := os.Stat(root.path); statErr != nil || !info.IsDir() {
 			continue
 		}
+
+		// The root of an attached directory is itself a useful folder result.
+		// Previously WalkDir skipped it, which meant users could find files
+		// inside an attached repo but could never select, copy, or insert the
+		// repo folder itself from the command palette.
+		rootName := strings.TrimSpace(root.label)
+		if rootName == "" {
+			rootName = filepath.Base(root.path)
+		}
+		if rootName == "" || rootName == "." || rootName == string(filepath.Separator) {
+			rootName = "Workspace files"
+		}
+		if score, matched := fuzzyFileScore(
+			strings.ToLower(rootName),
+			strings.ToLower(filepath.ToSlash(root.path)),
+			query,
+		); matched {
+			source := strings.TrimSpace(root.label)
+			if source == "" {
+				source = rootName
+			}
+			results = append(results, workspaceSearchResult{
+				Name: rootName, Path: "", AbsolutePath: root.path, DirID: root.dirID,
+				Source: source, IsDir: true, score: score,
+			})
+		}
+
 		scanned := 0
 		_ = filepath.WalkDir(root.path, func(path string, entry os.DirEntry, walkErr error) error {
 			if r.Context().Err() != nil {

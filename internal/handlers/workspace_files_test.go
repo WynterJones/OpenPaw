@@ -109,6 +109,50 @@ func TestSearchFiles_FuzzyMatchesAndRanksNames(t *testing.T) {
 	}
 }
 
+func TestSearchFiles_IncludesSelectableFoldersAndAttachedRoots(t *testing.T) {
+	h, files := newTestWorkspacesHandler(t)
+	nested := filepath.Join(files, "projects", "client-portal")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	attachedParent := t.TempDir()
+	attached := filepath.Join(attachedParent, "Design Assets")
+	if err := os.MkdirAll(filepath.Join(attached, "logos"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dirID := uuid.NewString()
+	if _, err := h.db.Exec(
+		"INSERT INTO workspace_directories (id, workspace_id, path, label) VALUES (?, ?, ?, ?)",
+		dirID, DefaultWorkspaceID, attached, "Design Assets",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := searchFilesReq(t, h, "client portal")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nested folder status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var results []workspaceSearchResult
+	decodeTestJSON(t, rec, &results)
+	if len(results) == 0 || !results[0].IsDir || results[0].Path != "projects/client-portal" {
+		t.Fatalf("nested folder results = %#v", results)
+	}
+
+	rec = searchFilesReq(t, h, "design assets")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attached root status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	decodeTestJSON(t, rec, &results)
+	if len(results) == 0 {
+		t.Fatal("attached directory root was not searchable")
+	}
+	root := results[0]
+	if !root.IsDir || root.DirID != dirID || root.Path != "" || root.AbsolutePath != attached {
+		t.Fatalf("attached root = %#v", root)
+	}
+}
+
 func newTestWorkspacesHandler(t *testing.T) (*WorkspacesHandler, string) {
 	t.Helper()
 	dataDir := t.TempDir()

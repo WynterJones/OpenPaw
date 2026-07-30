@@ -262,24 +262,25 @@ export function CommandPalette() {
               setActiveIndex(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder={fileMode ? `Search ${workspace?.name || 'workspace'} files…` : 'Go somewhere or type ! to search files…'}
+            placeholder={fileMode ? `Search ${workspace?.name || 'workspace'} files and folders…` : 'Go somewhere or type ! for files and folders…'}
             className="h-14 min-w-0 flex-1 border-0 bg-transparent text-base text-text-0 outline-none placeholder:text-text-3 focus:ring-0"
             aria-controls="command-palette-results"
             aria-activedescendant={items[activeIndex] ? `command-${items[activeIndex].id}` : undefined}
           />
           <button
+            type="button"
             onClick={() => {
               setQuery(fileMode ? '' : '!');
               setActiveIndex(0);
             }}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
               fileMode ? 'border-accent-primary/40 bg-accent-muted text-accent-text' : 'border-border-1 bg-surface-2 text-text-2 hover:text-text-0'
             }`}
             aria-pressed={fileMode}
             title="Search this workspace's directory"
           >
             <span className="font-mono">!</span>
-            Files
+            Files &amp; folders
           </button>
         </div>
 
@@ -293,7 +294,9 @@ export function CommandPalette() {
             const showGroup = group !== previousGroup;
             const Icon = item.kind === 'file' ? (item.result.is_dir ? Folder : File) : item.icon;
             const label = item.kind === 'file' ? item.result.name : item.label;
-            const description = item.kind === 'file' ? item.result.path : item.description;
+            const description = item.kind === 'file'
+              ? (item.result.path || item.result.absolute_path)
+              : item.description;
             return (
               <div key={item.id}>
                 {showGroup && (
@@ -332,6 +335,11 @@ export function CommandPalette() {
                         {item.keyCode}
                       </kbd>
                     )}
+                    {item.kind === 'file' && item.result.is_dir && (
+                      <span className="hidden flex-shrink-0 whitespace-nowrap rounded-md border border-border-1 bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-3 sm:inline-flex">
+                        Folder
+                      </span>
+                    )}
                     {item.kind === 'file' && index === activeIndex && <ArrowRight className="h-4 w-4 flex-shrink-0 text-text-3" />}
                   </button>
                   {item.kind === 'file' && (
@@ -341,7 +349,9 @@ export function CommandPalette() {
                       className={`op-touch-visible mr-2 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-1 bg-surface-2 text-text-2 transition-all hover:border-accent-primary/40 hover:text-accent-text focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/50 cursor-pointer ${
                         copiedPath === item.result.absolute_path
                           ? 'opacity-100 text-emerald-400'
-                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+                          : item.result.is_dir
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
                       }`}
                       title={copiedPath === item.result.absolute_path ? 'Copied' : 'Copy path'}
                       aria-label={copiedPath === item.result.absolute_path ? 'Path copied' : `Copy path for ${item.result.name}`}
@@ -358,14 +368,14 @@ export function CommandPalette() {
           {items.length === 0 && (
             <div className="px-6 py-12 text-center">
               <FolderSearch className="mx-auto mb-3 h-8 w-8 text-text-3" aria-hidden="true" />
-              <p className="text-sm font-medium text-text-1">{searching ? 'Searching…' : 'No matches in this workspace'}</p>
-              <p className="mt-1 text-xs text-text-3">Try part of a filename or folder path.</p>
+              <p className="text-sm font-medium text-text-1">{searching ? 'Searching…' : 'No files or folders found'}</p>
+              <p className="mt-1 text-xs text-text-3">Try part of a file or folder name, or its path.</p>
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-0 bg-surface-0/50 px-4 py-2 text-[11px] text-text-3">
-          <span className="w-full truncate sm:w-auto sm:flex-1">{fileMode ? `Only ${workspace?.name || 'the active workspace'} and its attached directories` : 'Quick links are scoped to the active workspace'}</span>
+          <span className="w-full truncate sm:w-auto sm:flex-1">{fileMode ? `Files and folders in ${workspace?.name || 'the active workspace'} and its attached directories` : 'Quick links are scoped to the active workspace'}</span>
           <span className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1 sm:w-auto sm:justify-start">
             <span><kbd className="font-mono">↑↓</kbd> choose</span>
             <span><kbd className="font-mono">Enter</kbd> open</span>
