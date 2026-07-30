@@ -106,41 +106,46 @@ export function CanvasPanel({ url, title, onUrlChange, onClose }: CanvasPanelPro
             spellCheck={false}
             autoComplete="off"
             aria-label="Canvas address"
-            className="w-full px-2.5 py-1 rounded-lg bg-surface-2 border border-border-1 text-xs text-text-1 placeholder:text-text-3 focus:outline-none focus:ring-1 focus:ring-accent-primary"
+            className="h-8 w-full rounded-lg border border-border-1 bg-surface-2 px-2.5 text-xs text-text-1 placeholder:text-text-3 focus:outline-none focus:ring-1 focus:ring-accent-primary"
           />
         </form>
 
         <button
           onClick={() => setReloadKey(k => k + 1)}
           disabled={!url}
-          className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-surface-2 hover:text-text-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           title="Reload"
           aria-label="Reload canvas"
         >
           <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
         <button
+          type="button"
           onClick={() => setNarrow(n => !n)}
-          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-            narrow ? 'text-accent-primary bg-accent-muted' : 'text-text-3 hover:text-text-1 hover:bg-surface-2'
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors cursor-pointer ${
+            narrow
+              ? 'border-accent-primary/50 bg-accent-muted text-accent-text'
+              : 'border-border-1 bg-surface-2 text-text-1 hover:border-accent-primary/40 hover:bg-surface-3 hover:text-accent-text'
           }`}
           title={narrow ? 'Full width' : 'Phone width'}
           aria-label={narrow ? 'Show at full width' : 'Show at phone width'}
+          aria-pressed={narrow}
         >
           {narrow ? <Monitor className="w-3.5 h-3.5" aria-hidden="true" /> : <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />}
         </button>
         <button
           onClick={() => openExternal(url.startsWith('/') ? window.location.origin + url : url)}
           disabled={!url}
-          className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-surface-2 hover:text-text-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           title="Open in browser"
           aria-label="Open in browser"
         >
           <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
         <button
+          type="button"
           onClick={onClose}
-          className="p-1.5 rounded-lg text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-1 bg-surface-2 text-text-1 shadow-sm transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
           title="Close canvas"
           aria-label="Close canvas"
         >
@@ -170,18 +175,13 @@ export function CanvasPanel({ url, title, onUrlChange, onClose }: CanvasPanelPro
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="flex flex-col items-center justify-center text-center p-8 gap-3">
+          <div className="flex flex-col items-center justify-center gap-4 px-10 py-8 text-center">
             <div className="w-12 h-12 rounded-2xl bg-surface-2 flex items-center justify-center">
               <MonitorPlay className="w-6 h-6 text-text-3" aria-hidden="true" />
             </div>
-            <p className="text-sm font-semibold text-text-1">Nothing on the canvas yet</p>
-            <p className="text-xs text-text-3 max-w-[260px]">
-              Type an address above — a local dev server like{' '}
-              <span className="text-text-2">localhost:5173</span>, or a file path like{' '}
-              <span className="text-text-2">/Users/you/site/index.html</span>.
-            </p>
-            <p className="text-xs text-text-3 max-w-[260px]">
-              Or ask an agent to build something and show it here.
+            <p className="text-lg font-semibold text-text-1">Canvas is empty</p>
+            <p className="max-w-xs text-sm leading-relaxed text-text-2">
+              Enter a local URL or file path above, or ask an agent to show their work here.
             </p>
           </div>
         )}
