@@ -60,21 +60,30 @@ export function CompanionAvatar({
       : [];
   const frames = active ? sourceFrames : sourceFrames.slice(0, 1);
 
-  return (
-    <div
-      className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-2/90 ring-1 ring-border-1"
-      aria-label={companion ? `${companion.name}, ${role?.name || 'AI'} companion` : undefined}
-    >
-      {companion && frames.length > 0 ? (
+  if (companion && frames.length > 0) {
+    return (
+      <div
+        className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden"
+        aria-label={`${companion.name}, ${role?.name || 'AI'} companion`}
+      >
         <SpriteAnimation
           key={`${companion.id}:${clip?.id || 'base'}:${active ? 'active' : 'still'}`}
           frames={frames}
           fps={clip?.fps ?? 6}
-          size={40}
+          size={48}
           paused={!active}
+          autoCrop={Boolean(clip)}
           alt=""
         />
-      ) : role ? (
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-2/90 ring-1 ring-border-1"
+    >
+      {role ? (
         <img
           src={role.avatar_path}
           alt={role.name}

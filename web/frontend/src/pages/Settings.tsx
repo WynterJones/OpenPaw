@@ -3345,7 +3345,7 @@ function CompanionCard({
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 rounded-lg bg-surface-2 p-1">
           {frames.length > 0 ? (
-            <SpriteAnimation frames={frames} fps={idle?.fps ?? 4} size={56} />
+            <SpriteAnimation frames={frames} fps={idle?.fps ?? 4} size={56} autoCrop={Boolean(idle)} />
           ) : (
             <div className="w-14 h-14" />
           )}

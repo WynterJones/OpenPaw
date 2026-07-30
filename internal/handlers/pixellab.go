@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/draw"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
@@ -261,8 +264,8 @@ type charOut struct {
 	Pinned     bool      `json:"pinned"`
 	AgentSlug  string    `json:"agent_slug"`
 	// nil = every workspace, matching agents/skills/services.
-	WorkspaceID *string  `json:"workspace_id,omitempty"`
-	CreatedAt  string    `json:"created_at"`
+	WorkspaceID *string `json:"workspace_id,omitempty"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 // spriteURLPrefix is the public path under which stored frames are served.
@@ -313,7 +316,7 @@ func (h *PixelLabHandler) saveFrames(charID, clipID string, frames []string) ([]
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	rel := make([]string, 0, len(frames))
+	pngFrames := make([][]byte, 0, len(frames))
 	for _, f := range frames {
 		// A frame is either a freshly generated base64 (data:) PNG, or a reference
 		// to an already-stored sprite ("/api/v1/pixellab/sprites/{char}/{path}")
@@ -337,13 +340,94 @@ func (h *PixelLabHandler) saveFrames(charID, clipID string, frames []string) ([]
 			logger.Error("pixellab: skipping non-PNG frame for char %s clip %s (%d bytes)", charID, clipID, len(bytesPNG))
 			continue
 		}
-		name := "frame_" + strconv.Itoa(len(rel)) + ".png"
+		pngFrames = append(pngFrames, bytesPNG)
+	}
+
+	// PixelLab animation frames arrive on a canvas roughly twice the size of
+	// the character. Crop every frame to one shared alpha bound so the sprite
+	// stays aligned while removing the large transparent border.
+	cropped, err := cropTransparentPNGFrames(pngFrames, 2)
+	if err != nil {
+		return nil, err
+	}
+
+	rel := make([]string, 0, len(cropped))
+	for index, bytesPNG := range cropped {
+		name := "frame_" + strconv.Itoa(index) + ".png"
 		if err := os.WriteFile(filepath.Join(dir, name), bytesPNG, 0o644); err != nil {
 			return nil, err
 		}
 		rel = append(rel, clipID+"/"+name)
 	}
 	return rel, nil
+}
+
+// cropTransparentPNGFrames crops a set of equally sized PNG frames to their
+// shared non-transparent bounds. A shared crop prevents animation jitter.
+func cropTransparentPNGFrames(frames [][]byte, padding int) ([][]byte, error) {
+	if len(frames) == 0 {
+		return frames, nil
+	}
+
+	decoded := make([]image.Image, 0, len(frames))
+	var canvas image.Rectangle
+	var content image.Rectangle
+	hasContent := false
+	for _, frame := range frames {
+		img, err := png.Decode(bytes.NewReader(frame))
+		if err != nil {
+			return nil, err
+		}
+		bounds := img.Bounds()
+		if len(decoded) == 0 {
+			canvas = bounds
+		} else if bounds.Dx() != canvas.Dx() || bounds.Dy() != canvas.Dy() {
+			// Unexpected mixed canvas sizes cannot share one stable crop.
+			return frames, nil
+		}
+		decoded = append(decoded, img)
+
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				_, _, _, alpha := img.At(x, y).RGBA()
+				if alpha == 0 {
+					continue
+				}
+				pixel := image.Rect(x, y, x+1, y+1)
+				if !hasContent {
+					content = pixel
+					hasContent = true
+				} else {
+					content = content.Union(pixel)
+				}
+			}
+		}
+	}
+
+	if !hasContent {
+		return frames, nil
+	}
+	content = image.Rect(
+		max(canvas.Min.X, content.Min.X-padding),
+		max(canvas.Min.Y, content.Min.Y-padding),
+		min(canvas.Max.X, content.Max.X+padding),
+		min(canvas.Max.Y, content.Max.Y+padding),
+	)
+	if content.Eq(canvas) {
+		return frames, nil
+	}
+
+	out := make([][]byte, 0, len(decoded))
+	for _, img := range decoded {
+		cropped := image.NewNRGBA(image.Rect(0, 0, content.Dx(), content.Dy()))
+		draw.Draw(cropped, cropped.Bounds(), img, content.Min, draw.Src)
+		var encoded bytes.Buffer
+		if err := png.Encode(&encoded, cropped); err != nil {
+			return nil, err
+		}
+		out = append(out, encoded.Bytes())
+	}
+	return out, nil
 }
 
 func (h *PixelLabHandler) rowToOut(id, name, pixellabID, basePath, animsJSON string, pinned int, agentSlug string, workspaceID *string, createdAt string) charOut {

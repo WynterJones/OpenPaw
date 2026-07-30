@@ -495,7 +495,7 @@ export function CompanionWizard({ open, onClose, editCharacter }: CompanionWizar
             <div className="grid grid-cols-4 gap-3">
               {saved.animations.map((clip) => (
                 <div key={clip.id} className="flex flex-col items-center gap-1.5 rounded-lg border border-border-1 bg-surface-2 p-2">
-                  <SpriteAnimation frames={clip.frames} fps={clip.fps} size={64} />
+                  <SpriteAnimation frames={clip.frames} fps={clip.fps} size={64} autoCrop />
                   <span className="text-xs capitalize text-text-3">{clip.name}</span>
                   <Button
                     variant="ghost"
