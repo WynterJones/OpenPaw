@@ -13,4 +13,4 @@ require (
 	rsc.io/qr v0.2.0
 )
 
-require github.com/creack/pty v1.1.24 // indirect
+require github.com/creack/pty v1.1.24

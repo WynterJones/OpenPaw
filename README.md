@@ -85,6 +85,15 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 | `OPENPAW_NO_OPEN` | unset | Set to `1` to prevent auto-opening browser on startup |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key for AI agents (can also be set in Settings) |
 
+## What's New in 1.3.2
+
+OpenPaw 1.3.2 rounds out the workspace knowledge release with:
+
+- **Better database tables** — Sort by any column, resize columns, open formatted links in the default browser, and inspect long values in responsive previews with softer borders and subtle zebra rows.
+- **Companions in chat** — Companion animations now live directly in active AI message avatars, while completed messages stay still. Avatars are tightly cropped, larger, and borderless.
+- **More reliable desktop sessions** — Workspace services recover automatically after reopening OpenPaw, custom dashboards can explicitly refresh their latest saved version, and terminal backgrounds blend cleanly with workspace artwork.
+- **Safer knowledge workflows** — Dreaming keeps chats and pins intact, dreamed posts have a dedicated Inbox view, and workspace-scoped agent access covers databases, Inbox posts, dashboards, and related services.
+
 ## What's New in 1.3.0
 
 OpenPaw 1.3.0 adds a faster, more structured way to work with workspace knowledge:

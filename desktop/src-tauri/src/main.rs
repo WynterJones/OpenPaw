@@ -49,23 +49,20 @@ fn main() {
             // to the "main" window, so the splash has no Tauri permissions —
             // injected JS needs none.
             let version = app.package_info().version.to_string();
-            let splash = WebviewWindowBuilder::new(
-                &handle,
-                "splash",
-                WebviewUrl::App("splash.html".into()),
-            )
-            .title("OpenPaw")
-            .inner_size(460.0, 320.0)
-            .resizable(false)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .center()
-            .initialization_script(&format!(
-                "window.__OPENPAW_VERSION__ = {};",
-                serde_json::to_string(&version).unwrap_or_else(|_| "\"\"".into())
-            ))
-            .build();
+            let splash =
+                WebviewWindowBuilder::new(&handle, "splash", WebviewUrl::App("splash.html".into()))
+                    .title("OpenPaw")
+                    .inner_size(460.0, 320.0)
+                    .resizable(false)
+                    .decorations(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .center()
+                    .initialization_script(&format!(
+                        "window.__OPENPAW_VERSION__ = {};",
+                        serde_json::to_string(&version).unwrap_or_else(|_| "\"\"".into())
+                    ))
+                    .build();
 
             if let Err(e) = &splash {
                 // A splash that won't build must not stop the app launching.
@@ -142,7 +139,10 @@ fn main() {
                     }
                 }
 
-                eprintln!("OpenPaw server did not start within {} seconds", MAX_WAIT_SECS);
+                eprintln!(
+                    "OpenPaw server did not start within {} seconds",
+                    MAX_WAIT_SECS
+                );
                 // Leaving the splash up forever would look like a hang with no
                 // way out, so clear it and let the main window surface whatever
                 // error it can.
@@ -180,7 +180,10 @@ fn main() {
 fn window_state_saved(app: &tauri::App) -> bool {
     app.path()
         .app_config_dir()
-        .map(|dir| dir.join(tauri_plugin_window_state::DEFAULT_FILENAME).exists())
+        .map(|dir| {
+            dir.join(tauri_plugin_window_state::DEFAULT_FILENAME)
+                .exists()
+        })
         .unwrap_or(false)
 }
 
