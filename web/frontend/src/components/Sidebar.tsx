@@ -545,6 +545,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
           dashboard, opening a floating list — rather than an inline accordion
           that pushed the rest of the nav down. */}
       <button
+        type="button"
         onClick={() => {
           setOpen((o) => !o);
           if (!open) loadDashboards();
@@ -568,15 +569,15 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
 
       {open && (
         <div
-          className="absolute z-50 left-0 right-0 top-full mt-1 rounded-lg border border-border-0 bg-surface-1 shadow-xl py-1"
+          className="absolute z-50 left-0 right-0 top-full mt-1 overflow-hidden rounded-lg border border-border-0 bg-surface-1/95 p-1 shadow-xl backdrop-blur-md"
           role="menu"
         >
-          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-3">
+          <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-3">
             Dashboards
           </p>
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="max-h-72 overflow-y-auto overscroll-contain">
             {dashboards.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-text-3">No dashboards yet</p>
+              <p className="px-2 py-2 text-xs text-text-3">No dashboards yet</p>
             ) : (
               dashboards.map((d) => {
                 const isActive =
@@ -588,7 +589,7 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
                     title={d.name}
                     onClick={() => setOpen(false)}
                     role="menuitem"
-                    className={`flex items-center gap-2 px-3 py-2 text-sm truncate transition-colors ${
+                    className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm truncate transition-colors ${
                       isActive
                         ? "bg-accent-muted text-accent-text"
                         : "text-text-2 hover:text-text-1 hover:bg-surface-2"
@@ -602,17 +603,6 @@ function DashboardsNav({ collapsed }: { collapsed: boolean }) {
                 );
               })
             )}
-          </div>
-          <div className="border-t border-border-0 mt-1 pt-1">
-            <Link
-              to="/dashboards"
-              onClick={() => setOpen(false)}
-              role="menuitem"
-              className="flex items-center gap-2 px-3 py-2 text-sm text-text-2 hover:text-text-1 hover:bg-surface-2 transition-colors"
-            >
-              <span className="w-4 flex-shrink-0" />
-              All dashboards
-            </Link>
           </div>
         </div>
       )}
