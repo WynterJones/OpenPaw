@@ -85,9 +85,9 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 | `OPENPAW_NO_OPEN` | unset | Set to `1` to prevent auto-opening browser on startup |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key for AI agents (can also be set in Settings) |
 
-## What's New in 1.3.2
+## What's New in 1.3.3
 
-OpenPaw 1.3.2 rounds out the workspace knowledge release with:
+OpenPaw 1.3.3 makes conversations, workspace data, and desktop sessions more flexible:
 
 - **Better database tables** — Sort by any column, resize columns, rename or export tables, import CSV files as new databases, adjust table text size, and page through 10, 50, 100, or a custom number of rows.
 - **Companions in chat** — Companion animations now live directly in active AI message avatars, while completed messages stay still. Avatars are tightly cropped, larger, and borderless.
