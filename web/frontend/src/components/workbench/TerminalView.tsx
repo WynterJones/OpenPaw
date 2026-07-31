@@ -56,7 +56,7 @@ export function TerminalView({
 
     const timer = setTimeout(() => {
       terminalManager.fit(sessionId);
-      terminalManager.repaint(sessionId);
+      terminalManager.repaint(sessionId, true);
       terminalManager.focus(sessionId);
     }, 50);
 

@@ -55,14 +55,16 @@ export function MobileWorkspaceSwitcher() {
     };
   }, [open]);
 
-  // Switching re-scopes everything server-side, so a full reload is the
-  // simplest reliable refresh — same as the sidebar switcher.
+  // This switcher is rendered inside the global terminal screen. Update the
+  // active workspace without reloading and destroying the live xterm canvases.
   const switchTo = async (id: string) => {
     setOpen(false);
     if (active && id === active.id) return;
     try {
       await workspaces.setActive(id);
-      window.location.reload();
+      const next = list.find((ws) => ws.id === id) ?? null;
+      setActive(next);
+      window.dispatchEvent(new CustomEvent('openpaw:workspace-changed', { detail: next }));
     } catch {
       /* ignore */
     }
@@ -74,7 +76,11 @@ export function MobileWorkspaceSwitcher() {
     try {
       const ws = await workspaces.create(name);
       await workspaces.setActive(ws.id);
-      window.location.reload();
+      setList((prev) => [...prev, ws]);
+      setActive(ws);
+      setCreating(false);
+      setNewName('');
+      window.dispatchEvent(new CustomEvent('openpaw:workspace-changed', { detail: ws }));
     } catch {
       /* ignore */
     }

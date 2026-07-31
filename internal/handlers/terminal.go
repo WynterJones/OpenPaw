@@ -1,15 +1,12 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -531,7 +528,13 @@ func (h *TerminalHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // ResolvePath finds the absolute path of a file or directory by name.
-// Uses Spotlight (mdfind) on macOS, falling back to checking common directories.
+//
+// This endpoint intentionally checks only direct children of common user
+// folders. It used to run Spotlight over the entire home directory, which
+// crossed into ~/Library application containers and media libraries and made
+// macOS attribute protected-data permission prompts to OpenPaw. A browser drag
+// that supplies only a basename is not enough authority to search unrelated
+// app data.
 func (h *TerminalHandler) ResolvePath(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name  string `json:"name"`
@@ -558,14 +561,13 @@ func (h *TerminalHandler) ResolvePath(w http.ResponseWriter, r *http.Request) {
 func resolvePathByName(name string, isDir bool) string {
 	home, _ := os.UserHomeDir()
 
-	// Try Spotlight on macOS first
-	if runtime.GOOS == "darwin" {
-		if p := resolveWithSpotlight(name, isDir, home); p != "" {
-			return p
-		}
+	// Do not accept a path disguised as a name. Native folder drops already
+	// provide an absolute path; this fallback is only for browser drops.
+	name = strings.TrimSpace(name)
+	if name == "" || filepath.Base(name) != name || name == "." || name == string(filepath.Separator) {
+		return ""
 	}
 
-	// Fall back to checking common directories
 	commonDirs := []string{
 		filepath.Join(home, "Desktop"),
 		filepath.Join(home, "Downloads"),
@@ -588,37 +590,4 @@ func resolvePathByName(name string, isDir bool) string {
 	}
 
 	return ""
-}
-
-func resolveWithSpotlight(name string, isDir bool, home string) string {
-	typeFilter := "public.content"
-	if isDir {
-		typeFilter = "public.folder"
-	}
-
-	query := fmt.Sprintf("kMDItemFSName == '%s' && kMDItemContentTypeTree == '%s'",
-		strings.ReplaceAll(name, "'", "'\\''"), typeFilter)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "mdfind", "-onlyin", home, query)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		return ""
-	}
-
-	// Prefer paths closer to home directory (shorter path = less nested)
-	best := lines[0]
-	for _, line := range lines[1:] {
-		if len(line) < len(best) {
-			best = line
-		}
-	}
-	return best
 }

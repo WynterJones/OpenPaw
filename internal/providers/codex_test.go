@@ -192,3 +192,23 @@ func TestCodexBuildArgsAllowsFullAccessForUnsandboxedAgents(t *testing.T) {
 		t.Errorf("fresh args do not disable headless approval prompts:\n%s", joined)
 	}
 }
+
+func TestCodexWorkspacePermissionArgsDenyNonWorkspaceReads(t *testing.T) {
+	cfg := llm.AgentConfig{
+		WorkspaceDir: "/Users/test/OpenPaw/workspace",
+		WorkDir:      "/Users/test/OpenPaw/agent",
+		ExtraDirs:    []string{"/Users/test/attached"},
+	}
+	joined := strings.Join(codexWorkspacePermissionArgs(cfg), " ")
+	for _, want := range []string{
+		`default_permissions="openpaw-workspace"`,
+		`permissions.openpaw-workspace.filesystem={":root"="deny",":minimal"="read"}`,
+		`"/Users/test/OpenPaw/agent"=true`,
+		`"/Users/test/attached"=true`,
+		`"127.0.0.1"="allow"`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("workspace permission args missing %q:\n%s", want, joined)
+		}
+	}
+}

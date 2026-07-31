@@ -35,7 +35,7 @@ export interface AppNavItem {
 export const APP_NAV_ITEMS: AppNavItem[] = [
   { id: 'chat', to: '/chat', icon: MessageSquare, label: 'Chats', description: 'Conversations with your agents', group: 'Workspace', defaultKey: '1', keywords: ['messages', 'new chat'] },
   { id: 'inbox', to: '/inbox', icon: Inbox, label: 'Inbox', description: 'Reports and agent posts', group: 'Workspace', defaultKey: '2', keywords: ['posts', 'reports', 'notifications'] },
-  { id: 'terminal', to: '/terminal', icon: TerminalSquare, label: 'Terminal', description: 'Workspace terminals and processes', group: 'Workspace', defaultKey: '3', keywords: ['shell', 'workbench'] },
+  { id: 'terminal', to: '/terminal', icon: TerminalSquare, label: 'Terminal', description: 'Global terminals and processes', group: 'Workspace', defaultKey: '3', keywords: ['shell', 'workbench', 'global'] },
   { id: 'studio', to: '/studio', icon: Clapperboard, label: 'Studio', description: 'Generate and manage media', group: 'Workspace', defaultKey: '4', keywords: ['images', 'video', 'audio', 'media'] },
   { id: 'dashboards', to: '/dashboards', icon: LayoutDashboard, label: 'Dashboards', description: 'Views powered by workspace data', group: 'Workspace', defaultKey: '8', keywords: ['reports', 'widgets'] },
   { id: 'context', to: '/knowledge-base', icon: BookOpen, label: 'Context', description: 'Knowledge files and workspace directory', group: 'Knowledge', defaultKey: '5', keywords: ['knowledge', 'files', 'directory', 'memory'] },

@@ -21,7 +21,7 @@ const TAB_COLORS = [
   '#ec4899',
 ];
 
-// ── Edit dropdown for workspace tabs ──
+// ── Edit dropdown for workbench tabs ──
 
 function WorkbenchEditDropdown({
   pos,
@@ -76,7 +76,7 @@ function WorkbenchEditDropdown({
           if (e.key === 'Escape') onClose();
         }}
         className="bg-surface-1 border border-border-0 rounded-md text-xs text-text-0 px-2 py-1.5 outline-none focus:border-border-1 caret-accent-primary"
-        placeholder="Workspace name"
+        placeholder="Workbench name"
       />
       <div className="flex gap-1.5 justify-center">
         {TAB_COLORS.map((c) => (
@@ -140,7 +140,7 @@ function WorkbenchHeader() {
   );
 
   const handleAdd = useCallback(async () => {
-    const name = `Workspace ${workbenches.length + 1}`;
+    const name = `Workbench ${workbenches.length + 1}`;
     await createWorkbench(name);
   }, [workbenches.length, createWorkbench]);
 
@@ -191,7 +191,7 @@ function WorkbenchHeader() {
               ref={(el) => { if (el) editBtnRefs.current.set(wb.id, el); }}
               onClick={(e) => { e.stopPropagation(); openEdit(wb.id); }}
               className="op-touch-visible opacity-0 group-hover:opacity-100 flex items-center justify-center w-5 h-5 rounded hover:bg-surface-3 transition-all shrink-0 cursor-pointer"
-              title="Edit workspace"
+              title="Edit workbench"
             >
               <Pencil className="w-2.5 h-2.5" />
             </button>

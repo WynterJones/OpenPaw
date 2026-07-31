@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,48 @@ func fakeCLI(t *testing.T, jsonl string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestScopedClaudeToolsOnlyAllowsWorkspaceRoots(t *testing.T) {
+	roots := []string{"/tmp/openpaw-workspace", "/tmp/attached"}
+	got := strings.Join(scopedClaudeTools([]string{"Read", "Write", "Edit", "Bash"}, roots), " ")
+	for _, want := range []string{
+		"Read(//tmp/openpaw-workspace/**)",
+		"Write(//tmp/attached/**)",
+		"Edit(//tmp/openpaw-workspace/**)",
+		"Bash",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("scoped tool rules missing %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "Read ") || strings.HasSuffix(got, "Read") {
+		t.Errorf("scoped tool rules retained a global Read permission: %s", got)
+	}
+}
+
+func TestClaudeWorkspaceSettingsProtectsAppDataAndAllowsAttachedDirs(t *testing.T) {
+	cfg := llm.AgentConfig{
+		WorkspaceDir: "/Users/test/OpenPaw/workspace",
+		WorkDir:      "/Users/test/OpenPaw/agent",
+		ExtraDirs:    []string{"/Users/test/Music/explicit-project"},
+	}
+	raw := claudeWorkspaceSettings(cfg, "/Users/test")
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		t.Fatalf("settings are not JSON: %v", err)
+	}
+
+	for _, want := range []string{
+		`"allowUnsandboxedCommands":false`,
+		`/Users/test/Library/Containers`,
+		`/Users/test/Music`,
+		`/Users/test/Music/explicit-project`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("workspace settings missing %q: %s", want, raw)
+		}
+	}
 }
 
 const claudeFixture = `{"type":"system","subtype":"init","session_id":"sess-123"}

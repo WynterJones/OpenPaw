@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -326,24 +328,27 @@ func (p *CodexProvider) buildArgs(cfg llm.AgentConfig, resumeID, mcpURL string) 
 		args = append(args, "-m", model)
 	}
 
-	// Mirror the trust level of the native loop. Approval is always "never"
-	// because this is a headless process: there is no terminal where a user can
-	// approve an MCP or shell action, so a prompt becomes "cancelled by client".
-	sandboxMode := "danger-full-access"
-	if len(cfg.SandboxPaths) > 0 {
-		sandboxMode = "workspace-write"
+	// Approval is always "never" because this is a headless process: there is
+	// no terminal where a user can approve an MCP or shell action.
+	scopedProfile := runtime.GOOS == "darwin" && cfg.WorkspaceDir != ""
+	if scopedProfile {
+		// Permission profiles can deny reads outside workspace roots, unlike the
+		// legacy workspace-write sandbox (which still reads most of the disk).
+		// Ignore user config so an older sandbox_mode setting cannot silently
+		// override this profile and re-open protected app/media directories.
+		args = append(args, "--ignore-user-config")
+		args = append(args, codexWorkspacePermissionArgs(cfg)...)
+	} else {
+		sandboxMode := "danger-full-access"
+		if len(cfg.SandboxPaths) > 0 {
+			sandboxMode = "workspace-write"
+		}
+		args = append(args, "-c", fmt.Sprintf(`sandbox_mode=%q`, sandboxMode))
+		if sandboxMode == "workspace-write" && mcpURL != "" {
+			args = append(args, "-c", `sandbox_workspace_write.network_access=true`)
+		}
 	}
-	args = append(args,
-		"-c", fmt.Sprintf(`sandbox_mode=%q`, sandboxMode),
-		"-c", `approval_policy="never"`,
-	)
-	if sandboxMode == "workspace-write" && mcpURL != "" {
-		// Codex executes HTTP MCP calls under the active sandbox policy. Its
-		// workspace-write default disables network access, which makes calls to
-		// OpenPaw's loopback MCP bridge surface as "user cancelled MCP tool
-		// call". Keep filesystem isolation while allowing that bridge.
-		args = append(args, "-c", `sandbox_workspace_write.network_access=true`)
-	}
+	args = append(args, "-c", `approval_policy="never"`)
 
 	if mcpURL != "" {
 		args = append(args,
@@ -359,6 +364,35 @@ func (p *CodexProvider) buildArgs(cfg llm.AgentConfig, resumeID, mcpURL string) 
 
 	// "-" makes codex read the prompt from stdin (avoids ARG_MAX limits).
 	return append(args, "-")
+}
+
+// codexWorkspacePermissionArgs creates an invocation-local permission profile
+// with workspace-only filesystem access. The profile-defined roots supplement
+// the current cwd, which Codex already treats as a runtime workspace root.
+func codexWorkspacePermissionArgs(cfg llm.AgentConfig) []string {
+	roots := mergeUnique([]string{cfg.WorkDir}, cfg.ExtraDirs)
+	entries := make([]string, 0, len(roots))
+	for _, root := range roots {
+		clean := filepath.Clean(root)
+		if clean == "." || !filepath.IsAbs(clean) || clean == filepath.Clean(cfg.WorkspaceDir) {
+			continue
+		}
+		entries = append(entries, fmt.Sprintf("%q=true", clean))
+	}
+
+	args := []string{
+		"-c", `default_permissions="openpaw-workspace"`,
+		"-c", `permissions.openpaw-workspace.extends=":workspace"`,
+		"-c", `permissions.openpaw-workspace.filesystem={":root"="deny",":minimal"="read"}`,
+		"-c", `permissions.openpaw-workspace.network.enabled=true`,
+		"-c", `permissions.openpaw-workspace.network.domains={"*"="allow","127.0.0.1"="allow","localhost"="allow"}`,
+	}
+	if len(entries) > 0 {
+		args = append(args,
+			"-c", fmt.Sprintf("permissions.openpaw-workspace.workspace_roots={%s}", strings.Join(entries, ",")),
+		)
+	}
+	return args
 }
 
 func (p *CodexProvider) RunOneShot(ctx context.Context, model, system, prompt string) (string, *llm.UsageInfo, error) {

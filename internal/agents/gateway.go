@@ -390,6 +390,7 @@ func (m *Manager) buildWorkspacePromptSection(providerName, workspaceID string) 
 			}
 			section += "You may read and edit files in these directories as needed."
 		}
+		section += "\n\nKeep all filesystem discovery and commands inside this workspace and its explicitly attached directories. Do not inspect the user's home directory, ~/Library, Music, Photos, or other applications' data unless the user explicitly attaches that directory to this workspace."
 	}
 	return section
 }

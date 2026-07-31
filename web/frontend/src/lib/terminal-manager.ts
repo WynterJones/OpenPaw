@@ -349,19 +349,25 @@ class TerminalManager {
    */
   repaint(sessionId: string, clearAtlas = false): void {
     requestAnimationFrame(() => {
-      const instance = this.instances.get(sessionId);
-      if (!instance || !instance.containerEl.isConnected) return;
-      try {
-        instance.fitAddon.fit();
-      } catch {
-        /* container not sized yet — the refresh below still repaints */
-      }
-      try {
-        if (clearAtlas) instance.term.clearTextureAtlas?.();
-        instance.term.refresh(0, instance.term.rows - 1);
-      } catch {
-        /* terminal disposed */
-      }
+      // The first frame applies visibility/reparenting; the second is the first
+      // frame where WebKit reliably reports the terminal's final dimensions.
+      requestAnimationFrame(() => {
+        const instance = this.instances.get(sessionId);
+        if (!instance || !instance.containerEl.isConnected) return;
+        const rect = instance.containerEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        try {
+          instance.fitAddon.fit();
+        } catch {
+          /* container not sized yet — the refresh below still repaints */
+        }
+        try {
+          if (clearAtlas) instance.term.clearTextureAtlas?.();
+          instance.term.refresh(0, instance.term.rows - 1);
+        } catch {
+          /* terminal disposed */
+        }
+      });
     });
   }
 

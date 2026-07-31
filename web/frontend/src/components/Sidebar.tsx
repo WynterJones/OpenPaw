@@ -66,7 +66,6 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/chat", icon: MessageSquare, label: "Chats" },
       { to: "/inbox", icon: InboxIcon, label: "Inbox" },
-      { to: "/terminal", icon: TerminalSquare, label: "Terminal" },
       { to: "/studio", icon: Clapperboard, label: "Studio" },
     ],
   },
@@ -132,6 +131,7 @@ function useUnreadCount() {
 }
 
 function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<Workspace[]>([]);
   const [active, setActive] = useState<Workspace | null>(null);
@@ -172,13 +172,21 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  // Switching the active workspace re-scopes everything server-side, so the
-  // simplest reliable refresh is a full reload after the setActive call.
+  // Terminal is global. Changing the active workspace while it is open must
+  // not tear down the renderer (and every live xterm canvas) just to re-scope
+  // the rest of the app. Other screens still reload immediately because their
+  // data is workspace-scoped.
   const switchTo = async (id: string) => {
     setOpen(false);
     if (active && id === active.id) return;
     try {
       await workspaces.setActive(id);
+      if (location.pathname === "/terminal") {
+        const next = list.find((ws) => ws.id === id) ?? null;
+        setActive(next);
+        window.dispatchEvent(new CustomEvent("openpaw:workspace-changed", { detail: next }));
+        return;
+      }
       window.location.reload();
     } catch {
       /* ignore */
@@ -191,6 +199,14 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     try {
       const ws = await workspaces.create(name);
       await workspaces.setActive(ws.id);
+      if (location.pathname === "/terminal") {
+        setList((prev) => [...prev, ws]);
+        setActive(ws);
+        setCreating(false);
+        setNewName("");
+        window.dispatchEvent(new CustomEvent("openpaw:workspace-changed", { detail: ws }));
+        return;
+      }
       window.location.reload();
     } catch {
       /* ignore */
@@ -220,6 +236,12 @@ function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       await workspaces.remove(ws.id);
       // If the active workspace was deleted the server switched to Default — reload to re-scope.
       if (active?.id === ws.id) {
+        if (location.pathname === "/terminal") {
+          setEditingId(null);
+          await load();
+          window.dispatchEvent(new CustomEvent("openpaw:workspace-changed"));
+          return;
+        }
         window.location.reload();
         return;
       }
@@ -738,6 +760,30 @@ export function Sidebar({ collapsed }: SidebarProps) {
         />
       </div>
       <WorkspaceSwitcher collapsed={collapsed} />
+      <div className="px-2 pt-1 pb-0.5">
+        <NavLink
+          to="/terminal"
+          className={({ isActive }) =>
+            `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-accent-muted text-accent-text"
+                : "text-text-2 hover:bg-surface-2 hover:text-text-1"
+            } ${collapsed ? "justify-center" : ""}`
+          }
+          title={collapsed ? "Terminal — global across workspaces" : "Global terminal"}
+        >
+          <TerminalSquare className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+          {!collapsed && (
+            <>
+              <span>Terminal</span>
+              <span className="rounded bg-surface-3/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-text-3">
+                Global
+              </span>
+              <HotkeyBadge itemId="terminal" />
+            </>
+          )}
+        </NavLink>
+      </div>
       <nav data-tauri-drag-region className="op-sidebar-nav flex-1 px-2 pb-3 overflow-y-auto">
         <DashboardsNav collapsed={collapsed} />
         {navGroups.map((group, gi) => (

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -42,11 +44,11 @@ func NewClaudeProvider(store llm.SessionStore, registry *mcp.Registry) *ClaudePr
 
 func (p *ClaudeProvider) SetMCPBaseURL(url string) { p.mcpBaseURL = url }
 
-// claudeNativeCodingTools are Claude Code CLI tool names added to --allowedTools
-// so agents can run shell commands (including tmux) and browse files in their
-// working directory. Read/Write/Edit already arrive via cfg.Tools; these add
-// command execution and directory/content navigation.
-var claudeNativeCodingTools = []string{"Bash", "Glob", "Grep", "LS"}
+// Bash remains available for real coding work, but it runs inside the scoped
+// Claude sandbox configured below. File discovery goes through Bash (rg/find)
+// or path-scoped Read/Write/Edit rules instead of globally pre-approving
+// Glob/Grep/LS, whose path arguments could otherwise leave the workspace.
+var claudeNativeCodingTools = []string{"Bash"}
 
 // mergeUnique returns the concatenation of the slices with duplicates removed,
 // preserving first-seen order.
@@ -63,6 +65,76 @@ func mergeUnique(lists ...[]string) []string {
 		}
 	}
 	return out
+}
+
+func claudeAccessRoots(cfg llm.AgentConfig) []string {
+	return mergeUnique([]string{cfg.WorkspaceDir, cfg.WorkDir}, cfg.ExtraDirs)
+}
+
+// scopedClaudeTools converts broad file-tool names into absolute permission
+// rules. Claude evaluates these rules before a tool runs, so a direct Read is
+// constrained even though Bash has its own separate OS sandbox.
+func scopedClaudeTools(tools, roots []string) []string {
+	var out []string
+	for _, tool := range tools {
+		switch tool {
+		case "Read", "Write", "Edit":
+			for _, root := range roots {
+				clean := filepath.Clean(root)
+				if clean == "." || !filepath.IsAbs(clean) {
+					continue
+				}
+				// Claude permission rules use // for an absolute path.
+				out = append(out, fmt.Sprintf("%s(//%s/**)", tool, strings.TrimPrefix(clean, string(filepath.Separator))))
+			}
+		default:
+			out = append(out, tool)
+		}
+	}
+	return mergeUnique(out)
+}
+
+// claudeWorkspaceSettings builds an invocation-local settings overlay for the
+// native macOS sandbox. It blocks the protected locations responsible for TCC
+// prompts while allowing a user to opt a location back in by attaching it to
+// the current workspace (allowRead takes precedence over denyRead).
+func claudeWorkspaceSettings(cfg llm.AgentConfig, home string) string {
+	roots := claudeAccessRoots(cfg)
+	protected := []string{
+		filepath.Join(home, "Music"),
+		filepath.Join(home, "Pictures", "Photos Library.photoslibrary"),
+		filepath.Join(home, "Library", "Containers"),
+		filepath.Join(home, "Library", "Group Containers"),
+		filepath.Join(home, "Library", "Application Scripts"),
+		filepath.Join(home, "Library", "Mail"),
+		filepath.Join(home, "Library", "Messages"),
+	}
+
+	settings := map[string]interface{}{
+		"permissions": map[string]interface{}{
+			"defaultMode": "dontAsk",
+		},
+		"sandbox": map[string]interface{}{
+			"enabled":                  true,
+			"autoAllowBashIfSandboxed": true,
+			"allowUnsandboxedCommands": false,
+			"filesystem": map[string]interface{}{
+				"denyRead":   protected,
+				"allowRead":  roots,
+				"allowWrite": cfg.ExtraDirs,
+			},
+			// Keep agent builds and package installs working; the requested
+			// boundary here is filesystem scope, not network policy.
+			"network": map[string]interface{}{
+				"allowedDomains": []string{"*"},
+			},
+		},
+	}
+	b, err := json.Marshal(settings)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // SetWorkspaceDirFunc injects a resolver for the active workspace's files dir.
@@ -199,7 +271,7 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 	// native shell + file-navigation tools so the agent can run commands (incl.
 	// tmux) and browse the workspace files in its cwd (the active workspace dir).
 	var mcpSession *mcp.Session
-	allowed := mergeUnique(cfg.Tools, claudeNativeCodingTools)
+	allowed := scopedClaudeTools(mergeUnique(cfg.Tools, claudeNativeCodingTools), claudeAccessRoots(cfg))
 	if len(cfg.ExtraHandlers) > 0 && p.registry != nil && p.mcpBaseURL != "" {
 		mcpSession = p.registry.Create(&mcp.Session{
 			AgentSlug: sessionAgentSlug(cfg),
@@ -220,6 +292,18 @@ func (p *ClaudeProvider) runOnce(ctx context.Context, cfg llm.AgentConfig, userM
 	// Grant access to any workspace-attached external directories beyond cwd.
 	for _, dir := range cfg.ExtraDirs {
 		args = append(args, "--add-dir", dir)
+	}
+
+	// The repeated macOS "Apple Music" / "data from other apps" prompts are
+	// raised against OpenPaw because Claude is its child process. Apply a
+	// per-run Seatbelt policy instead of relying on the model to avoid those
+	// paths. Other platforms keep their current provider behavior.
+	if runtime.GOOS == "darwin" && cfg.WorkspaceDir != "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			if settings := claudeWorkspaceSettings(cfg, home); settings != "" {
+				args = append(args, "--settings", settings, "--permission-mode", "dontAsk")
+			}
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, p.binName, args...)
