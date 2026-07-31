@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, CornerDownRight, Loader2, MessageSquare, Square, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ArrowUp, CornerDownRight, Loader2, MessageSquare, OctagonX, Square, UserRound, X } from 'lucide-react';
 import { api, type AgentRole, type ChatMessage, type ChatThread } from '../../lib/api';
 import { MessageBubble } from './MessageBubbles';
+import { mentionComponents } from './MentionSystem';
+import { resolveMessageRole } from '../../lib/chatUtils';
+import { localFileSrc, splitPastedImages } from './messageDisplay';
 
 interface MessageThreadLookup {
   thread: ChatThread | null;
@@ -11,12 +16,122 @@ interface MessageThreadLookup {
 interface MessageThreadPanelProps {
   rootMessage: ChatMessage;
   roles: AgentRole[];
+  userAvatarPath?: string;
   onClose: () => void;
   onReplyCountChange: (messageId: string, count: number, childThreadId?: string) => void;
   onError: (message: string) => void;
 }
 
 const POLL_INTERVAL_MS = 1200;
+
+function sameMessages(current: ChatMessage[], next: ChatMessage[]): boolean {
+  if (current.length !== next.length) return false;
+  return current.every((message, index) => {
+    const candidate = next[index];
+    return message.id === candidate.id
+      && message.content === candidate.content
+      && message.stopped === candidate.stopped
+      && message.widget_data === candidate.widget_data
+      && message.image_url === candidate.image_url
+      && JSON.stringify(message.tool_calls) === JSON.stringify(candidate.tool_calls)
+      && JSON.stringify(message.reactions) === JSON.stringify(candidate.reactions);
+  });
+}
+
+function ThreadOriginalMessage({
+  message,
+  roles,
+  userAvatarPath,
+}: {
+  message: ChatMessage;
+  roles: AgentRole[];
+  userAvatarPath?: string;
+}) {
+  const isUser = message.role === 'user';
+  const role = resolveMessageRole(roles, message.agent_role_slug);
+  const author = isUser ? 'You' : role?.name || 'Gateway';
+  const { text, images } = isUser
+    ? splitPastedImages(message.content)
+    : { text: message.content, images: [] };
+  const timestamp = new Date(message.created_at).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <section aria-label="Original message" className="mb-5">
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <CornerDownRight className="h-3.5 w-3.5 text-accent-primary" aria-hidden="true" />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-2">Original message</span>
+      </div>
+      <div className="rounded-r-xl border-l-2 border-accent-primary/50 bg-surface-0/45 px-3 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {isUser ? (
+            userAvatarPath ? (
+              <img
+                src={userAvatarPath}
+                alt=""
+                className="h-7 w-7 flex-shrink-0 rounded-lg object-cover"
+              />
+            ) : (
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-2">
+                <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+            )
+          ) : (
+            <img
+              src={role?.avatar_path || '/gateway-avatar.png'}
+              alt=""
+              className="h-7 w-7 flex-shrink-0 rounded-lg object-cover"
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-1">{author}</span>
+          <time className="flex-shrink-0 whitespace-nowrap text-[10px] text-text-3" dateTime={message.created_at}>
+            {timestamp}
+          </time>
+        </div>
+
+        <div className={`mt-3 min-w-0 text-[15px] font-medium leading-7 text-text-1 ${isUser ? 'prose-chat-user' : ''}`}>
+          <div className="prose-chat max-w-none break-words">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mentionComponents(roles)}>
+              {text}
+            </ReactMarkdown>
+          </div>
+          {images.length > 0 && (
+            <div className={`flex flex-wrap gap-2 ${text ? 'mt-3' : ''}`}>
+              {images.map((image) => (
+                <img
+                  key={image.path}
+                  src={localFileSrc(image.path)}
+                  alt={image.name}
+                  title={image.name}
+                  loading="lazy"
+                  className="max-h-52 max-w-full rounded-lg border border-border-1 object-contain"
+                />
+              ))}
+            </div>
+          )}
+          {message.image_url && (
+            <img
+              src={message.image_url}
+              alt="Generated image"
+              className="mt-3 max-h-60 max-w-full rounded-lg border border-border-1 object-contain"
+            />
+          )}
+        </div>
+
+        {message.stopped && (
+          <div className="mt-3 flex items-center gap-1.5 border-t border-border-0 pt-2.5 text-[11px] font-medium text-text-3">
+            <OctagonX className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+            <span>Stopped by you — this reply is incomplete</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 /**
  * A focused message thread deliberately owns its composer and polling state.
@@ -27,6 +142,7 @@ const POLL_INTERVAL_MS = 1200;
 export function MessageThreadPanel({
   rootMessage,
   roles,
+  userAvatarPath,
   onClose,
   onReplyCountChange,
   onError,
@@ -40,9 +156,13 @@ export function MessageThreadPanel({
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const initialLoadRef = useRef(true);
+  const stickToBottomRef = useRef(false);
+  const previousReplyCountRef = useRef(0);
 
   const mentionRoles = useMemo(() => {
     const query = mentionFilter.toLowerCase();
@@ -63,14 +183,18 @@ export function MessageThreadPanel({
     onReplyCountChange(rootMessage.id, next.length, child?.id);
   }, [onReplyCountChange, rootMessage.id]);
 
+  const storeReplies = useCallback((next: ChatMessage[]) => {
+    setReplies((current) => sameMessages(current, next) ? current : next);
+  }, []);
+
   const loadReplies = useCallback(async (activeThread: ChatThread) => {
     const next = await api.get<ChatMessage[]>(`/chat/threads/${activeThread.id}/messages`);
     if (!mountedRef.current) return [];
     const safe = Array.isArray(next) ? next : [];
-    setReplies(safe);
+    storeReplies(safe);
     publishReplyCount(safe, activeThread);
     return safe;
-  }, [publishReplyCount]);
+  }, [publishReplyCount, storeReplies]);
 
   const startPolling = useCallback((activeThread: ChatThread) => {
     stopPolling();
@@ -85,7 +209,7 @@ export function MessageThreadPanel({
         ]);
         if (!mountedRef.current) return;
         const safe = Array.isArray(next) ? next : [];
-        setReplies(safe);
+        storeReplies(safe);
         publishReplyCount(safe, activeThread);
         const latest = safe[safe.length - 1];
         // Require an assistant reply before treating an initially-idle status
@@ -101,14 +225,17 @@ export function MessageThreadPanel({
         }
       }
     }, POLL_INTERVAL_MS);
-  }, [publishReplyCount, stopPolling]);
+  }, [publishReplyCount, stopPolling, storeReplies]);
 
   useEffect(() => {
     mountedRef.current = true;
+    initialLoadRef.current = true;
+    stickToBottomRef.current = false;
+    previousReplyCountRef.current = 0;
     const load = async () => {
       setLoading(true);
       setThread(null);
-      setReplies([]);
+      setReplies((current) => current.length > 0 ? [] : current);
       try {
         const lookup = await api.get<MessageThreadLookup>(`/chat/messages/${rootMessage.id}/thread`);
         if (!mountedRef.current) return;
@@ -124,7 +251,10 @@ export function MessageThreadPanel({
       } catch (error) {
         onError(error instanceof Error ? error.message : 'Failed to open thread');
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current) {
+          initialLoadRef.current = false;
+          setLoading(false);
+        }
       }
     };
     void load();
@@ -144,8 +274,17 @@ export function MessageThreadPanel({
   }, [onClose]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [replies, working]);
+    const addedReplies = replies.length > previousReplyCountRef.current;
+    previousReplyCountRef.current = replies.length;
+    if (
+      initialLoadRef.current
+      || !addedReplies
+      || !stickToBottomRef.current
+    ) {
+      return;
+    }
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [replies.length]);
 
   const handleInput = (value: string, cursor: number) => {
     setInput(value);
@@ -172,6 +311,7 @@ export function MessageThreadPanel({
     const content = input.trim();
     if (!content || sending || working) return;
     setSending(true);
+    stickToBottomRef.current = true;
     setInput('');
     setMentionOpen(false);
     try {
@@ -248,16 +388,20 @@ export function MessageThreadPanel({
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
-        <section aria-label="Original message" className="mb-5">
-          <div className="mb-2 flex items-center gap-2 px-1">
-            <CornerDownRight className="h-3.5 w-3.5 text-accent-primary" aria-hidden="true" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-2">Original message</span>
-          </div>
-          <div className="rounded-xl border border-border-1 bg-surface-0/70 p-3">
-            <MessageBubble message={rootMessage} roles={roles} onRefresh={() => {}} />
-          </div>
-        </section>
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 overflow-y-auto px-3 py-4"
+        onScroll={() => {
+          const area = scrollAreaRef.current;
+          if (!area) return;
+          stickToBottomRef.current = area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+        }}
+      >
+        <ThreadOriginalMessage
+          message={rootMessage}
+          roles={roles}
+          userAvatarPath={userAvatarPath}
+        />
 
         <div className="mb-4 flex items-center gap-3" aria-hidden="true">
           <div className="h-px flex-1 bg-border-0" />

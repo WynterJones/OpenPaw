@@ -151,6 +151,49 @@ export function Chat() {
   const [activeThread, setActiveThread] = useState<string | null>(() => localStorage.getItem('openpaw_active_thread'));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadRoot, setThreadRoot] = useState<ChatMessage | null>(null);
+  const closeMessageThread = useCallback(() => setThreadRoot(null), []);
+  const handleMessageThreadError = useCallback((message: string) => {
+    toast('error', message);
+  }, [toast]);
+  const handleThreadReplyCountChange = useCallback((
+    messageId: string,
+    count: number,
+    childThreadId?: string,
+  ) => {
+    setMessages((current) => {
+      let changed = false;
+      const next = current.map((message) => {
+        if (message.id !== messageId) return message;
+        if (
+          message.thread_reply_count === count
+          && message.child_thread_id === childThreadId
+        ) {
+          return message;
+        }
+        changed = true;
+        return {
+          ...message,
+          thread_reply_count: count,
+          child_thread_id: childThreadId,
+        };
+      });
+      return changed ? next : current;
+    });
+    setThreadRoot((current) => {
+      if (!current || current.id !== messageId) return current;
+      if (
+        current.thread_reply_count === count
+        && current.child_thread_id === childThreadId
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        thread_reply_count: count,
+        child_thread_id: childThreadId,
+      };
+    });
+  }, []);
   const [input, setInput] = useState('');
   const [agent] = useState('');
   const [showThreads, setShowThreads] = useState(() => window.innerWidth >= 768);
@@ -2357,18 +2400,10 @@ export function Chat() {
           <MessageThreadPanel
             rootMessage={threadRoot}
             roles={roles}
-            onClose={() => setThreadRoot(null)}
-            onError={(message) => toast('error', message)}
-            onReplyCountChange={(messageId, count, childThreadId) => {
-              setMessages((current) => current.map((message) => (
-                message.id === messageId
-                  ? { ...message, thread_reply_count: count, child_thread_id: childThreadId }
-                  : message
-              )));
-              setThreadRoot((current) => current?.id === messageId
-                ? { ...current, thread_reply_count: count, child_thread_id: childThreadId }
-                : current);
-            }}
+            userAvatarPath={user?.avatar_path}
+            onClose={closeMessageThread}
+            onError={handleMessageThreadError}
+            onReplyCountChange={handleThreadReplyCountChange}
           />
         )}
         {activeThread && showRightPanel && !threadRoot && (

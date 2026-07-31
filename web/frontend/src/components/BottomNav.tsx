@@ -1,46 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router';
-import {
-  MessageSquare,
-  Wrench,
-  TerminalSquare,
-  Bot,
-  Sparkles,
-  KeyRound,
-  LayoutDashboard,
-  Clock,
-  FileText,
-  Settings,
-  Store,
-  Database,
-  Heart,
-  ListTodo,
-  Inbox,
-  Clapperboard,
-  MoreHorizontal,
-} from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
+import { APP_NAV_ITEMS } from '../lib/app-navigation';
 
 const primaryItems = [
-  { to: '/dashboards', icon: LayoutDashboard, label: 'Dashboards' },
-  { to: '/chat', icon: MessageSquare, label: 'Chats' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/scheduler', icon: Clock, label: 'Scheduler' },
+  { ...APP_NAV_ITEMS.find((item) => item.id === 'dashboards')!, label: 'Dashboard' },
+  { ...APP_NAV_ITEMS.find((item) => item.id === 'chat')!, label: 'Chat' },
+  { ...APP_NAV_ITEMS.find((item) => item.id === 'inbox')!, label: 'Inbox' },
 ];
 
-const moreItems = [
-  { to: '/inbox', icon: Inbox, label: 'Inbox' },
-  { to: '/knowledge-base', icon: Database, label: 'Context' },
-  { to: '/todo-lists', icon: ListTodo, label: 'Tasks' },
-  { to: '/services', icon: Wrench, label: 'Services' },
-  { to: '/terminal', icon: TerminalSquare, label: 'Terminal' },
-  { to: '/studio', icon: Clapperboard, label: 'Studio' },
-  { to: '/skills', icon: Sparkles, label: 'Skills' },
-  { to: '/library', icon: Store, label: 'Templates' },
-  { to: '/secrets', icon: KeyRound, label: 'Secrets' },
-  { to: '/logs', icon: FileText, label: 'Logs' },
-  { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-];
+const primaryIds = new Set(primaryItems.map((item) => item.id));
+const moreItems = APP_NAV_ITEMS.filter((item) => !primaryIds.has(item.id));
 
 export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -73,13 +43,13 @@ export function BottomNav() {
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface-1/95 backdrop-blur-sm border-t border-border-0 z-40 safe-bottom">
-      <div className="flex items-center justify-around h-14 px-1">
+      <div className="grid h-14 grid-cols-4 items-center px-1">
         {primaryItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-0.5 min-w-0 px-2 py-1 rounded-lg transition-colors ${
+              `flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1 transition-colors ${
                 isActive
                   ? 'text-accent-primary'
                   : 'text-text-3'
@@ -91,7 +61,7 @@ export function BottomNav() {
           </NavLink>
         ))}
 
-        <div className="relative" ref={moreRef}>
+        <div className="relative flex justify-center" ref={moreRef}>
           <button
             onClick={() => setMoreOpen(!moreOpen)}
             aria-expanded={moreOpen}
@@ -110,14 +80,17 @@ export function BottomNav() {
           {moreOpen && (
             <>
               <div className="fixed inset-0 z-40" />
-              <div className="absolute bottom-full right-0 mb-2 w-48 rounded-xl border border-border-0 bg-surface-1 shadow-2xl py-1.5 z-50" role="menu">
+              <div
+                className="absolute bottom-full right-1 mb-2 max-h-[min(70dvh,30rem)] w-52 overflow-y-auto overscroll-contain rounded-xl border border-border-0 bg-surface-1 py-1.5 shadow-2xl z-50"
+                role="menu"
+              >
                 {moreItems.map(item => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     role="menuitem"
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
+                      `flex min-h-11 items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
                         isActive
                           ? 'text-accent-primary bg-accent-muted'
                           : 'text-text-1 hover:bg-surface-2'

@@ -12,6 +12,7 @@ import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { SubAgentPanel } from './SubAgentPanel';
 import { EmojiPicker } from './EmojiPicker';
 import { CompanionAvatar } from '../companion/CompanionAvatar';
+import { localFileSrc, splitPastedImages } from './messageDisplay';
 
 function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[]; onReact: (emoji: string) => void; trailing?: ReactNode }) {
   return (
@@ -178,42 +179,6 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
       </div>
     </div>
   );
-}
-
-/**
- * Splits the AI-only pasted-image footer off a user message.
- *
- * Sending a pasted image appends a block of absolute on-disk paths so the agent
- * can read the file — every provider gets a real path rather than an upload.
- * That block is machinery, not something the user wrote, and it is what they
- * would see instead of their screenshot. It also cannot render as markdown:
- * the paths contain a space ("Application Support"), which is not a valid
- * unbracketed link destination, so it degrades to raw text.
- *
- * The stored message keeps the block — only the display drops it.
- */
-const PASTED_BLOCK_RE = /\n\n---\n\*\*Pasted image\(s\)\*\*[^\n]*\n([\s\S]*)$/;
-const PASTED_LINK_RE = /\[([^\]]*)\]\(([^)]+)\)/g;
-
-function splitPastedImages(content: string): {
-  text: string;
-  images: { name: string; path: string }[];
-} {
-  const match = content.match(PASTED_BLOCK_RE);
-  if (!match) return { text: content, images: [] };
-
-  const images: { name: string; path: string }[] = [];
-  for (const m of match[1].matchAll(PASTED_LINK_RE)) {
-    images.push({ name: m[1] || 'image', path: m[2] });
-  }
-  if (images.length === 0) return { text: content, images: [] };
-
-  return { text: content.slice(0, match.index).trimEnd(), images };
-}
-
-/** Local absolute paths are served through the file endpoint. */
-function localFileSrc(path: string) {
-  return `/api/v1/openclaw/file?path=${encodeURIComponent(path)}`;
 }
 
 function UserMessageBubble({ message, roles, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
