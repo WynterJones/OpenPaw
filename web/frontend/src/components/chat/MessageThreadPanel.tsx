@@ -488,7 +488,7 @@ export function MessageThreadPanel({
             }}
             placeholder="Reply in thread…"
             aria-label="Reply in thread"
-            className="min-h-14 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm font-medium text-text-0 outline-none placeholder:font-normal placeholder:text-text-3 disabled:opacity-50"
+            className="min-h-14 w-full resize-none border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm font-medium text-text-0 outline-none shadow-none focus:border-transparent focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:font-normal placeholder:text-text-3 disabled:opacity-50"
             style={{ maxHeight: '160px' }}
           />
           <div className="flex items-center justify-between px-2.5 pb-2 pt-1">
