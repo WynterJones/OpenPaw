@@ -30,7 +30,14 @@ type Session struct {
 	Ptmx        *os.File
 	cancel      context.CancelFunc
 	CreatedAt   time.Time
+	outputMu    sync.Mutex
+	output      []byte
+	subscribers map[chan []byte]struct{}
+	outputDone  chan struct{}
+	doneOnce    sync.Once
 }
+
+const terminalHistoryLimit = 1024 * 1024
 
 // Workbench represents a named grouping of terminal sessions.
 type Workbench struct {
@@ -167,6 +174,8 @@ func (m *Manager) startSession(spec sessionSpec, initialCommand string, insert b
 		Ptmx:        ptmx,
 		cancel:      cancel,
 		CreatedAt:   spec.CreatedAt,
+		subscribers: make(map[chan []byte]struct{}),
+		outputDone:  make(chan struct{}),
 	}
 
 	if insert {
@@ -192,6 +201,13 @@ func (m *Manager) startSession(spec sessionSpec, initialCommand string, insert b
 	m.mu.Lock()
 	m.sessions[s.ID] = s
 	m.mu.Unlock()
+
+	// One reader owns the PTY for the lifetime of the session. WebSocket
+	// clients subscribe to its output instead of each starting a competing
+	// Read call. Besides avoiding stolen output after reconnects, the bounded
+	// history lets a freshly-mounted xterm repaint the screen after navigation
+	// or a workspace switch.
+	go m.pumpOutput(s)
 
 	// Watch for process exit to clean up
 	go func() {
@@ -220,6 +236,62 @@ func (m *Manager) startSession(spec sessionSpec, initialCommand string, insert b
 
 	logger.Success("Created terminal session %s (%s) using %s", s.ID, s.Title, s.Shell)
 	return s, nil
+}
+
+func (m *Manager) pumpOutput(s *Session) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := s.Ptmx.Read(buf)
+		if n > 0 {
+			data := append([]byte(nil), buf[:n]...)
+			s.outputMu.Lock()
+			s.output = append(s.output, data...)
+			if len(s.output) > terminalHistoryLimit {
+				s.output = append([]byte(nil), s.output[len(s.output)-terminalHistoryLimit:]...)
+			}
+			for subscriber := range s.subscribers {
+				select {
+				case subscriber <- data:
+				default:
+					// Never let a background or disconnected renderer block the
+					// PTY. A reconnect receives the authoritative history again.
+				}
+			}
+			s.outputMu.Unlock()
+		}
+		if err != nil {
+			s.doneOnce.Do(func() { close(s.outputDone) })
+			return
+		}
+	}
+}
+
+// SubscribeOutput returns a snapshot of recent output followed by a live
+// stream. Registering the subscriber and copying history happen under one lock,
+// so bytes cannot fall into a gap between the replay and live stream.
+func (m *Manager) SubscribeOutput(id string) ([]byte, <-chan []byte, <-chan struct{}, func(), error) {
+	m.mu.Lock()
+	s, exists := m.sessions[id]
+	m.mu.Unlock()
+	if !exists {
+		return nil, nil, nil, nil, fmt.Errorf("session not found: %s", id)
+	}
+
+	stream := make(chan []byte, 256)
+	s.outputMu.Lock()
+	history := append([]byte(nil), s.output...)
+	s.subscribers[stream] = struct{}{}
+	s.outputMu.Unlock()
+
+	var once sync.Once
+	cancel := func() {
+		once.Do(func() {
+			s.outputMu.Lock()
+			delete(s.subscribers, stream)
+			s.outputMu.Unlock()
+		})
+	}
+	return history, stream, s.outputDone, cancel, nil
 }
 
 // restoreSessions recreates fresh shell processes for terminal tabs that were
@@ -387,17 +459,12 @@ func (m *Manager) Shutdown() {
 	logger.Info("Terminal manager shut down with %d session(s) saved", len(sessions))
 }
 
-// ListWorkbenches returns all workbenches ordered by sort_order then created_at.
-// ListWorkbenches returns the workbenches belonging to the active workspace.
-//
-// Workspace scoping is the point of the workspace: a client project's terminals
-// have no business appearing while you are working on something else. The
-// column has been on the table since 055 but nothing filtered on it, so every
-// workspace showed the same terminals.
+// ListWorkbenches returns the global terminal workbenches ordered by sort order.
+// Terminal is intentionally outside workspace navigation: switching the app's
+// data workspace must not replace a running shell with an empty terminal page.
 func (m *Manager) ListWorkbenches() ([]Workbench, error) {
 	rows, err := m.db.Query(
-		"SELECT id, name, color, sort_order, created_at FROM workbenches WHERE workspace_id = ? ORDER BY sort_order, created_at",
-		m.db.ActiveWorkspaceID(),
+		"SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at",
 	)
 	if err != nil {
 		return nil, err
@@ -477,13 +544,12 @@ func (m *Manager) DeleteWorkbench(id string) error {
 	return err
 }
 
-// EnsureDefaultWorkbench returns the active workspace's first workbench, or
-// creates one named "Default" for it.
+// EnsureDefaultWorkbench returns the first global workbench, or creates one
+// named "Default" when the terminal has never been used.
 func (m *Manager) EnsureDefaultWorkbench() (*Workbench, error) {
 	var w Workbench
 	err := m.db.QueryRow(
-		"SELECT id, name, color, sort_order, created_at FROM workbenches WHERE workspace_id = ? ORDER BY sort_order, created_at LIMIT 1",
-		m.db.ActiveWorkspaceID(),
+		"SELECT id, name, color, sort_order, created_at FROM workbenches ORDER BY sort_order, created_at LIMIT 1",
 	).Scan(&w.ID, &w.Name, &w.Color, &w.SortOrder, &w.CreatedAt)
 	if err == nil {
 		return &w, nil

@@ -50,6 +50,7 @@ interface WorkbenchContextType {
 const WorkbenchContext = createContext<WorkbenchContextType | null>(null);
 
 const LAYOUT_KEY = 'openpaw:workbench:layout';
+const ACTIVE_WORKBENCH_KEY = 'openpaw:workbench:active';
 
 let panelIdCounter = 0;
 function nextPanelId(): string {
@@ -279,7 +280,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         // Open the workbench the link asked for, not just the first one — a
         // terminal linked from elsewhere in the app usually lives in another.
         const target = jumpTargetRef.current;
-        const openWb = wbs.find((w) => w.id === target?.workbenchId) ?? wbs[0];
+        let savedWorkbenchId: string | null = null;
+        try {
+          savedWorkbenchId = localStorage.getItem(ACTIVE_WORKBENCH_KEY);
+        } catch {
+          // Storage can be unavailable in hardened browser contexts.
+        }
+        const openWb =
+          wbs.find((w) => w.id === target?.workbenchId)
+          ?? wbs.find((w) => w.id === savedWorkbenchId)
+          ?? wbs[0];
         setActiveWorkbenchId(openWb.id);
 
         // Load sessions for the workbench being opened
@@ -333,6 +343,33 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Workbenches are global, including the selected one. Preserve the exact tab
+  // group across app-workspace reloads instead of falling back to the first
+  // workbench and making the running terminal appear to have disappeared.
+  useEffect(() => {
+    if (activeWorkbenchId) {
+      try {
+        localStorage.setItem(ACTIVE_WORKBENCH_KEY, activeWorkbenchId);
+      } catch {
+        // The terminal remains usable; only cross-reload selection is lost.
+      }
+    }
+  }, [activeWorkbenchId]);
+
+  // The desktop workspace switcher deliberately stays on this route. WebKit
+  // can still invalidate a transparent WebGL canvas while the surrounding
+  // sidebar and background update, so explicitly reveal the active xterm once
+  // the workspace transition has painted.
+  useEffect(() => {
+    const repaintActiveTerminal = () => {
+      if (!activeSessionId) return;
+      terminalManager.ensureConnected(activeSessionId);
+      terminalManager.repaint(activeSessionId, true);
+    };
+    window.addEventListener('openpaw:workspace-changed', repaintActiveTerminal);
+    return () => window.removeEventListener('openpaw:workspace-changed', repaintActiveTerminal);
+  }, [activeSessionId]);
+
   // Save layout whenever rootPanel changes.
   //
   // Not while loading: switching workbenches sets the new id and clears the
@@ -347,6 +384,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   // ── Switch workbench ──
   const switchWorkbench = useCallback(async (id: string) => {
+    if (id === activeWorkbenchId) {
+      if (activeSessionId) terminalManager.repaint(activeSessionId, true);
+      return;
+    }
     setActiveWorkbenchId(id);
     setRootPanel(null);
     setActiveSessionId(null);
@@ -385,7 +426,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeSessionId, activeWorkbenchId]);
 
   // ── Create session ──
   const createSession = useCallback(

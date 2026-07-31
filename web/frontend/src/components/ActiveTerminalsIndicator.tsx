@@ -1,7 +1,7 @@
 /**
  * ActiveTerminalsIndicator
  *
- * Lists every live terminal across all workbenches and workspaces so you can
+ * Lists every live terminal across the global terminal workbenches so you can
  * jump back to one from any screen. Rendered inside the floating sticky
  * stack, directly above the active-chats card — and in its place when no chat
  * is working, since each card hides itself when empty.
@@ -10,14 +10,12 @@
 import { useEffect, useState } from 'react';
 import { TerminalSquare } from 'lucide-react';
 import { api } from '../lib/api';
-import { jumpToWorkspace } from '../lib/jumpToWorkspace';
 import { useDockCount } from '../contexts/activityDock';
 
 interface ActiveTerminal {
   session_id: string;
   title: string;
   workbench_id?: string;
-  workspace_id?: string;
 }
 
 /**
@@ -73,7 +71,7 @@ export function ActiveTerminalsIndicator() {
           {sessions.map((s) => (
             <button
               key={s.session_id}
-              onClick={() => jumpToWorkspace(s.workspace_id, terminalPath(s))}
+              onClick={() => { window.location.href = terminalPath(s); }}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors cursor-pointer"
               title={`Open "${s.title}"`}
             >

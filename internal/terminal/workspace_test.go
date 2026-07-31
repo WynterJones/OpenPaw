@@ -39,10 +39,10 @@ func workbenchNames(t *testing.T, m *Manager) []string {
 	return names
 }
 
-// A workbench belongs to a workspace, but nothing filtered on the column: every
-// workspace listed every terminal, so a client project's shells sat in the tab
-// bar while you worked on something else.
-func TestWorkbenches_AreScopedToTheActiveWorkspace(t *testing.T) {
+// Terminal navigation is global. Changing the active data workspace must leave
+// the same workbench tabs available instead of replacing a live terminal with
+// the new-terminal screen.
+func TestWorkbenches_RemainVisibleAcrossWorkspaceSwitches(t *testing.T) {
 	db := newWorkbenchTestDB(t)
 	m := NewManager(db, t.TempDir())
 
@@ -54,28 +54,25 @@ func TestWorkbenches_AreScopedToTheActiveWorkspace(t *testing.T) {
 	}
 
 	setActiveWorkspace(t, db, other)
-	if got := workbenchNames(t, m); len(got) != 0 {
-		t.Errorf("another workspace sees %v, want nothing", got)
+	if got := workbenchNames(t, m); len(got) != 1 || got[0] != "Client A" {
+		t.Errorf("after workspace switch got %v, want [Client A]", got)
 	}
 
 	if _, err := m.CreateWorkbench("Side Project"); err != nil {
 		t.Fatalf("create in other workspace: %v", err)
 	}
-	if got := workbenchNames(t, m); len(got) != 1 || got[0] != "Side Project" {
-		t.Errorf("got %v, want [Side Project]", got)
+	if got := workbenchNames(t, m); len(got) != 2 || got[0] != "Client A" || got[1] != "Side Project" {
+		t.Errorf("got %v, want both global workbenches", got)
 	}
 
-	// And the first workspace is unchanged — creation must not leak into it,
-	// which it did while the insert relied on the column default.
+	// Switching back leaves the exact same terminal navigation in place.
 	setActiveWorkspace(t, db, database.DefaultWorkspaceID)
-	if got := workbenchNames(t, m); len(got) != 1 || got[0] != "Client A" {
-		t.Errorf("default workspace got %v, want [Client A]", got)
+	if got := workbenchNames(t, m); len(got) != 2 || got[0] != "Client A" || got[1] != "Side Project" {
+		t.Errorf("switching back changed global workbenches: %v", got)
 	}
 }
 
-// EnsureDefaultWorkbench has to make one per workspace, not hand every
-// workspace the first row in the table.
-func TestEnsureDefaultWorkbench_PerWorkspace(t *testing.T) {
+func TestEnsureDefaultWorkbench_IsGlobal(t *testing.T) {
 	db := newWorkbenchTestDB(t)
 	m := NewManager(db, t.TempDir())
 
@@ -98,8 +95,8 @@ func TestEnsureDefaultWorkbench_PerWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure in other workspace: %v", err)
 	}
-	if other.ID == first.ID {
-		t.Error("second workspace was handed the first workspace's workbench")
+	if other.ID != first.ID {
+		t.Errorf("workspace switch created a second default workbench (%s, want %s)", other.ID, first.ID)
 	}
 }
 

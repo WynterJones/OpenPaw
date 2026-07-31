@@ -198,6 +198,10 @@ class TerminalManager {
 
     ws.onopen = () => {
       instance.reconnectAttempts = 0;
+      // The server starts every subscription with its bounded authoritative
+      // output history. Reset first so a network reconnect replaces the old
+      // renderer buffer instead of appending a duplicate copy of the screen.
+      try { term.reset(); } catch { /* terminal may have been disposed */ }
       try { instance.fitAddon.fit(); } catch { /* ignore */ }
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
@@ -361,8 +365,15 @@ class TerminalManager {
         } catch {
           /* container not sized yet — the refresh below still repaints */
         }
+        if (clearAtlas) {
+          try {
+            instance.term.clearTextureAtlas?.();
+          } catch {
+            // A lost WebGL context can reject atlas cleanup. Refresh must still
+            // run so the fallback renderer gets a chance to paint the buffer.
+          }
+        }
         try {
-          if (clearAtlas) instance.term.clearTextureAtlas?.();
           instance.term.refresh(0, instance.term.rows - 1);
         } catch {
           /* terminal disposed */

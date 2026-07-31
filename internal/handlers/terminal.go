@@ -355,12 +355,12 @@ func (h *TerminalHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	logger.WS("connected", fmt.Sprintf("terminal:%s", sessionID))
 
-	done := make(chan struct{})
+	clientDone := make(chan struct{})
 
 	// Read pump: WebSocket -> PTY
 	go func() {
 		defer func() {
-			close(done)
+			close(clientDone)
 			conn.Close()
 		}()
 
@@ -409,62 +409,49 @@ func (h *TerminalHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Write pump: PTY -> WebSocket
+	history, output, outputDone, unsubscribe, err := h.terminalMgr.SubscribeOutput(sessionID)
+	if err != nil {
+		conn.Close()
+		return
+	}
+
+	// Write pump: shared PTY output -> WebSocket. The manager owns the only PTY
+	// reader and replays recent output first, so remounting xterm does not create
+	// a blank canvas while the shell is idle.
 	go func() {
 		ticker := time.NewTicker(wsPingPeriod)
 		defer func() {
 			ticker.Stop()
+			unsubscribe()
 			conn.Close()
 			logger.WS("disconnected", fmt.Sprintf("terminal:%s", sessionID))
 		}()
 
-		buf := make([]byte, 4096)
-		readCh := make(chan []byte)
-		errCh := make(chan error)
-
-		// PTY reader goroutine
-		go func() {
-			for {
-				n, err := session.Ptmx.Read(buf)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				// Copy data to avoid race with next read
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				readCh <- data
+		if len(history) > 0 {
+			conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := conn.WriteMessage(websocket.BinaryMessage, history); err != nil {
+				return
 			}
-		}()
+		}
 
 		for {
 			select {
-			case <-done:
+			case <-clientDone:
 				return
 
-			case data := <-readCh:
+			case data := <-output:
 				conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 				if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 					return
 				}
 
-			case err := <-errCh:
-				if err == io.EOF {
-					// Process exited — send exit message
-					exitMsg, _ := json.Marshal(map[string]interface{}{
-						"type": "exit",
-						"code": 0,
-					})
-					conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-					conn.WriteMessage(websocket.TextMessage, exitMsg)
-				} else {
-					errMsg, _ := json.Marshal(map[string]interface{}{
-						"type":    "error",
-						"message": err.Error(),
-					})
-					conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-					conn.WriteMessage(websocket.TextMessage, errMsg)
-				}
+			case <-outputDone:
+				exitMsg, _ := json.Marshal(map[string]interface{}{
+					"type": "exit",
+					"code": 0,
+				})
+				conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+				_ = conn.WriteMessage(websocket.TextMessage, exitMsg)
 				return
 
 			case <-ticker.C:
