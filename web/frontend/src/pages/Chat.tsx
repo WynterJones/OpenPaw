@@ -41,6 +41,9 @@ type ContextItem =
   | { kind: 'file'; file: ContextFile }
   | { kind: 'folder'; folder: ContextTreeNode; files: ContextFile[] };
 
+const THREAD_PANEL_MIN_WIDTH = 340;
+const THREAD_PANEL_MAX_WIDTH = 720;
+
 function collectFolderFiles(node: ContextTreeNode): ContextFile[] {
   const files = [...node.files];
   for (const child of node.children) {
@@ -151,6 +154,13 @@ export function Chat() {
   const [activeThread, setActiveThread] = useState<string | null>(() => localStorage.getItem('openpaw_active_thread'));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadRoot, setThreadRoot] = useState<ChatMessage | null>(null);
+  const [threadPanelWidth, setThreadPanelWidth] = useState(() => {
+    const stored = Number(localStorage.getItem('openpaw_thread_panel_width'));
+    return stored >= THREAD_PANEL_MIN_WIDTH && stored <= THREAD_PANEL_MAX_WIDTH ? stored : 420;
+  });
+  useEffect(() => {
+    localStorage.setItem('openpaw_thread_panel_width', String(Math.round(threadPanelWidth)));
+  }, [threadPanelWidth]);
   const closeMessageThread = useCallback(() => setThreadRoot(null), []);
   const handleMessageThreadError = useCallback((message: string) => {
     toast('error', message);
@@ -2397,14 +2407,33 @@ export function Chat() {
           )}
         </div>
         {threadRoot && (
-          <MessageThreadPanel
-            rootMessage={threadRoot}
-            roles={roles}
-            userAvatarPath={user?.avatar_path}
-            onClose={closeMessageThread}
-            onError={handleMessageThreadError}
-            onReplyCountChange={handleThreadReplyCountChange}
-          />
+          <>
+            <div className="hidden md:block">
+              <SplitDivider
+                direction="horizontal"
+                label="Resize thread panel"
+                onDrag={(delta) => {
+                  const availableWidth = canvasRowRef.current?.clientWidth || window.innerWidth;
+                  const maxWidth = Math.max(
+                    THREAD_PANEL_MIN_WIDTH,
+                    Math.min(THREAD_PANEL_MAX_WIDTH, availableWidth - THREAD_PANEL_MIN_WIDTH),
+                  );
+                  setThreadPanelWidth((current) => (
+                    Math.min(maxWidth, Math.max(THREAD_PANEL_MIN_WIDTH, current - delta))
+                  ));
+                }}
+              />
+            </div>
+            <MessageThreadPanel
+              rootMessage={threadRoot}
+              roles={roles}
+              userAvatarPath={user?.avatar_path}
+              width={threadPanelWidth}
+              onClose={closeMessageThread}
+              onError={handleMessageThreadError}
+              onReplyCountChange={handleThreadReplyCountChange}
+            />
+          </>
         )}
         {activeThread && showRightPanel && !threadRoot && (
           <>

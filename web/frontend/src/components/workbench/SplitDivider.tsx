@@ -3,9 +3,10 @@ import { useCallback, useRef } from 'react';
 interface SplitDividerProps {
   direction: 'horizontal' | 'vertical';
   onDrag: (delta: number) => void;
+  label?: string;
 }
 
-export function SplitDivider({ direction, onDrag }: SplitDividerProps) {
+export function SplitDivider({ direction, onDrag, label = 'Resize panels' }: SplitDividerProps) {
   const startPos = useRef(0);
 
   const handleMouseDown = useCallback(
@@ -52,7 +53,9 @@ export function SplitDivider({ direction, onDrag }: SplitDividerProps) {
       }}
       onMouseDown={handleMouseDown}
       role="separator"
+      aria-label={label}
       aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
+      title={label}
     />
   );
 }

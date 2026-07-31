@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowUp, CornerDownRight, Loader2, MessageSquare, OctagonX, Square, UserRound, X } from 'lucide-react';
@@ -17,6 +17,7 @@ interface MessageThreadPanelProps {
   rootMessage: ChatMessage;
   roles: AgentRole[];
   userAvatarPath?: string;
+  width: number;
   onClose: () => void;
   onReplyCountChange: (messageId: string, count: number, childThreadId?: string) => void;
   onError: (message: string) => void;
@@ -143,6 +144,7 @@ export function MessageThreadPanel({
   rootMessage,
   roles,
   userAvatarPath,
+  width,
   onClose,
   onReplyCountChange,
   onError,
@@ -367,7 +369,8 @@ export function MessageThreadPanel({
   return (
     <aside
       aria-label="Message thread"
-      className="absolute inset-0 z-40 flex min-w-0 flex-col border-l border-border-1 bg-surface-1 shadow-2xl shadow-black/30 md:relative md:inset-auto md:w-[420px] md:flex-shrink-0"
+      className="absolute inset-0 z-40 flex min-w-0 flex-col border-l border-border-1 bg-surface-1 shadow-2xl shadow-black/30 md:relative md:inset-auto md:w-[var(--thread-panel-width)] md:max-w-[65%] md:flex-shrink-0"
+      style={{ '--thread-panel-width': `${width}px` } as CSSProperties}
     >
       <header className="flex min-h-14 items-center gap-3 border-b border-border-0 px-4 py-2.5">
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent-primary">

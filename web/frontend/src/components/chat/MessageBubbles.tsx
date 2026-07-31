@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { DollarSign, Zap, Download, Wrench, Minimize2, OctagonX, MessageSquare } from 'lucide-react';
+import { DollarSign, Zap, Download, Wrench, Minimize2, OctagonX, MessageSquare, UserRound } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, AgentRole, WidgetPayload, SubAgentTask, Reaction } from '../../lib/api';
-import { parseConfirmation, parseToolSummary, parseWidgets } from '../../lib/api';
+import { api, parseConfirmation, parseToolSummary, parseWidgets } from '../../lib/api';
 import { cleanToolColons, resolveMessageRole, type StreamingTool, type CostInfo } from '../../lib/chatUtils';
 import { mentionComponents } from './MentionSystem';
 import { ToolActivityPanel, StreamingToolPanel } from './ToolPanels';
@@ -38,11 +38,59 @@ function ReactionBar({ reactions, onReact, trailing }: { reactions?: Reaction[];
   );
 }
 
-function ThreadAction({ count = 0, onOpen }: { count?: number; onOpen?: () => void }) {
+function ThreadAction({
+  message,
+  roles,
+  userAvatarPath,
+  onOpen,
+}: {
+  message: ChatMessage;
+  roles: AgentRole[];
+  userAvatarPath?: string;
+  onOpen?: () => void;
+}) {
+  const count = message.thread_reply_count ?? 0;
+  const [replies, setReplies] = useState<ChatMessage[]>([]);
+
+  useEffect(() => {
+    const childThreadId = message.child_thread_id;
+    if (!childThreadId || count === 0) {
+      return;
+    }
+    let cancelled = false;
+    api.get<ChatMessage[]>(`/chat/threads/${childThreadId}/messages`)
+      .then((next) => {
+        if (!cancelled) setReplies(Array.isArray(next) ? next : []);
+      })
+      .catch(() => {
+        // The reply count remains useful if participant previews cannot load.
+      });
+    return () => { cancelled = true; };
+  }, [count, message.child_thread_id]);
+
   if (!onOpen) return null;
   const label = count > 0
     ? `Open thread with ${count} ${count === 1 ? 'reply' : 'replies'}`
     : 'Reply in thread';
+
+  const participantMap = new Map<string, { label: string; avatarPath?: string }>();
+  for (const participantMessage of [message, ...replies]) {
+    if (participantMessage.role === 'user') {
+      participantMap.set('user', { label: 'You', avatarPath: userAvatarPath });
+      continue;
+    }
+    if (participantMessage.role !== 'assistant') continue;
+    const role = resolveMessageRole(roles, participantMessage.agent_role_slug);
+    const key = participantMessage.agent_role_slug || 'gateway';
+    participantMap.set(key, {
+      label: role?.name || 'Gateway',
+      avatarPath: role?.avatar_path || '/gateway-avatar.png',
+    });
+  }
+  const participants = [...participantMap.entries()];
+  const shownParticipants = participants.slice(0, 4);
+  const hiddenParticipantCount = participants.length - shownParticipants.length;
+
   return (
     <button
       type="button"
@@ -55,6 +103,34 @@ function ThreadAction({ count = 0, onOpen }: { count?: number; onOpen?: () => vo
           : 'border-transparent text-text-3 hover:border-border-1 hover:bg-surface-2 hover:text-text-1'
       }`}
     >
+      {count > 0 && shownParticipants.length > 0 && (
+        <span className="mr-0.5 flex -space-x-1.5" aria-hidden="true">
+          {shownParticipants.map(([key, participant]) => (
+            participant.avatarPath ? (
+              <img
+                key={key}
+                src={participant.avatarPath}
+                alt=""
+                title={participant.label}
+                className="h-5 w-5 rounded-full border border-surface-0 bg-surface-2 object-cover"
+              />
+            ) : (
+              <span
+                key={key}
+                title={participant.label}
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-surface-0 bg-surface-2 text-text-2"
+              >
+                <UserRound className="h-3 w-3" />
+              </span>
+            )
+          ))}
+          {hiddenParticipantCount > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full border border-surface-0 bg-surface-3 px-1 text-[9px] font-semibold text-text-2">
+              +{hiddenParticipantCount}
+            </span>
+          )}
+        </span>
+      )}
       <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
       {count > 0 && <span className="tabular-nums">{count}</span>}
     </button>
@@ -181,7 +257,7 @@ export function StreamingMessage({ text, tools, cost, role, roles, widgets, subA
   );
 }
 
-function UserMessageBubble({ message, roles, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
+function UserMessageBubble({ message, roles, userAvatarPath, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -229,7 +305,7 @@ function UserMessageBubble({ message, roles, onReact, onOpenThread }: { message:
         <ReactionBar
           reactions={message.reactions}
           onReact={(emoji) => onReact?.(message.id, emoji)}
-          trailing={<ThreadAction count={message.thread_reply_count} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />}
+          trailing={<ThreadAction message={message} roles={roles} userAvatarPath={userAvatarPath} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />}
         />
         <div className="flex items-center gap-2 mt-1 px-1 text-[10px] text-text-3 justify-end">
           <span>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -271,13 +347,13 @@ function ChatSummaryBubble({ message, roles }: { message: ChatMessage; roles: Ag
   );
 }
 
-export function MessageBubble({ message, roles, onRefresh, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
+export function MessageBubble({ message, roles, onRefresh, userAvatarPath, onReact, onOpenThread }: { message: ChatMessage; roles: AgentRole[]; onRefresh: () => void; userAvatarPath?: string; onReact?: (messageId: string, emoji: string) => void; onOpenThread?: (message: ChatMessage) => void }) {
   const isUser = message.role === 'user';
   const role = resolveMessageRole(roles, message.agent_role_slug);
 
   const [toolsOpen, setToolsOpen] = useState(false);
 
-  if (isUser) return <UserMessageBubble message={message} roles={roles} onReact={onReact} onOpenThread={onOpenThread} />;
+  if (isUser) return <UserMessageBubble message={message} roles={roles} userAvatarPath={userAvatarPath} onReact={onReact} onOpenThread={onOpenThread} />;
   if (message.role === 'system') return <ChatSummaryBubble message={message} roles={roles} />;
 
   const confirmation = parseConfirmation(message.content);
@@ -366,7 +442,7 @@ export function MessageBubble({ message, roles, onRefresh, onReact, onOpenThread
                   {toolCalls.length > 1 && <span className="text-xs">{toolCalls.length}</span>}
                 </button>
               )}
-              <ThreadAction count={message.thread_reply_count} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />
+              <ThreadAction message={message} roles={roles} userAvatarPath={userAvatarPath} onOpen={onOpenThread ? () => onOpenThread(message) : undefined} />
             </>
           }
         />
