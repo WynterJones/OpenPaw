@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router";
 import {
   Folder,
   FolderOpen,
@@ -16,6 +17,7 @@ import {
   Pencil,
   PanelLeft,
   FolderSearch,
+  PanelRightOpen,
 } from "lucide-react";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
@@ -242,6 +244,7 @@ function FileItem({
 export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
   const { toast } = useToast();
   const { setPaletteOpen } = useHotkeys();
+  const navigate = useNavigate();
 
   // Tree data
   const [tree, setTree] = useState<ContextTree>({ folders: [], files: [] });
@@ -395,6 +398,32 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openInCanvas = async () => {
+    if (!selectedFile || !isTextMime(selectedFile.mime_type)) return;
+    if (isDirty) {
+      setSaving(true);
+      try {
+        await contextApi.updateFile(selectedFile.id, { content: editedContent });
+        setFileContent(editedContent);
+        setIsDirty(false);
+      } catch (error) {
+        console.warn("save before opening canvas failed:", error);
+        toast("error", "Save this document before opening it in Canvas");
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+    }
+    sessionStorage.setItem("openpaw_canvas_document_requested", JSON.stringify({
+      id: selectedFile.id,
+      title: selectedFile.name,
+    }));
+    if (!localStorage.getItem("openpaw_active_thread")) {
+      sessionStorage.setItem("openpaw_new_chat_requested", "true");
+    }
+    navigate("/chat");
   };
 
   // Rename file
@@ -955,6 +984,17 @@ export function ContextPanel({ view = "files" }: { view?: "files" | "about" }) {
                 </div>
 
                 <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+                  {isTextMime(selectedFile.mime_type) && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void openInCanvas()}
+                      icon={<PanelRightOpen className="w-3.5 h-3.5" />}
+                    >
+                      <span className="hidden lg:inline">Work with AI</span>
+                      <span className="lg:hidden">Canvas</span>
+                    </Button>
+                  )}
                   {isTextMime(selectedFile.mime_type) && (
                     <button
                       type="button"

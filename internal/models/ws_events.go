@@ -60,7 +60,8 @@ type WSMessageReacted struct {
 // something on the chat's preview canvas.
 type WSCanvasOpen struct {
 	ThreadID      string `json:"thread_id"`
-	URL           string `json:"url"`
+	URL           string `json:"url,omitempty"`
+	DocumentID    string `json:"document_id,omitempty"`
 	Title         string `json:"title,omitempty"`
 	AgentRoleSlug string `json:"agent_role_slug,omitempty"`
 }

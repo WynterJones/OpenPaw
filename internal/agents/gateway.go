@@ -569,12 +569,22 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 
 	// Canvas: show a running dev server or a built page in the preview pane
 	// beside the chat, so local work can be looked at without leaving it.
+	// Slack-style reply threads intentionally do not get canvas tools: the
+	// frontend makes Canvas and the thread panel mutually exclusive, and a
+	// child-thread canvas event has no safe main-chat surface to replace.
+	isReplyThread := false
 	if threadID != "" {
+		var parentThreadID string
+		if err := m.db.QueryRow("SELECT COALESCE(parent_thread_id, '') FROM chat_threads WHERE id = ?", threadID).Scan(&parentThreadID); err == nil {
+			isReplyThread = parentThreadID != ""
+		}
+	}
+	if threadID != "" && !isReplyThread {
 		cfg.ExtraTools = append(cfg.ExtraTools, BuildCanvasToolDefs()...)
 		if cfg.ExtraHandlers == nil {
 			cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 		}
-		for name, handler := range m.MakeCanvasToolHandlers(threadID, agentRoleSlug) {
+		for name, handler := range m.MakeCanvasToolHandlers(threadID, wsID, agentRoleSlug) {
 			cfg.ExtraHandlers[name] = handler
 		}
 		cfg.System += "\n\n---\n\n" + buildCanvasPromptSection()
@@ -674,12 +684,12 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	}
 
 	// Inject context-document tools so agents can create/update knowledge docs
-	cfg.System += "\n\n---\n\n" + buildContextPromptSection(m.db)
+	cfg.System += "\n\n---\n\n" + buildContextPromptSection(m.db, wsID)
 	cfg.ExtraTools = append(cfg.ExtraTools, BuildContextToolDefs()...)
 	if cfg.ExtraHandlers == nil {
 		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
 	}
-	for name, handler := range MakeContextToolHandlers(m.db, m.DataDir, agentRoleSlug, m.broadcast) {
+	for name, handler := range MakeContextToolHandlers(m.db, m.DataDir, wsID, agentRoleSlug, m.broadcast) {
 		cfg.ExtraHandlers[name] = handler
 	}
 

@@ -29,7 +29,7 @@ import { timeAgo, getToolDetail, resolveMessageRole } from '../lib/chatUtils';
 import { MessageBubble, StreamingMessage } from '../components/chat/MessageBubbles';
 import { MessageThreadPanel } from '../components/chat/MessageThreadPanel';
 import { TmuxSessionCard } from '../components/chat/TmuxSessionCard';
-import { CanvasPanel } from '../components/chat/CanvasPanel';
+import { CanvasPanel, type CanvasEntry } from '../components/chat/CanvasPanel';
 import { SplitDivider } from '../components/workbench/SplitDivider';
 import { useThreadList } from '../hooks/useThreadList';
 import { useStreamingState } from '../hooks/useStreamingState';
@@ -109,6 +109,19 @@ interface QueuedMessage {
   images: { image: PastedImage; preview: string }[];
   directories: string[];
   tools: Tool[];
+  canvasDocument?: { id: string; name: string };
+}
+
+function loadCanvasEntries(): Record<string, CanvasEntry> {
+  try {
+    const stored = JSON.parse(localStorage.getItem('openpaw_canvas_urls') || '{}') as Record<string, CanvasEntry | { url: string; title?: string }>;
+    return Object.fromEntries(Object.entries(stored).map(([threadId, entry]) => {
+      if ('kind' in entry) return [threadId, entry];
+      return [threadId, { kind: 'preview', ...entry } satisfies CanvasEntry];
+    }));
+  } catch {
+    return {};
+  }
 }
 
 export function Chat() {
@@ -212,24 +225,32 @@ export function Chat() {
   const { chatList, chatPanel, canvas, set: setViewToggle } = useViewToggles();
   const threadsCollapsed = !chatList;
 
+  // Reply threads and the canvas both need the full right side of the chat.
+  // Treat them as mutually exclusive so a hidden reply panel cannot keep
+  // receiving input behind an open document or preview.
+  useEffect(() => {
+    if (canvas) setThreadRoot(null);
+  }, [canvas]);
+
   // Canvas: the preview pane. Its address is kept per thread — one chat is a
   // dev server, the next is a file somewhere else, and carrying one chat's
   // preview into another is never what was meant.
-  const [canvasUrls, setCanvasUrls] = useState<Record<string, { url: string; title?: string }>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('openpaw_canvas_urls') || '{}');
-    } catch {
-      return {};
-    }
-  });
-  const canvasEntry = activeThread ? canvasUrls[activeThread] : undefined;
-  const setCanvasUrl = useCallback((threadId: string, url: string, title?: string) => {
-    setCanvasUrls(prev => {
-      const next = { ...prev, [threadId]: { url, title } };
+  const [canvasEntries, setCanvasEntries] = useState<Record<string, CanvasEntry>>(loadCanvasEntries);
+  const canvasEntry = activeThread ? canvasEntries[activeThread] : undefined;
+  const setCanvasEntry = useCallback((threadId: string, entry: CanvasEntry) => {
+    setCanvasEntries(prev => {
+      const next = { ...prev, [threadId]: entry };
       try { localStorage.setItem('openpaw_canvas_urls', JSON.stringify(next)); } catch { /* quota — the canvas still works, it just won't be remembered */ }
       return next;
     });
   }, []);
+  const setCanvasUrl = useCallback((threadId: string, url: string, title?: string) => {
+    setCanvasEntry(threadId, { kind: 'preview', url, title });
+  }, [setCanvasEntry]);
+  const setCanvasDocument = useCallback((threadId: string, documentId: string, title?: string) => {
+    setCanvasEntry(threadId, { kind: 'document', documentId, title });
+  }, [setCanvasEntry]);
+  const [contextDocumentRevisions, setContextDocumentRevisions] = useState<Record<string, number>>({});
   // Split position, as the canvas's share of the row.
   const [canvasWidthPct, setCanvasWidthPct] = useState(() => {
     const stored = Number(localStorage.getItem('openpaw_canvas_width_pct'));
@@ -805,14 +826,31 @@ export function Chat() {
       loadRoles();
     }
 
+    if (msg.type === 'context_updated') {
+      const fileId = payload?.file_id as string;
+      if (fileId) {
+        setContextDocumentRevisions(prev => ({ ...prev, [fileId]: (prev[fileId] || 0) + 1 }));
+      }
+    }
+
     // An agent put something on the canvas. Opening it rearranges the screen,
     // so only the chat being looked at gets that — another thread's preview is
     // stored and appears when that chat is opened.
     if (msg.type === 'canvas_open' && threadId) {
+      const documentId = payload?.document_id as string;
       const url = payload?.url as string;
-      if (url) {
+      if (documentId) {
+        setCanvasDocument(threadId, documentId, payload?.title as string | undefined);
+        if (threadId === activeThreadRef.current) {
+          setThreadRoot(null);
+          setViewToggle('canvas', true);
+        }
+      } else if (url) {
         setCanvasUrl(threadId, url, payload?.title as string | undefined);
-        if (threadId === activeThreadRef.current) setViewToggle('canvas', true);
+        if (threadId === activeThreadRef.current) {
+          setThreadRoot(null);
+          setViewToggle('canvas', true);
+        }
       }
     }
 
@@ -1022,7 +1060,7 @@ export function Chat() {
       }
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
-  }, [resetStreaming, setCostInfo, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads, setCanvasUrl, setViewToggle]);
+  }, [resetStreaming, setCostInfo, appendStreamingText, setStreamingTools, setStreamingWidgets, setThinkingText, setThreads, setCanvasDocument, setCanvasUrl, setViewToggle]);
 
   const { connected: wsConnected } = useWebSocket({
     onMessage: handleWSMessage,
@@ -1230,6 +1268,22 @@ export function Chat() {
   };
 
   useEffect(() => {
+    if (!activeThread || !threads.some(thread => thread.id === activeThread)) return;
+    const raw = sessionStorage.getItem('openpaw_canvas_document_requested');
+    if (!raw) return;
+    try {
+      const requested = JSON.parse(raw) as { id?: string; title?: string };
+      if (!requested.id) return;
+      setCanvasDocument(activeThread, requested.id, requested.title);
+      setThreadRoot(null);
+      setViewToggle('canvas', true);
+      sessionStorage.removeItem('openpaw_canvas_document_requested');
+    } catch {
+      sessionStorage.removeItem('openpaw_canvas_document_requested');
+    }
+  }, [activeThread, threads, setCanvasDocument, setViewToggle]);
+
+  useEffect(() => {
     const requested = () => {
       if (sessionStorage.getItem('openpaw_new_chat_requested') !== 'true') return;
       sessionStorage.removeItem('openpaw_new_chat_requested');
@@ -1328,6 +1382,9 @@ export function Chat() {
       images: pastedImages,
       directories: attachedDirectories,
       tools: attachedTools,
+      canvasDocument: canvasEntry?.kind === 'document'
+        ? { id: canvasEntry.documentId, name: canvasEntry.title || 'Context document' }
+        : undefined,
     };
     setInput('');
     setAttachedContextFiles([]);
@@ -1349,7 +1406,7 @@ export function Chat() {
     const images = msg.images;
     const dirs = msg.directories;
     const toolIds = msg.tools.map(t => t.id);
-    const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0 || images.length > 0;
+    const hasAttachments = ctxFiles.length > 0 || attachFiles.length > 0 || dirs.length > 0 || images.length > 0 || !!msg.canvasDocument;
 
     // Reset streaming state
     resetStreaming();
@@ -1384,6 +1441,10 @@ export function Chat() {
         } catch (e) { console.warn('fetchContextFile failed:', e); }
       }
       if (contextParts.length > 0) content += contextParts.join('');
+    }
+
+    if (msg.canvasDocument) {
+      content += `\n\n---\n**Open Context document in Canvas**\nDocument ID: ${msg.canvasDocument.id}\nName: ${msg.canvasDocument.name}\nThis is the document the user is currently working on beside the chat. Read its latest contents with \`read_context_document\` before discussing or changing it, and use \`update_context_document\` for requested edits.`;
     }
 
     if (attachFiles.length > 0) {
@@ -1911,7 +1972,7 @@ export function Chat() {
                       onRefresh={() => activeThread && loadMessages(activeThread)}
                       userAvatarPath={user?.avatar_path}
                       onReact={handleReaction}
-                      onOpenThread={setThreadRoot}
+                      onOpenThread={canvas ? undefined : setThreadRoot}
                     />
                   ))}
                 {isStreaming && (
@@ -2406,7 +2467,7 @@ export function Chat() {
             </div>
           )}
         </div>
-        {threadRoot && (
+        {threadRoot && !canvas && (
           <>
             <div className="hidden md:block">
               <SplitDivider
@@ -2676,10 +2737,11 @@ export function Chat() {
               style={{ '--canvas-w': `${canvasWidthPct}%` } as React.CSSProperties}
             >
               <CanvasPanel
-                url={canvasEntry?.url || ''}
-                title={canvasEntry?.title}
+                entry={canvasEntry}
                 onUrlChange={(url) => activeThread && setCanvasUrl(activeThread, url)}
                 onClose={() => setViewToggle('canvas', false)}
+                onOpenContext={() => chatNavigate('/knowledge-base')}
+                documentRevision={canvasEntry?.kind === 'document' ? contextDocumentRevisions[canvasEntry.documentId] : 0}
               />
             </div>
           </>

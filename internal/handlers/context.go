@@ -275,9 +275,10 @@ func (h *ContextHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var f models.ContextFile
+	wsID := activeWorkspaceID(h.db)
 	err := h.db.QueryRow(
-		"SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files WHERE id = ?",
-		id,
+		"SELECT id, folder_id, name, filename, mime_type, size_bytes, is_about_you, created_at, updated_at FROM context_files WHERE id = ? AND workspace_id = ?",
+		id, wsID,
 	).Scan(&f.ID, &f.FolderID, &f.Name, &f.Filename, &f.MimeType, &f.SizeBytes, &f.IsAboutYou, &f.CreatedAt, &f.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "file not found")
@@ -304,7 +305,7 @@ func (h *ContextHandler) ServeRaw(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var filename, mimeType string
-	err := h.db.QueryRow("SELECT filename, mime_type FROM context_files WHERE id = ?", id).Scan(&filename, &mimeType)
+	err := h.db.QueryRow("SELECT filename, mime_type FROM context_files WHERE id = ? AND workspace_id = ?", id, activeWorkspaceID(h.db)).Scan(&filename, &mimeType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
@@ -441,7 +442,8 @@ func (h *ContextHandler) UpdateFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var filename, mimeType string
-	err := h.db.QueryRow("SELECT filename, mime_type FROM context_files WHERE id = ?", id).Scan(&filename, &mimeType)
+	wsID := activeWorkspaceID(h.db)
+	err := h.db.QueryRow("SELECT filename, mime_type FROM context_files WHERE id = ? AND workspace_id = ?", id, wsID).Scan(&filename, &mimeType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
@@ -450,7 +452,7 @@ func (h *ContextHandler) UpdateFile(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	if req.Name != nil {
-		h.db.Exec("UPDATE context_files SET name = ?, updated_at = ? WHERE id = ?", *req.Name, now, id)
+		h.db.Exec("UPDATE context_files SET name = ?, updated_at = ? WHERE id = ? AND workspace_id = ?", *req.Name, now, id, wsID)
 	}
 
 	if req.Content != nil && isTextMime(mimeType) {
@@ -461,7 +463,7 @@ func (h *ContextHandler) UpdateFile(w http.ResponseWriter, r *http.Request) {
 		}
 		info, _ := os.Stat(diskPath)
 		if info != nil {
-			h.db.Exec("UPDATE context_files SET size_bytes = ?, updated_at = ? WHERE id = ?", info.Size(), now, id)
+			h.db.Exec("UPDATE context_files SET size_bytes = ?, updated_at = ? WHERE id = ? AND workspace_id = ?", info.Size(), now, id, wsID)
 		}
 	}
 
@@ -472,7 +474,8 @@ func (h *ContextHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var filename string
-	err := h.db.QueryRow("SELECT filename FROM context_files WHERE id = ?", id).Scan(&filename)
+	wsID := activeWorkspaceID(h.db)
+	err := h.db.QueryRow("SELECT filename FROM context_files WHERE id = ? AND workspace_id = ?", id, wsID).Scan(&filename)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
@@ -481,7 +484,7 @@ func (h *ContextHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	// Delete from disk
 	os.Remove(filepath.Join(h.contextDir(), filepath.Base(filename)))
 
-	h.db.Exec("DELETE FROM context_files WHERE id = ?", id)
+	h.db.Exec("DELETE FROM context_files WHERE id = ? AND workspace_id = ?", id, wsID)
 
 	userID := middleware.GetUserID(r.Context())
 	h.db.LogAudit(userID, "context_file_deleted", "context", "context_file", id, "")
@@ -501,7 +504,15 @@ func (h *ContextHandler) MoveFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	result, err := h.db.Exec("UPDATE context_files SET folder_id = ?, updated_at = ? WHERE id = ?", req.FolderID, now, id)
+	wsID := activeWorkspaceID(h.db)
+	if req.FolderID != nil {
+		var exists int
+		if err := h.db.QueryRow("SELECT COUNT(*) FROM context_folders WHERE id = ? AND workspace_id = ?", *req.FolderID, wsID).Scan(&exists); err != nil || exists == 0 {
+			writeError(w, http.StatusBadRequest, "folder not found")
+			return
+		}
+	}
+	result, err := h.db.Exec("UPDATE context_files SET folder_id = ?, updated_at = ? WHERE id = ? AND workspace_id = ?", req.FolderID, now, id, wsID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to move file")
 		return

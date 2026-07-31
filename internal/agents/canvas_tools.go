@@ -31,7 +31,7 @@ const canvasFSPrefix = "/api/v1/canvas/fs/"
 
 // BuildCanvasToolDefs returns the canvas tool definitions.
 func BuildCanvasToolDefs() []llm.ToolDef {
-	params, _ := json.Marshal(map[string]interface{}{
+	previewParams, _ := json.Marshal(map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"url": map[string]interface{}{
@@ -51,6 +51,16 @@ func BuildCanvasToolDefs() []llm.ToolDef {
 			},
 		},
 	})
+	documentParams, _ := json.Marshal(map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "The Context document ID from list_context_documents, or its exact name.",
+			},
+		},
+		"required": []string{"id"},
+	})
 	return []llm.ToolDef{
 		{
 			Type: "function",
@@ -61,7 +71,15 @@ func BuildCanvasToolDefs() []llm.ToolDef {
 					"dev server (give the server a moment first), after building a page, or when the user " +
 					"asks to see what you changed. Opening the canvas rearranges their screen, so do it when " +
 					"there is genuinely something to see, not for every edit.",
-				Parameters: params,
+				Parameters: previewParams,
+			},
+		},
+		{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        "canvas_show_document",
+				Description: "Open a text document from this workspace's Context library in the chat canvas so the user can read and edit it beside the conversation. Use after creating or updating a PRD, spec, plan, note, or other document when the user wants to work on or see it.",
+				Parameters:  documentParams,
 			},
 		},
 	}
@@ -69,9 +87,10 @@ func BuildCanvasToolDefs() []llm.ToolDef {
 
 // MakeCanvasToolHandlers builds the canvas handlers for one run, with the
 // thread baked in so the canvas opens where the conversation is.
-func (m *Manager) MakeCanvasToolHandlers(threadID, agentRoleSlug string) map[string]llm.ToolHandler {
+func (m *Manager) MakeCanvasToolHandlers(threadID, workspaceID, agentRoleSlug string) map[string]llm.ToolHandler {
 	return map[string]llm.ToolHandler{
-		"canvas_show": m.handleCanvasShow(threadID, agentRoleSlug),
+		"canvas_show":          m.handleCanvasShow(threadID, agentRoleSlug),
+		"canvas_show_document": m.handleCanvasShowDocument(threadID, workspaceID, agentRoleSlug),
 	}
 }
 
@@ -107,6 +126,54 @@ func (m *Manager) handleCanvasShow(threadID, agentRoleSlug string) llm.ToolHandl
 		out, _ := json.Marshal(map[string]interface{}{
 			"shown": target,
 			"note":  "The canvas is open beside the chat. Tell the user what to look at — do not paste the URL as if they cannot see it.",
+		})
+		return llm.ToolResult{Output: string(out)}
+	}
+}
+
+func (m *Manager) handleCanvasShowDocument(threadID, workspaceID, agentRoleSlug string) llm.ToolHandler {
+	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(input, &req); err != nil {
+			return llm.ToolResult{Output: "Invalid input: " + err.Error(), IsError: true}
+		}
+		ref := strings.TrimSpace(req.ID)
+		if ref == "" {
+			return llm.ToolResult{Output: "id is required", IsError: true}
+		}
+		if threadID == "" {
+			return llm.ToolResult{Output: "There is no chat to show this in.", IsError: true}
+		}
+
+		var id, name, mimeType string
+		if err := m.db.QueryRow(
+			`SELECT id, name, mime_type FROM context_files
+			 WHERE workspace_id = ? AND is_about_you = 0 AND (id = ? OR LOWER(name) = LOWER(?))
+			 ORDER BY id = ? DESC LIMIT 1`,
+			workspaceID, ref, ref, ref,
+		).Scan(&id, &name, &mimeType); err != nil {
+			return llm.ToolResult{Output: fmt.Sprintf("No Context document %q in this workspace.", ref), IsError: true}
+		}
+		if !isTextDocument(mimeType) {
+			return llm.ToolResult{Output: fmt.Sprintf("%q is not an editable text document.", name), IsError: true}
+		}
+
+		if m.broadcast != nil {
+			m.broadcast("canvas_open", models.WSCanvasOpen{
+				ThreadID:      threadID,
+				DocumentID:    id,
+				Title:         name,
+				AgentRoleSlug: agentRoleSlug,
+			})
+		}
+		logger.Info("canvas_show_document: thread=%s document=%s", threadID, id)
+
+		out, _ := json.Marshal(map[string]interface{}{
+			"shown_document_id": id,
+			"name":              name,
+			"note":              "The document is open in the canvas and remains editable by the user. Continue collaborating on it through the Context document tools.",
 		})
 		return llm.ToolResult{Output: string(out)}
 	}
@@ -175,10 +242,11 @@ func canvasURLForPath(abs string) string {
 func buildCanvasPromptSection() string {
 	return `## THE CANVAS — SHOWING YOUR WORK
 
-There is a preview pane beside this chat. ` + "`canvas_show`" + ` puts a page in it: a local dev server you started, a built site, an HTML file.
+There is a canvas beside this chat. ` + "`canvas_show`" + ` puts a page in it: a local dev server you started, a built site, an HTML file. ` + "`canvas_show_document`" + ` opens a text document from Context in an editor beside the conversation.
 
 - Started a dev server? Give it a few seconds, then ` + "`canvas_show`" + ` with its URL (` + "`{\"url\": \"http://localhost:5173\"}`" + `).
 - Built or edited a page on disk? ` + "`canvas_show`" + ` with its path (` + "`{\"path\": \"/Users/me/site/index.html\"}`" + `).
+- Created or updated a PRD, spec, plan, note, or other Context document that the user wants to see or work on? ` + "`canvas_show_document`" + ` with its ID or exact name.
 
-Opening the canvas rearranges the user's screen, so show something when there is genuinely something to look at — the first working version, a page they asked to see — not after every edit. Once it is open, describe what changed rather than repeating the URL.`
+Opening the canvas rearranges the user's screen and closes any reply thread, so show something when there is genuinely something to look at—not after every edit. Once it is open, describe what changed rather than repeating the URL or document contents.`
 }

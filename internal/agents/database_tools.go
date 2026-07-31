@@ -134,7 +134,7 @@ func buildDatabasesPromptSection(db *database.DB, workspaceID string) string {
 	store := userdb.NewStore(db)
 	items, err := store.ListDatabases(workspaceID)
 	if err != nil || len(items) == 0 {
-		return "## DATABASES\nThis workspace has no databases yet. You can create one with `create_database` when structured, durable data would help.\n"
+		return "## DATABASES\nThis workspace has no databases yet. Use a database for repeated structured records that benefit from fields, filtering, sorting, or dashboards; use a Context document for prose such as PRDs, specs, plans, and big ideas. When a database would clearly help but was not requested, briefly offer one rather than creating it silently.\n"
 	}
 	var lines []string
 	for _, item := range items {
@@ -153,7 +153,7 @@ func buildDatabasesPromptSection(db *database.DB, workspaceID string) string {
 		}
 		lines = append(lines, fmt.Sprintf("- %s (ID: `%s`) — %s", item.Name, item.ID, strings.Join(tables, ", ")))
 	}
-	return "## DATABASES\nWorkspace databases hold durable structured information. Use `list_databases` for schema IDs, `query_database` to read/search, and database mutation tools when asked to save or maintain records. Dashboard builders can connect widgets directly to these tables.\n" +
+	return "## DATABASES\nWorkspace databases hold durable structured records. Use them for repeated items with fields, filtering, sorting, or dashboards; use a Context document for long-form prose such as PRDs, specs, plans, and big ideas. Use `list_databases` for schema IDs, `query_database` to read/search, and database mutation tools when asked to save or maintain records. Dashboard builders can connect widgets directly to these tables. If persistence would help but was not requested, briefly offer the appropriate format rather than creating it silently.\n" +
 		strings.Join(lines, "\n") + "\n"
 }
 

@@ -33,8 +33,12 @@ func callContextTool(t *testing.T, handlers map[string]llmHandlerMap, name strin
 type llmHandlerMap func(ctx context.Context, workDir string, input json.RawMessage) string
 
 func toolFuncs(t *testing.T, db *database.DB, dataDir string) map[string]llmHandlerMap {
+	return toolFuncsForWorkspace(t, db, dataDir, db.ActiveWorkspaceID())
+}
+
+func toolFuncsForWorkspace(t *testing.T, db *database.DB, dataDir, workspaceID string) map[string]llmHandlerMap {
 	t.Helper()
-	raw := MakeContextToolHandlers(db, dataDir, "atlas", nil)
+	raw := MakeContextToolHandlers(db, dataDir, workspaceID, "atlas", nil)
 	out := map[string]llmHandlerMap{}
 	for name, h := range raw {
 		handler := h
@@ -43,6 +47,63 @@ func toolFuncs(t *testing.T, db *database.DB, dataDir string) map[string]llmHand
 		}
 	}
 	return out
+}
+
+func TestContextDocumentTools_AreWorkspaceScoped(t *testing.T) {
+	db, dataDir := newContextTestDB(t)
+	const otherWorkspace = "workspace-other"
+	if _, err := db.Exec("INSERT INTO workspaces (id, name) VALUES (?, ?)", otherWorkspace, "Other"); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	defaultTools := toolFuncsForWorkspace(t, db, dataDir, database.DefaultWorkspaceID)
+	otherTools := toolFuncsForWorkspace(t, db, dataDir, otherWorkspace)
+	created := callContextTool(t, otherTools, "create_context_document", map[string]interface{}{
+		"name": "Other Workspace PRD", "content": "private to the other workspace",
+	})
+	var doc struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(created), &doc); err != nil || doc.ID == "" {
+		t.Fatalf("create in other workspace returned %q: %v", created, err)
+	}
+
+	if out := callContextTool(t, defaultTools, "list_context_documents", map[string]interface{}{}); strings.Contains(out, "Other Workspace PRD") {
+		t.Fatalf("list leaked another workspace: %s", out)
+	}
+	if out := callContextTool(t, defaultTools, "read_context_document", map[string]interface{}{"id": doc.ID}); !strings.Contains(out, "No document") {
+		t.Fatalf("read leaked another workspace: %s", out)
+	}
+	if out := callContextTool(t, defaultTools, "update_context_document", map[string]interface{}{"id": doc.ID, "content": "overwritten"}); !strings.Contains(out, "document not found") {
+		t.Fatalf("update crossed workspaces: %s", out)
+	}
+}
+
+func TestDeleteContextDocument_RemovesRecordAndFile(t *testing.T) {
+	db, dataDir := newContextTestDB(t)
+	tools := toolFuncs(t, db, dataDir)
+	created := callContextTool(t, tools, "create_context_document", map[string]interface{}{
+		"name": "Temporary notes", "content": "remove me",
+	})
+	var doc struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(created), &doc); err != nil {
+		t.Fatalf("create returned %q: %v", created, err)
+	}
+	path := filepath.Join(dataDir, "context", doc.ID+".md")
+
+	deleted := callContextTool(t, tools, "delete_context_document", map[string]interface{}{"id": doc.ID})
+	if !strings.Contains(deleted, `"deleted":true`) {
+		t.Fatalf("delete returned %s", deleted)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("stored document still exists after delete: %v", err)
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM context_files WHERE id = ?", doc.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("document record still exists: count=%d err=%v", count, err)
+	}
 }
 
 // An agent could list documents and overwrite them but never see one, so
