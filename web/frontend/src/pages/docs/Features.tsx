@@ -20,6 +20,8 @@ import {
   Shield,
   Boxes,
   Database,
+  TerminalSquare,
+  Search,
 } from 'lucide-react';
 
 interface DocsContext {
@@ -37,13 +39,13 @@ const features = [
     icon: Bot,
     name: 'AI Agents',
     id: 'ai-agents',
-    description: 'Create multiple AI agents with unique personalities, system prompts, and service access. Each agent can specialize in different tasks — from coding to research to customer support.',
+    description: 'Create specialist agents with unique identities, skills, and service access. Each agent can inherit the app default or use its own OpenRouter, Claude Code, or Codex provider.',
   },
   {
     icon: MessageSquare,
     name: 'Threaded Chat',
     id: 'threaded-chat',
-    description: 'Have conversations in organized threads. Mention agents with @name to bring them into the conversation. Full markdown support with code highlighting.',
+    description: 'Have organized conversations with markdown, files, and @mentions. Branch any message into a resizable, Slack-style focused thread with its own context window; agent mentions inside it remain in the same thread.',
   },
   {
     icon: Wrench,
@@ -61,13 +63,25 @@ const features = [
     icon: BookOpen,
     name: 'Context System',
     id: 'context-system',
-    description: 'Upload documents, files, and knowledge that agents can reference. Organize into folders and mark files as "About You" for personal context.',
+    description: 'Organize reference files and durable documents that agents can read, create, and revise. Open a document beside chat in Canvas to work on it with AI while keeping unrelated chat threads out of that focused mode.',
   },
   {
     icon: Database,
     name: 'Workspace Databases',
     id: 'workspace-databases',
-    description: 'Create Airtable-style structured databases with multiple tables, typed columns, inline editing, and search. Agents and scheduled automations can fully manage rows and schema, while dashboards can use any table as a live data source.',
+    description: 'Create Airtable-style structured databases with multiple tables, typed columns, sorting, resizing, pagination, CSV import/export, inline editing, and search. Agents and scheduled automations can fully manage rows and schema, while dashboards can use any table as a live data source.',
+  },
+  {
+    icon: TerminalSquare,
+    name: 'Terminal Workspace',
+    id: 'terminal-workspace',
+    description: 'Run persistent shells, dev servers, tmux sessions, Claude Code, and Codex inside OpenPaw. Terminals are global rather than tied to the selected project workspace, restore after relaunch, and blend with your custom app background.',
+  },
+  {
+    icon: Search,
+    name: 'Command Palette',
+    id: 'command-palette',
+    description: 'Jump to app screens with customizable keyboard shortcuts or type ! to fuzzy-search workspace files and folders. Open a result, copy its path, or insert the path into chat, Context, or a terminal.',
   },
   {
     icon: KeyRound,

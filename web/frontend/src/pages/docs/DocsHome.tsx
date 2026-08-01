@@ -17,6 +17,8 @@ import {
   Shield,
   Zap,
   Boxes,
+  Database,
+  TerminalSquare,
 } from 'lucide-react';
 import type { TocItem } from '../../components/docs/DocsTableOfContents';
 
@@ -38,10 +40,12 @@ const keyFeatures = [
   { icon: Bot, label: 'AI Agents', description: 'Multi-agent system with customizable roles and prompts' },
   { icon: Wrench, label: 'Service Library', description: 'Install and manage services from the built-in catalog' },
   { icon: Sparkles, label: 'Skills', description: 'Reusable prompt templates for common tasks' },
-  { icon: BookOpen, label: 'Context System', description: 'Upload files and knowledge for agents to reference' },
+  { icon: BookOpen, label: 'Context & Canvas', description: 'Create durable documents and edit them beside AI chat' },
+  { icon: Database, label: 'Databases', description: 'Structured workspace records with full agent CRUD access' },
+  { icon: TerminalSquare, label: 'Terminal', description: 'Persistent global shell and coding sessions' },
   { icon: Clock, label: 'Scheduler', description: 'Cron-based automation for recurring tasks' },
   { icon: Heart, label: 'Heartbeat', description: 'Proactive agent check-ins on a schedule' },
-  { icon: MessageSquare, label: 'Chat', description: 'Threaded conversations with multiple agents' },
+  { icon: MessageSquare, label: 'Chat', description: 'Focused threads with multiple agents and providers' },
   { icon: Shield, label: 'Secrets', description: 'Encrypted credential management for services' },
   { icon: Zap, label: 'Real-time', description: 'WebSocket streaming for live agent output' },
 ];

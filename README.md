@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>A self-hosted AI workbench that builds tools for you.</strong><br>
-  Tell it what you need and it creates a working service. Runs on your machine, powered by OpenRouter.
+  Tell it what you need and it creates a working service. Runs on your machine with OpenRouter, Claude Code, or Codex.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ---
 
-OpenPaw is a single app you run on your computer. You chat with AI agents, describe what you want — a Slack bot, a weather checker, a scheduled report — and they build it for you as a real, running service. Pick from 39 pre-built tools or let agents create something custom. Schedule tasks and build dashboards, all through conversation.
+OpenPaw is a local AI workbench for conversations, durable knowledge, automation, and real tools. Chat with specialist agents, branch focused message threads, keep documents and structured databases beside the work, run persistent terminals, schedule unattended reports, and turn the results into live dashboards.
 
 The app and everything it builds runs locally. AI chat runs through [OpenRouter](https://openrouter.ai/) (bring your own API key) — or through your existing **Claude Code** or **Codex** CLI subscription with no per-token billing.
 
@@ -52,7 +52,7 @@ mkdir openpaw && cd openpaw
 npx @openpaw-ai/openpaw
 ```
 
-Open **http://localhost:41295** in your browser. Requires **Node.js 18+** and an **OpenRouter API key** ([openrouter.ai](https://openrouter.ai/)).
+Open **http://localhost:41295** in your browser. Requires **Node.js 18+** and either an **OpenRouter API key** or an authenticated **Claude Code** or **Codex** CLI.
 
 ### Desktop App
 
@@ -84,6 +84,16 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 | `OPENPAW_DEV` | `false` | Enable development mode |
 | `OPENPAW_NO_OPEN` | unset | Set to `1` to prevent auto-opening browser on startup |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key for AI agents (can also be set in Settings) |
+
+## What's New in 1.3.5
+
+OpenPaw 1.3.5 tightens the desktop workbench and brings the public docs up to date:
+
+- **Global terminal workspace** — Open terminals stay available while you switch project workspaces, survive app restarts, and avoid the blank-terminal and repaint state that could appear during workspace changes.
+- **Quieter tmux sessions in chat** — Active coding sessions start in a compact badge and expand only when needed, with the conversation automatically kept above the expanded session panel on desktop and mobile.
+- **Context documents in Canvas** — Agents can create and revise durable Context documents, and you can open a document beside chat in Canvas for collaborative editing without exposing unrelated chat threads.
+- **Focused multi-agent threads** — Message threads have their own context window, support agent mentions without creating nested threads, and can be resized while participant avatars show who is involved.
+- **Provider choice per agent** — Mix OpenRouter, Claude Code, and Codex agents in one workspace, including interactive chat, delegation, schedules, and heartbeat runs.
 
 ## What's New in 1.3.3
 
@@ -126,7 +136,7 @@ After setup, you're redirected to log in. On your first conversation, the gatewa
 
 The **Workspaces** switcher (above Dashboards in the sidebar) keeps separate projects fully isolated:
 
-- Each workspace scopes its own **chats, dashboards, context, terminals, and tasks**
+- Each workspace scopes its own **chats, dashboards, context, databases, and tasks**; terminal sessions stay global so they remain available while you switch projects
 - Each workspace also owns its own **databases and Inbox posts**, so structured records and unattended reports never leak between projects
 - Every workspace has a **real on-disk files directory**, browsable from the **Directory tab** on the Context page
 - **Attach existing folders** (e.g. cloned repos) to a workspace so agents — especially Claude Code — can read and work in them

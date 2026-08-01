@@ -15,6 +15,7 @@ export function DesktopApp() {
       { id: 'overview', text: 'Overview', level: 2 },
       { id: 'platforms', text: 'Supported Platforms', level: 2 },
       { id: 'how-it-works', text: 'How It Works', level: 2 },
+      { id: 'terminal-workspace', text: 'Terminal Workspace', level: 2 },
       { id: 'installation', text: 'Installation', level: 2 },
       { id: 'network-access', text: 'Network Access', level: 2 },
       { id: 'building', text: 'Building from Source', level: 2 },
@@ -96,10 +97,18 @@ export function DesktopApp() {
         </DiagramStack>
       </Diagram>
 
+      <h2 id="terminal-workspace">Terminal Workspace</h2>
+      <p>
+        The desktop app includes persistent terminal tabs for shells, development servers,
+        tmux sessions, Claude Code, and Codex. Terminals are global to the app, so changing
+        the active project workspace does not hide or replace them, and open sessions are
+        restored when OpenPaw launches again.
+      </p>
+
       <h2 id="installation">Installation</h2>
       <p>
         Download the latest release for your platform from the{' '}
-        <a href="https://github.com/OpenPaw/openpaw/releases" target="_blank" rel="noopener noreferrer">
+        <a href="https://github.com/WynterJones/OpenPaw/releases" target="_blank" rel="noopener noreferrer">
           GitHub releases page
         </a>.
       </p>
