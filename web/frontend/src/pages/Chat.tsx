@@ -264,7 +264,10 @@ export function Chat() {
   const [workStatus, setWorkStatus] = useState<string | null>(null);
   const [roles, setRoles] = useState<AgentRole[]>([]);
   const pollingRef = useRef<number | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerAreaRef = useRef<HTMLDivElement>(null);
+  const keepMessagesPinnedRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => () => clearPathInsertionTarget('chat-composer'), []);
   const THREADS_PER_PAGE = 10;
@@ -1184,6 +1187,10 @@ export function Chat() {
 
   const scrollTimeoutRef = useRef<number>(0);
   useEffect(() => {
+    keepMessagesPinnedRef.current = true;
+  }, [activeThread]);
+
+  useEffect(() => {
     if (!scrollTimeoutRef.current) {
       scrollTimeoutRef.current = window.setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1191,6 +1198,25 @@ export function Chat() {
       }, 150);
     }
   }, [messages, streamingText]);
+
+  // The composer is a real flex child, so tmux rows, queued messages,
+  // attachments, and a growing draft all reserve their own height. When that
+  // height changes, keep the latest message visible only if the user was
+  // already reading at the bottom; do not yank someone away from older text.
+  useEffect(() => {
+    const composer = composerAreaRef.current;
+    if (!composer || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => {
+      if (!keepMessagesPinnedRef.current) return;
+      requestAnimationFrame(() => {
+        const scroller = messagesScrollRef.current;
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      });
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [activeThread, activePin?.pinned]);
 
   const initActiveThreadIds = async () => {
     try {
@@ -1852,7 +1878,15 @@ export function Chat() {
                   </button>
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto p-4 pb-[180px]">
+              <div
+                ref={messagesScrollRef}
+                onScroll={(event) => {
+                  const scroller = event.currentTarget;
+                  keepMessagesPinnedRef.current =
+                    scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96;
+                }}
+                className="flex-1 min-h-0 overflow-y-auto p-4"
+              >
                 <div className="max-w-[960px] mx-auto space-y-4">
                 {messages.length === 0 && !isStreaming && !thinking && (
                   <div className="flex flex-col items-center justify-center min-h-[calc(100vh-320px)] text-center">
@@ -2031,7 +2065,7 @@ export function Chat() {
                 </div>
               </div>
               {activePin?.pinned ? (
-                <div className="absolute bottom-0 left-0 right-0 z-10 p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
+                <div ref={composerAreaRef} className="relative z-10 shrink-0 p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                   <div className="max-w-[960px] mx-auto flex items-center gap-3">
                     <Pin className="w-4 h-4 text-accent-primary fill-current flex-shrink-0" aria-hidden="true" />
                     <p className="flex-1 text-sm text-text-2">
@@ -2050,7 +2084,7 @@ export function Chat() {
                   </div>
                 </div>
               ) : (
-              <div className="absolute bottom-0 left-0 right-0 z-10 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
+              <div ref={composerAreaRef} className="relative z-10 shrink-0 p-3 md:p-4 border-t border-white/[0.06] bg-black/40 backdrop-blur-xl">
                 <div className="max-w-[960px] mx-auto relative">
                   <TmuxSessionCard threadId={activeThread} />
                   {/* Services # autocomplete dropdown */}

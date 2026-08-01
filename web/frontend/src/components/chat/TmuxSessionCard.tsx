@@ -189,7 +189,7 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
 
       <div
         id={sessionListId}
-        className={`mt-1.5 space-y-1.5 ${expanded ? 'block' : 'hidden'}`}
+        className={`mt-1.5 max-h-[40vh] space-y-1.5 overflow-y-auto pr-1 ${expanded ? 'block' : 'hidden'}`}
       >
         {sessions.map((s) => {
           const watch = data?.watches?.[s.name];
