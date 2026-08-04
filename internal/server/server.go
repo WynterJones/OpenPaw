@@ -436,6 +436,8 @@ func (s *Server) setupRoutes(toolMgr *toolmgr.Manager, toolsDir string, dataDir 
 				r.Post("/threads/{id}/unpin", chatHandler.UnpinThread)
 				r.Get("/tmux", chatHandler.ListTmuxSessions)
 				r.Delete("/tmux", chatHandler.KillTmuxSession)
+				r.Get("/tmux/logs", chatHandler.GetTmuxLogs)
+				r.Post("/tmux/send", chatHandler.SendTmuxInput)
 				r.Post("/threads/{id}/tmux-watch", chatHandler.StartTmuxWatch)
 				r.Delete("/threads/{id}/tmux-watch", chatHandler.StopTmuxWatch)
 				r.Post("/threads/{id}/confirm", chatHandler.ConfirmWork)

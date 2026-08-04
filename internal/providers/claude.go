@@ -71,6 +71,14 @@ func claudeAccessRoots(cfg llm.AgentConfig) []string {
 	return mergeUnique([]string{cfg.WorkspaceDir, cfg.WorkDir}, cfg.ExtraDirs)
 }
 
+// tempDirs are readable because so much ordinary tooling stages work there:
+// database sockets, build caches, the files a CLI writes before moving them
+// into place. /private/tmp is listed alongside /tmp because on macOS one is a
+// symlink to the other and a rule written against the wrong one does nothing.
+func tempDirs() []string {
+	return mergeUnique([]string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders"})
+}
+
 // scopedClaudeTools converts broad file-tool names into absolute permission
 // rules. Claude evaluates these rules before a tool runs, so a direct Read is
 // constrained even though Bash has its own separate OS sandbox.
@@ -120,13 +128,30 @@ func claudeWorkspaceSettings(cfg llm.AgentConfig, home string) string {
 			"allowUnsandboxedCommands": false,
 			"filesystem": map[string]interface{}{
 				"denyRead":   protected,
-				"allowRead":  roots,
+				"allowRead":  append(roots, tempDirs()...),
 				"allowWrite": cfg.ExtraDirs,
 			},
 			// Keep agent builds and package installs working; the requested
 			// boundary here is filesystem scope, not network policy.
 			"network": map[string]interface{}{
 				"allowedDomains": []string{"*"},
+				// Loopback. Without it an agent can start a dev server and then
+				// has no way to reach it — curl to 127.0.0.1 returns nothing
+				// whatever is listening — so it ships pages it has never once
+				// looked at and asks the user to be its eyes.
+				"allowLocalBinding": true,
+				// Unix sockets. Postgres and MySQL listen on a socket in the
+				// temp directory, so without this an agent cannot run the test
+				// suite of any app with a local database — the one check most
+				// worth having before a merge.
+				"allowAllUnixSockets": true,
+				// TLS verification for Go-based CLIs behind the sandbox's MITM
+				// proxy. Without it `gh` dies on x509: OSStatus -26276, which
+				// makes every push, PR read and merge impossible from inside a
+				// session. It opens a data-exfiltration path through trustd and
+				// is enabled deliberately: an agent that cannot use git hosting
+				// hands that work back to the user every single time.
+				"enableWeakerNetworkIsolation": true,
 			},
 		},
 	}

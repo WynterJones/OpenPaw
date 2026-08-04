@@ -85,6 +85,18 @@ Optionally, run `just awesome` before shipping to execute the full quality gate 
 | `OPENPAW_NO_OPEN` | unset | Set to `1` to prevent auto-opening browser on startup |
 | `OPENROUTER_API_KEY` | — | OpenRouter API key for AI agents (can also be set in Settings) |
 
+## What's New in 1.3.6
+
+OpenPaw 1.3.6 is about the work agents start but could not follow through on — sessions they dispatched and then lost track of, prompts they could see but not answer, and pages they built but never looked at:
+
+- **Sessions that report when they finish** — A watched session used to stop being watched as soon as its pane went quiet, which is exactly what a coding agent's pane does while it thinks, so the finish it was armed for was never announced. Watches now run until the command actually exits, then post the exit status and the session's closing output into the chat and ring the notification bell.
+- **Talk to a running session** — Answer a prompt a session has stopped on, or add an instruction while it works, from the session card in chat or from the agent's own `tmux_send`. Previously the only way past an interactive prompt was to kill the session and start over, losing everything it had worked out.
+- **Read the whole session** — `tmux_logs` and the new output view return a session's full scrollback, so an agent's end-of-run report is readable instead of scrolled away above the visible pane.
+- **Isolated parallel dispatch** — `tmux_run` can start work in its own git worktree and branch, so two agents working at once cannot move the branch under each other or sweep away each other's uncommitted files. `worktree_list` and `worktree_remove` clean up afterwards, and refuse to discard unmerged work.
+- **Agents can see what they build** — `fetch_url` reaches localhost from outside the agent sandbox, and `screenshot_url` photographs a page so the agent can open the image and look at it before calling the page finished.
+- **Credentials without exposure** — `run_with_secrets` puts named secrets into a command's environment without the values ever passing through the agent's context or a visible command line.
+- **Fewer walls inside agent sessions** — Local dev servers, database sockets, and TLS verification for tools like `gh` now work from inside a sandboxed Claude Code session, so tests and releases no longer have to be handed back to you.
+
 ## What's New in 1.3.5
 
 OpenPaw 1.3.5 tightens the desktop workbench and brings the public docs up to date:

@@ -567,6 +567,17 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 		}
 	}
 
+	// Seeing the work: an agent's own shell has no route to loopback, so
+	// without these it can build a page and never once look at it.
+	cfg.ExtraTools = append(cfg.ExtraTools, BuildWebToolDefs()...)
+	if cfg.ExtraHandlers == nil {
+		cfg.ExtraHandlers = map[string]llm.ToolHandler{}
+	}
+	for name, handler := range MakeWebToolHandlers(m.DataDir) {
+		cfg.ExtraHandlers[name] = handler
+	}
+	cfg.System += "\n\n---\n\n" + buildWebPromptSection()
+
 	// Canvas: show a running dev server or a built page in the preview pane
 	// beside the chat, so local work can be looked at without leaving it.
 	// Slack-style reply threads intentionally do not get canvas tools: the
@@ -681,6 +692,16 @@ func (m *Manager) RoleChat(ctx context.Context, systemPrompt, model string, hist
 	cfg.ExtraTools = append(cfg.ExtraTools, BuildSecretToolDefs(m.SecretsMgr)...)
 	for name, handler := range MakeSecretToolHandlers(m.db, m.SecretsMgr, agentRoleSlug) {
 		cfg.ExtraHandlers[name] = handler
+	}
+
+	// run_with_secrets uses a credential without reading it, which is the
+	// better answer for anything that only needs the value to run. It needs
+	// tmux, since that is where the command goes.
+	if tmux.Available() {
+		cfg.ExtraTools = append(cfg.ExtraTools, BuildSecretRunToolDefs(m.SecretsMgr)...)
+		for name, handler := range m.MakeSecretRunHandler(threadID, agentRoleSlug) {
+			cfg.ExtraHandlers[name] = handler
+		}
 	}
 
 	// Inject context-document tools so agents can create/update knowledge docs

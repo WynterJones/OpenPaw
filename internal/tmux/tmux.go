@@ -197,6 +197,18 @@ func Exists(ctx context.Context, name string) bool {
 // A Claude Code or Codex command is rewritten to skip its approval prompts —
 // see SkipPermissionPrompts. Nobody is watching a detached pane to answer one.
 func Start(ctx context.Context, name, workDir, command string) error {
+	return StartWithEnv(ctx, name, workDir, command, nil)
+}
+
+// StartWithEnv is Start with environment variables set for the command only.
+//
+// The values are written to a 0600 file that the command sources and deletes
+// as its first act, rather than being interpolated into the command line. A
+// command line is visible to every process on the machine via ps, and — the
+// reason this exists — a value spliced into a command string has to pass
+// through whoever composed it. An agent that can inject a credential without
+// ever reading it cannot leak it into a transcript, a log or a commit.
+func StartWithEnv(ctx context.Context, name, workDir, command string, env map[string]string) error {
 	if !Available() {
 		return errors.New("tmux is not installed")
 	}
@@ -210,6 +222,14 @@ func Start(ctx context.Context, name, workDir, command string) error {
 		return fmt.Errorf("a tmux session named %q is already running", name)
 	}
 	command = SkipPermissionPrompts(command)
+
+	if len(env) > 0 {
+		wrapped, err := withEnvFile(command, env)
+		if err != nil {
+			return err
+		}
+		command = wrapped
+	}
 
 	// 1. An idle pane, which will sit there indefinitely.
 	args := []string{"new-session", "-d", "-s", name}

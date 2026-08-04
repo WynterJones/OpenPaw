@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/openpaw/openpaw/internal/logger"
 	"github.com/openpaw/openpaw/internal/middleware"
+	"github.com/openpaw/openpaw/internal/models"
 	"github.com/openpaw/openpaw/internal/tmux"
 )
 
@@ -101,6 +103,53 @@ func (h *ChatHandler) stopWatchesForSession(session string) int {
 		return true
 	})
 	return stopped
+}
+
+// SendTmuxInput types into a session from the UI — the same mechanism the
+// tmux_send tool uses, so a user watching a session stop on a prompt can answer
+// it from the card in chat instead of finding a terminal to attach from.
+func (h *ChatHandler) SendTmuxInput(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Session string `json:"session"`
+		Text    string `json:"text"`
+		Submit  *bool  `json:"submit"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Session == "" || req.Text == "" {
+		writeError(w, http.StatusBadRequest, "session and text are required")
+		return
+	}
+
+	submit := req.Submit == nil || *req.Submit
+	if err := tmux.Send(r.Context(), req.Session, req.Text, submit); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// The text itself is not logged: it is whatever the user typed into a
+	// running session, which can be a credential answering a prompt.
+	h.db.LogAudit(middleware.GetUserID(r.Context()), "tmux_input_sent", "chat", "tmux_session", req.Session, "")
+	writeJSON(w, http.StatusOK, map[string]interface{}{"sent": true, "session": req.Session})
+}
+
+// GetTmuxLogs returns a session's scrollback.
+func (h *ChatHandler) GetTmuxLogs(w http.ResponseWriter, r *http.Request) {
+	session := r.URL.Query().Get("session")
+	if session == "" {
+		writeError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+	lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
+
+	logs, err := tmux.Logs(r.Context(), session, lines)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"session": session, "logs": logs})
 }
 
 // StartTmuxWatch polls a tmux session on a fixed interval and reports back into
@@ -220,8 +269,26 @@ func (h *ChatHandler) StopTmuxWatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"stopped": h.StopWatch(threadID, session)})
 }
 
-// runTmuxWatch polls until the session ends, the pane goes quiet, or it is
-// cancelled — then posts one message into the thread and removes itself.
+// How many consecutive checks with an unchanged pane before reporting in.
+// What that means is deliberately not decided here — see quietReport.
+const quietAfter = 3
+
+// maxWatchDuration is how long a watch runs before giving up. Long enough for
+// an overnight migration, short enough that a session forgotten in a closed tab
+// does not poll tmux for a week.
+const maxWatchDuration = 12 * time.Hour
+
+// runTmuxWatch polls until the command exits, the session disappears, the watch
+// is cancelled, or it runs out of time — reporting into the thread as it goes.
+//
+// A quiet pane used to end the watch, and that is why completion notifications
+// never seemed to fire. The common case for a dispatched coding agent is
+// several minutes of no visible output while it thinks; three of those and the
+// watcher filed its "nothing new on screen" note and stopped, so the finish it
+// was armed for — the exit status, the closing report, the whole point — was
+// never reported by anyone. From out here a quiet pane is an observation, not
+// an ending: say it once, keep watching, and let the command's exit be what
+// ends the watch.
 func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWatch) {
 	defer tmuxWatches.Delete(key)
 
@@ -229,15 +296,25 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	deadline := time.After(maxWatchDuration)
+
 	var lastPane string
 	unchanged := 0
-	// How many consecutive checks with an unchanged pane before reporting in.
-	// What that means is deliberately not decided here — see quietReport.
-	const quietAfter = 3
+	// Each quiet note costs the user a message, so the threshold doubles after
+	// every one: a session that is quiet by nature reports at 3 checks, then 6,
+	// then 12, instead of filing the same non-event every three minutes.
+	quietThreshold := quietAfter
 
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-deadline:
+			h.reportTmux(wch, fmt.Sprintf(
+				"**Check-in — tmux session `%s`**\n\nI have been watching this for %s and it is still running, "+
+					"so I have stopped watching to avoid polling it indefinitely. "+
+					"It is still going — check it with `tmux_status`, or watch it again with `tmux_watch`.",
+				wch.Session, maxWatchDuration))
 			return
 		case <-ticker.C:
 		}
@@ -247,7 +324,7 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 
 		if !tmux.Exists(ctx, wch.Session) {
 			h.reportTmux(wch, fmt.Sprintf(
-				"**Check-in — tmux session `%s`**\n\nThe session is gone, so whatever was running in it has ended. "+
+				"**Finished — tmux session `%s`**\n\nThe session is gone, so whatever was running in it has ended. "+
 					"I checked %d times and have stopped watching.",
 				wch.Session, wch.Checks))
 			return
@@ -263,13 +340,7 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 		// Without this the run would be reported as *stalled* three checks later
 		// — and with no exit status, which is the one thing worth knowing.
 		if dead, status, ok := tmux.Finished(ctx, wch.Session); ok && dead {
-			outcome := "The command finished successfully (exit status 0)."
-			if status != 0 {
-				outcome = fmt.Sprintf("The command failed with exit status %d.", status)
-			}
-			h.reportTmux(wch, fmt.Sprintf(
-				"**Check-in — tmux session `%s`**\n\n%s\n\n%s",
-				wch.Session, outcome, tmux.Describe(wch.Session, pane)))
+			h.reportTmux(wch, finishedReport(ctx, wch.Session, status))
 			return
 		}
 
@@ -280,12 +351,38 @@ func (h *ChatHandler) runTmuxWatch(ctx context.Context, key string, wch *tmuxWat
 			lastPane = pane
 		}
 
-		if unchanged >= quietAfter {
+		if unchanged >= quietThreshold {
 			h.reportTmux(wch, quietReport(
-				wch.Session, pane, time.Duration(quietAfter)*interval))
-			return
+				wch.Session, pane, time.Duration(unchanged)*interval))
+			unchanged = 0
+			quietThreshold *= 2
 		}
 	}
+}
+
+// finishedReport is what the watcher says when the command has exited.
+//
+// It carries the tail of the scrollback rather than the visible pane, because
+// every dispatched agent is asked to end with what it changed, what it assumed
+// and what it left open — a report longer than the ten lines a pane shows, and
+// one that has already scrolled past by the time anyone looks. Reconstructing
+// that from git log afterwards loses exactly the parts that were not code.
+func finishedReport(ctx context.Context, session string, status int) string {
+	outcome := "The command finished successfully (exit status 0)."
+	if status != 0 {
+		outcome = fmt.Sprintf("The command failed with exit status %d.", status)
+	}
+
+	report := fmt.Sprintf("**Finished — tmux session `%s`**\n\n%s\n\n", session, outcome)
+
+	// Enough to hold a closing report, little enough not to swamp the thread
+	// with a whole build log.
+	if final := tmux.FinalOutput(ctx, session, 120); strings.TrimSpace(final) != "" {
+		report += "Final output:\n```\n" + final + "\n```\n\n"
+	}
+	report += fmt.Sprintf(
+		"Read further back with `tmux_logs` on `%s` — the scrollback is kept until the session is killed.", session)
+	return report
 }
 
 // quietReport is what the watcher says when a session is still running but the
@@ -306,8 +403,10 @@ func quietReport(session, pane string, quiet time.Duration) string {
 
 	if blocked := tmux.BlockedOn(pane); blocked != "" {
 		return head + fmt.Sprintf(
-			"It has been sitting on a prompt for %s. %s\n\n%s",
-			quiet, blocked, tmux.Describe(session, pane))
+			"It has been sitting on a prompt for %s. %s\n\n"+
+				"Answer it with `tmux_send` on `%s` rather than killing the session — it keeps everything "+
+				"it has worked out so far. I am still watching.\n\n%s",
+			quiet, blocked, session, tmux.Describe(session, pane))
 	}
 
 	reason := "That is not in itself a problem: a pane sits still while the CLI thinks, " +
@@ -320,7 +419,8 @@ func quietReport(session, pane string, quiet time.Duration) string {
 
 	return head + fmt.Sprintf(
 		"Still running, with nothing new on screen for %s. %s\n\n"+
-			"Attach with `tmux attach -t %s` to see what it is actually doing. I have stopped watching.\n\n%s",
+			"Attach with `tmux attach -t %s` to see what it is actually doing, or send it something with "+
+			"`tmux_send`. I am still watching and will report when it finishes.\n\n%s",
 		quiet, reason, session, tmux.Describe(session, pane))
 }
 
@@ -330,9 +430,65 @@ func quietReport(session, pane string, quiet time.Duration) string {
 // to the thread, not to whichever agent happened to start the session. Without
 // a slug the message has no identity at all and renders under the stock avatar
 // rather than the user's own gateway.
+//
+// A finish also files a notification. The chat message alone only lands if
+// somebody is looking at that thread — dispatched work is precisely the kind
+// nobody sits and watches, which is why "it's done" kept arriving as an answer
+// to "any progress?" rather than as news.
 func (h *ChatHandler) reportTmux(wch *tmuxWatch, message string) {
 	h.saveAssistantMessage(wch.ThreadID, gatewayRoleSlug, message, 0, 0, 0)
 	h.broadcastStatus(wch.ThreadID, "message_saved", "")
 	h.broadcastStatus(wch.ThreadID, "done", "")
 	logger.Info("tmux watch on %s reported into thread %s", wch.Session, wch.ThreadID)
+
+	if strings.HasPrefix(message, "**Finished") {
+		h.notifyTmuxFinished(wch, message)
+	}
+}
+
+// notifyTmuxFinished files the finish in the Inbox, linked back to the thread
+// the work was started from.
+func (h *ChatHandler) notifyTmuxFinished(wch *tmuxWatch, message string) {
+	if h.db == nil {
+		return
+	}
+	body := "The command has ended after " +
+		time.Since(wch.StartedAt).Round(time.Second).String() + "."
+	if strings.Contains(message, "failed with exit status") {
+		body = "The command failed. " + body
+	}
+
+	notif, err := CreateNotification(h.db, models.NotificationInput{
+		Title:           "tmux session " + wch.Session + " finished",
+		Body:            body,
+		Detail:          message,
+		WorkspaceID:     h.threadWorkspaceID(wch.ThreadID),
+		Priority:        "normal",
+		SourceAgentSlug: gatewayRoleSlug,
+		SourceType:      "tmux",
+		SourceID:        wch.Session,
+		Link:            "/chat?thread=" + wch.ThreadID,
+	})
+	if err != nil {
+		logger.Warn("could not file a notification for tmux session %s: %v", wch.Session, err)
+		return
+	}
+	// notification_created is what the bell, the sound and the browser
+	// notification all hang off — sending the row itself rather than a "go and
+	// refresh" ping is what makes the finish audible.
+	if h.agentManager != nil {
+		h.agentManager.Broadcast("notification_created", notif)
+	}
+}
+
+// threadWorkspaceID keeps the notification in the workspace the work was
+// started from, so it does not surface in an unrelated one.
+func (h *ChatHandler) threadWorkspaceID(threadID string) string {
+	var wsID string
+	if err := h.db.QueryRow(
+		"SELECT COALESCE(workspace_id, '') FROM chat_threads WHERE id = ?", threadID,
+	).Scan(&wsID); err != nil {
+		return ""
+	}
+	return wsID
 }

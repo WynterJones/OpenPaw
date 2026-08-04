@@ -312,7 +312,8 @@ func buildSecretsPromptSection(db *database.DB, dec SecretDecryptor) string {
 	b.WriteString("## SECRETS\n")
 	b.WriteString("Use `list_secrets` to see which credentials are configured and `check_secrets` to test specific names.\n")
 	if dec != nil {
-		b.WriteString("When you genuinely need a credential's value — calling an API yourself, or writing a config file the user asked for — use `get_secret`; it returns the decrypted value and records the call in the audit log. ")
+		b.WriteString("When a command needs a credential — a deploy, a CLI login, an API call from the shell — use `run_with_secrets`: name the secrets and OpenPaw sets them in that command's environment, so the value never passes through you at all. Prefer it over reading a value you were only going to paste into a command anyway.\n")
+		b.WriteString("When you genuinely need a credential's value — writing a config file the user asked for, or calling an API from inside a tool — use `get_secret`; it returns the decrypted value and records the call in the audit log. ")
 		b.WriteString("Reach for it only when the work needs it, and do not repeat the value back in chat, write it into files the user did not ask for, or commit it. ")
 		b.WriteString("Services already receive their secrets as environment variables at runtime, so you usually do not need to read one.\n")
 	} else {

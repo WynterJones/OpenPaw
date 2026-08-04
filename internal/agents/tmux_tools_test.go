@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	llm "github.com/openpaw/openpaw/internal/llm"
 )
 
 func TestBuildTmuxToolDefs_ShapeIsValid(t *testing.T) {
 	defs := BuildTmuxToolDefs()
-	if len(defs) != 5 {
-		t.Fatalf("got %d tool defs, want 5", len(defs))
+	if len(defs) != 9 {
+		t.Fatalf("got %d tool defs, want 9", len(defs))
 	}
 
 	seen := map[string]bool{}
@@ -33,11 +35,94 @@ func TestBuildTmuxToolDefs_ShapeIsValid(t *testing.T) {
 		seen[d.Function.Name] = true
 	}
 
-	for _, want := range []string{"tmux_run", "tmux_list", "tmux_status", "tmux_watch", "tmux_unwatch"} {
+	for _, want := range []string{
+		"tmux_run", "tmux_list", "tmux_status", "tmux_logs", "tmux_send",
+		"tmux_watch", "tmux_unwatch", "worktree_list", "worktree_remove",
+	} {
 		if !seen[want] {
 			t.Errorf("missing tool %q", want)
 		}
 	}
+}
+
+// Every declared tool needs a handler behind it: a model that calls one with
+// nothing wired up gets an error where it expected a result, and the tool it
+// was told about is worse than no tool at all.
+func TestMakeTmuxToolHandlers_CoversEveryDef(t *testing.T) {
+	m := &Manager{}
+	handlers := m.MakeTmuxToolHandlers("thread-1")
+
+	for _, d := range BuildTmuxToolDefs() {
+		if handlers[d.Function.Name] == nil {
+			t.Errorf("tool %q is declared but has no handler", d.Function.Name)
+		}
+	}
+	if len(handlers) != len(BuildTmuxToolDefs()) {
+		t.Errorf("got %d handlers for %d tools", len(handlers), len(BuildTmuxToolDefs()))
+	}
+}
+
+// The expensive habit this replaces is killing a working session to say one
+// more thing to it, so the description has to rule that out explicitly.
+func TestTmuxSendDef_SaysNotToRestartTheSession(t *testing.T) {
+	desc := findToolDef(t, "tmux_send").Function.Description
+
+	for _, want := range []string{"INSTEAD OF killing", "re-reads"} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("description does not mention %q:\n%s", want, desc)
+		}
+	}
+}
+
+// tmux_status returns the visible pane, which is where closing reports went to
+// die. tmux_logs only earns its place if the agent knows that is what it's for.
+func TestTmuxLogsDef_ExplainsWhatStatusMisses(t *testing.T) {
+	desc := findToolDef(t, "tmux_logs").Function.Description
+
+	if !strings.Contains(desc, "tmux_status") {
+		t.Errorf("description does not contrast itself with tmux_status:\n%s", desc)
+	}
+	if !strings.Contains(strings.ToLower(desc), "report") {
+		t.Errorf("description does not mention reading a finished agent's report:\n%s", desc)
+	}
+}
+
+// Isolation is opt-in, so the model has to be told when opting in is required —
+// otherwise it defaults to the shared tree, which is the race this prevents.
+func TestTmuxRunDef_ExplainsWhenToIsolate(t *testing.T) {
+	def := findToolDef(t, "tmux_run")
+
+	var schema struct {
+		Properties map[string]struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(def.Function.Parameters, &schema); err != nil {
+		t.Fatalf("parameters are not valid JSON: %v", err)
+	}
+
+	worktree, ok := schema.Properties["worktree"]
+	if !ok {
+		t.Fatal("tmux_run has no worktree parameter")
+	}
+	if worktree.Type != "boolean" {
+		t.Errorf("worktree type = %q, want boolean", worktree.Type)
+	}
+	if !strings.Contains(worktree.Description, "share a branch") {
+		t.Errorf("worktree description does not say why a shared tree is unsafe:\n%s", worktree.Description)
+	}
+}
+
+func findToolDef(t *testing.T, name string) llm.ToolDef {
+	t.Helper()
+	for _, d := range BuildTmuxToolDefs() {
+		if d.Function.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("no tool named %q", name)
+	return llm.ToolDef{}
 }
 
 // The whole point of the tool is to stop agents promising to check back when

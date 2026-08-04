@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useId, useState } from 'react';
-import { TerminalSquare, Eye, EyeOff, GitBranch, Gauge, Clock, Loader2, X, ChevronDown } from 'lucide-react';
+import { TerminalSquare, Eye, EyeOff, GitBranch, Gauge, Clock, Loader2, X, ChevronDown, CornerDownLeft, ScrollText } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
@@ -75,6 +75,13 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
   const [busy, setBusy] = useState(false);
   const [killTarget, setKillTarget] = useState<TmuxSession | null>(null);
   const [killing, setKilling] = useState(false);
+  const [sendTarget, setSendTarget] = useState<TmuxSession | null>(null);
+  const [sendText, setSendText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [logsTarget, setLogsTarget] = useState<TmuxSession | null>(null);
+  const [logs, setLogs] = useState('');
+  const [loadingLogs, setLoadingLogs] = useState(false);
   const sessionListId = useId();
 
   const load = useCallback(async () => {
@@ -141,6 +148,39 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
       /* the next poll re-syncs whatever actually happened */
     } finally {
       setKilling(false);
+    }
+  };
+
+  // Answering a session from here is the cheap way out of a session that has
+  // stopped on a prompt — the alternative is finding a terminal to attach from,
+  // or killing it and losing everything it has worked out.
+  const sendInput = async () => {
+    if (!sendTarget || !sendText.trim()) return;
+    setSending(true);
+    setSendError('');
+    try {
+      await api.post('/chat/tmux/send', { session: sendTarget.name, text: sendText, submit: true });
+      setSendText('');
+      setSendTarget(null);
+      await load();
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : 'Could not send that.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const openLogs = async (session: TmuxSession) => {
+    setLogsTarget(session);
+    setLogs('');
+    setLoadingLogs(true);
+    try {
+      const res = await api.get<{ logs: string }>(`/chat/tmux/logs?session=${encodeURIComponent(session.name)}&lines=500`);
+      setLogs(res.logs || 'Nothing has been printed yet.');
+    } catch {
+      setLogs('Could not read the scrollback for this session.');
+    } finally {
+      setLoadingLogs(false);
     }
   };
 
@@ -235,6 +275,24 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
               </button>
 
               <button
+                onClick={() => openLogs(s)}
+                className="p-0.5 rounded-md text-text-3 hover:text-text-1 hover:bg-surface-2 transition-colors cursor-pointer flex-shrink-0"
+                title="Read this session's full output"
+                aria-label={`Read the output of tmux session ${s.name}`}
+              >
+                <ScrollText className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+
+              <button
+                onClick={() => { setSendTarget(s); setSendText(''); setSendError(''); }}
+                className="p-0.5 rounded-md text-text-3 hover:text-accent-primary hover:bg-accent-muted transition-colors cursor-pointer flex-shrink-0"
+                title="Type into this session — answer a prompt, or add an instruction"
+                aria-label={`Send input to tmux session ${s.name}`}
+              >
+                <CornerDownLeft className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+
+              <button
                 onClick={() => setKillTarget(s)}
                 className="p-0.5 rounded-md text-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer flex-shrink-0"
                 title="Close this session — stops whatever is running in it"
@@ -275,6 +333,73 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
         })}
       </div>
 
+      <Modal
+        open={!!sendTarget}
+        onClose={() => !sending && setSendTarget(null)}
+        title={`Send to ${sendTarget?.status?.project || sendTarget?.name || ''}`}
+        size="sm"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-text-3">
+            Typed straight into the session, followed by Enter. Use it to answer a prompt it has
+            stopped on, or to add an instruction while it is still working.
+          </p>
+          <textarea
+            value={sendText}
+            onChange={(e) => setSendText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                sendInput();
+              }
+            }}
+            rows={3}
+            autoFocus
+            placeholder="e.g. 1  ·  yes  ·  also update the footer links"
+            className="w-full rounded-lg border border-border-1 bg-surface-2 px-3 py-2 text-sm text-text-1 placeholder:text-text-3 focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
+          />
+          {sendError && <p className="text-xs text-red-400">{sendError}</p>}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-text-3">⌘↵ to send</span>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setSendTarget(null)} disabled={sending}>Cancel</Button>
+              <Button size="sm" loading={sending} onClick={sendInput} disabled={!sendText.trim()}>Send</Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!logsTarget}
+        onClose={() => setLogsTarget(null)}
+        title={`Output — ${logsTarget?.status?.project || logsTarget?.name || ''}`}
+        size="lg"
+      >
+        <div className="space-y-3">
+          {loadingLogs ? (
+            <div className="flex items-center gap-2 text-sm text-text-3">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              Reading the session…
+            </div>
+          ) : (
+            <pre className="max-h-[60vh] overflow-auto rounded-lg border border-border-1 bg-surface-2 p-3 text-[11px] leading-relaxed text-text-2 whitespace-pre-wrap break-words">
+              {logs}
+            </pre>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => logsTarget && openLogs(logsTarget)}
+              disabled={loadingLogs}
+            >
+              Refresh
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setLogsTarget(null)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={!!killTarget} onClose={() => !killing && setKillTarget(null)} title="Close this session?" size="sm">
         <div className="space-y-4">
           <p className="text-sm text-text-2">
@@ -283,6 +408,10 @@ export function TmuxSessionCard({ threadId }: { threadId: string | null }) {
               {killTarget?.status?.project || killTarget?.name}
             </span>{' '}
             and stops whatever is running inside it — unsaved work in that session is lost.
+          </p>
+          <p className="text-xs text-text-3">
+            If it is only waiting on a question, send it an answer instead — that keeps everything
+            it has worked out so far.
           </p>
           <p className="text-xs text-text-3">
             If it is the last session, tmux shuts its server down too. Any watch on it stops.

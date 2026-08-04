@@ -22,6 +22,8 @@ import {
   Database,
   TerminalSquare,
   Search,
+  Send,
+  Camera,
 } from 'lucide-react';
 
 interface DocsContext {
@@ -76,6 +78,18 @@ const features = [
     name: 'Terminal Workspace',
     id: 'terminal-workspace',
     description: 'Run persistent shells, dev servers, tmux sessions, Claude Code, and Codex inside OpenPaw. Terminals are global rather than tied to the selected project workspace, restore after relaunch, and blend with your custom app background.',
+  },
+  {
+    icon: Send,
+    name: 'Dispatched Sessions',
+    id: 'dispatched-sessions',
+    description: 'Agents start long work — builds, test suites, other coding agents — in detached sessions that outlive the turn, and are told when each one exits, with its status and closing output. You or the agent can answer a prompt a session has stopped on, read its full scrollback, or send a follow-up instruction, instead of killing it and starting over. Work that writes to a repository can run in its own git worktree and branch so parallel sessions cannot overwrite each other.',
+  },
+  {
+    icon: Camera,
+    name: 'Agents That Look',
+    id: 'agents-that-look',
+    description: 'Agents can fetch a page from outside their sandbox — including a local dev server — and photograph it in a headless browser, then open the image. Reading the markup only confirms what they wrote; the screenshot is where broken layout, invisible text, and a component that never mounted actually show up.',
   },
   {
     icon: Search,

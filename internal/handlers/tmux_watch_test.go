@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,54 @@ func TestQuietReport_DoesNotClaimAStall(t *testing.T) {
 	}
 	if !strings.Contains(got, "tmux attach -t build") {
 		t.Errorf("report does not say how to look for yourself:\n%s", got)
+	}
+}
+
+// A quiet pane used to END the watch, which is why finishes were never
+// reported: a dispatched agent goes quiet while it thinks, and three of those
+// killed the watcher long before the thing it was armed for happened.
+func TestQuietReport_KeepsWatching(t *testing.T) {
+	got := quietReport("build", "✻ Sautéed for 2s\n", 3*time.Minute)
+
+	if strings.Contains(got, "I have stopped watching") {
+		t.Errorf("the watch gives up on a quiet pane, so the finish is never reported:\n%s", got)
+	}
+	if !strings.Contains(got, "still watching") {
+		t.Errorf("report does not say the watch continues:\n%s", got)
+	}
+}
+
+// A recognised prompt is answerable now, and the cheap answer is to send it —
+// not to kill a session that has already worked everything out.
+func TestQuietReport_PointsAtSendRatherThanRestart(t *testing.T) {
+	pane := " Claude Code'll be able to read, edit, and execute files here.\n ❯ 1. Yes, I trust this folder\n"
+	got := quietReport("build", pane, 3*time.Minute)
+
+	if !strings.Contains(got, "tmux_send") {
+		t.Errorf("a blocked session is reported without saying how to unblock it:\n%s", got)
+	}
+}
+
+// The finish is the message that matters, and it has to be recognisable as one
+// — reportTmux keys the notification off it, and a user skimming a thread
+// should not have to read a paragraph to learn whether the build passed.
+func TestFinishedReport_StatesTheOutcome(t *testing.T) {
+	ok := finishedReport(context.Background(), "build", 0)
+	if !strings.HasPrefix(ok, "**Finished") {
+		t.Errorf("a finish is not announced as one:\n%s", ok)
+	}
+	if !strings.Contains(ok, "exit status 0") {
+		t.Errorf("success does not state the exit status:\n%s", ok)
+	}
+
+	failed := finishedReport(context.Background(), "build", 2)
+	if !strings.Contains(failed, "failed with exit status 2") {
+		t.Errorf("a failure does not state what went wrong:\n%s", failed)
+	}
+	// The closing report an agent writes is longer than a pane, so the reader
+	// has to be told where the rest of it is.
+	if !strings.Contains(failed, "tmux_logs") {
+		t.Errorf("the report does not say how to read further back:\n%s", failed)
 	}
 }
 

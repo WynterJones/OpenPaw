@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	llm "github.com/openpaw/openpaw/internal/llm"
@@ -227,6 +228,16 @@ func (m *Manager) handleStudioListFolders() llm.ToolHandler {
 	}
 }
 
+// mediaFilePath resolves a stored filename to where it actually sits on disk,
+// alongside the data directory. Empty when there is nothing to point at, so a
+// record with no file does not advertise a path that isn't there.
+func (m *Manager) mediaFilePath(filename string) string {
+	if filename == "" || m.DataDir == "" || strings.ContainsAny(filename, `/\`) || strings.Contains(filename, "..") {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(m.DataDir), "media", filename)
+}
+
 func (m *Manager) handleStudioListMedia() llm.ToolHandler {
 	return func(ctx context.Context, workDir string, input json.RawMessage) llm.ToolResult {
 		var req struct {
@@ -261,7 +272,7 @@ func (m *Manager) handleStudioListMedia() llm.ToolHandler {
 		args = append(args, limit)
 
 		rows, err := m.db.Query(
-			`SELECT id, media_type, source_model, prompt, created_at
+			`SELECT id, media_type, source_model, prompt, filename, created_at
 			 FROM media WHERE `+strings.Join(where, " AND ")+`
 			 ORDER BY created_at DESC LIMIT ?`,
 			args...,
@@ -274,12 +285,19 @@ func (m *Manager) handleStudioListMedia() llm.ToolHandler {
 		var b strings.Builder
 		n := 0
 		for rows.Next() {
-			var id, mediaType, model, prompt, createdAt string
-			if err := rows.Scan(&id, &mediaType, &model, &prompt, &createdAt); err != nil {
+			var id, mediaType, model, prompt, filename, createdAt string
+			if err := rows.Scan(&id, &mediaType, &model, &prompt, &filename, &createdAt); err != nil {
 				continue
 			}
 			fmt.Fprintf(&b, "- [%s] %s\n  url: /api/v1/media/%s/file\n  model: %s, created: %s\n",
 				mediaType, truncateLine(prompt, 140), id, model, createdAt)
+			// The URL is for showing the user; the path is for looking at it
+			// yourself. Without it the only way to open a generated image was to
+			// query the database for its filename, which is what people ended up
+			// doing.
+			if path := m.mediaFilePath(filename); path != "" {
+				fmt.Fprintf(&b, "  file: %s\n", path)
+			}
 			n++
 		}
 		if n == 0 {

@@ -2208,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "openpaw-desktop"
-version = "1.3.5"
+version = "1.3.6"
 dependencies = [
  "libc",
  "reqwest 0.12.28",
